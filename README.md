@@ -24,3 +24,7 @@ See: [Sequence Diagram](docs/Sequence_Diagram.md)
 ### State Diagram
 
 See: [State Diagram](docs/State_Diagram.md)
+
+### Activity Diagram
+
+See: [Activity Diagram](docs/Activity%20Diagram.png)
