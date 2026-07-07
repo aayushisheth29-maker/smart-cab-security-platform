@@ -9,3 +9,14 @@
 - [Project Roadmap](docs/Project_Roadmap.md)
 - [Project Timeline](docs/Project_Timeline.md)
 - [Technology Stack](docs/Technology_Stack.md)
+
+- ## Week 2 - UML Diagrams
+
+### Use Case Diagram
+See: [Use Case Diagram](docs/Use_Case_Diagram.md)
+
+### Class Diagram
+See: [Class Diagram](docs/ClassDiagram.md)
+
+### Sequence Diagram
+See: [Sequence Diagram](docs/Sequence_Diagram.md)
