@@ -20,3 +20,7 @@ See: [Class Diagram](docs/ClassDiagram.md)
 
 ### Sequence Diagram
 See: [Sequence Diagram](docs/Sequence_Diagram.md)
+
+### State Diagram
+
+See: [State Diagram](docs/State_Diagram.md)
