@@ -27,4 +27,4 @@ See: [State Diagram](docs/State_Diagram.md)
 
 ### Activity Diagram
 
-See: [Activity Diagram](docs/Activity%20Diagram.png)
+See: [Activity Diagram](docs/Activity_Diagram.md)
