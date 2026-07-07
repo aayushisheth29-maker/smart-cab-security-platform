@@ -10,7 +10,7 @@
 - [Project Timeline](docs/Project_Timeline.md)
 - [Technology Stack](docs/Technology_Stack.md)
 
-- ## Week 2 - UML Diagrams
+## Week 2 - UML Diagrams
 
 ### Use Case Diagram
 See: [Use Case Diagram](docs/Use_Case_Diagram.md)
