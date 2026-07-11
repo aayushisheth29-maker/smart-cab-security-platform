@@ -28,3 +28,18 @@ See: [State Diagram](docs/State_Diagram.md)
 ### Activity Diagram
 
 See: [Activity Diagram](docs/Activity_Diagram.md)
+
+
+## Week 3 - Database Design
+
+### ER Diagram
+See: [ER Diagram](docs/ER_Diagram.md)
+
+### Database Schema
+See: [Database Schema](docs/Database_Schema.md)
+
+### Data Dictionary
+See: [Data Dictionary](docs/Data_Dictionary.md)
+
+### Database SQL
+See: [Database.sql](docs/Database.sql)
