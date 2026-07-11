@@ -16,7 +16,7 @@
 See: [Use Case Diagram](docs/Use_Case_Diagram.md)
 
 ### Class Diagram
-See: [Class Diagram](docs/ClassDiagram.md)
+See: [Class Diagram](docs/Class_Diagram.md)
 
 ### Sequence Diagram
 See: [Sequence Diagram](docs/Sequence_Diagram.md)
@@ -45,4 +45,4 @@ See: [Data Dictionary](docs/Data_Dictionary.md)
 See: [Database.sql](docs/Database.sql)
 
 ### System Architecturee
-See: [System Architecturee](docs/System_Architecturee.md)
+See: [System Architecture](docs/System_Architecture.png)
