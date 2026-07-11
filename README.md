@@ -44,5 +44,5 @@ See: [Data Dictionary](docs/Data_Dictionary.md)
 ### Database SQL
 See: [Database.sql](docs/Database.sql)
 
-### System Architecturee
-See: [System Architecture](docs/System_Architecture.png)
+### System Architecture_Diagram
+See: [System Architecture_Diagram](docs/System_Architecture_Diagram.md)
