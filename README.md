@@ -43,3 +43,6 @@ See: [Data Dictionary](docs/Data_Dictionary.md)
 
 ### Database SQL
 See: [Database.sql](docs/Database.sql)
+
+### System Architecturee
+See: [System Architecturee](docs/System_Architecturee.md)
