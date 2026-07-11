@@ -1,24 +1,26 @@
 Team Roles
+
+
 Member 1 (Project Lead)
-Documentation
-Requirement Analysis
-GitHub Management
-Project Planning
-Testing Coordination
+1) Documentation
+2) Requirement Analysis
+3) GitHub Management
+4) Project Planning
+5) Testing Coordination
 
 
 Member 2 (Frontend Developer)
-UI Design
-React Development
-User Authentication Screens
-Dashboard Development
+1) UI Design
+2) React Development
+3) User Authentication Screens
+4) Dashboard Development
 
 
 Member 3 (Backend & AI Developer)
-API Development
-Database Management
-GPS Integration
-AI Safety Detection Module
+1) API Development
+2) Database Management
+3) GPS Integration
+4) AI Safety Detection Module
 
 Timeline
 
