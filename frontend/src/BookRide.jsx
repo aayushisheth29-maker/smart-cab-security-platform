@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom'; // ⭐ NEW: Imported Link for navigation
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield 
@@ -11,7 +12,7 @@ const BookRide = () => {
   // 2. State for the Bottom Banner
   const [showBanner, setShowBanner] = useState(true);
   
-  // ⭐ NEW: 3. State to track which sub-menu tab is clicked
+  // 3. State to track which sub-menu tab is clicked
   const [activeTab, setActiveTab] = useState('request');
 
   return (
@@ -56,7 +57,6 @@ const BookRide = () => {
             <span className="text-2xl font-bold tracking-tight">SmartCab</span>
           </div>
           <div className="hidden md:flex space-x-6 font-medium text-sm">
-            {/* ⭐ NEW: Changed 'a' tags to buttons and made them open the modal to prove they work! */}
             <button onClick={() => setSelectedCard({title: 'Ride Page', description: 'Taking you to the Ride dashboard...'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Ride</button>
             <button onClick={() => setSelectedCard({title: 'Drive with us', description: 'Driver registration portal opening soon.'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Drive</button>
             <button onClick={() => setSelectedCard({title: 'SmartCab Business', description: 'Corporate accounts management page.'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Business</button>
@@ -71,9 +71,12 @@ const BookRide = () => {
             <Globe className="h-4 w-4 mr-2" /> EN
           </button>
           <button onClick={() => setSelectedCard({title: 'Help Center', description: 'How can we help you today?'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Help</button>
-          <button onClick={() => setSelectedCard({title: 'Login', description: 'Login form will appear here.'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Log in</button>
           
-          {/* ⭐ NEW: Sign up button made clickable */}
+          {/* ⭐ NEW: Log in button changed to a Link that goes to the /login page! */}
+          <Link to="/login" className="hover:bg-gray-800 px-3 py-2 rounded-full transition">
+            Log in
+          </Link>
+          
           <button 
             onClick={() => setSelectedCard({title: 'Create Account', description: 'Sign up functionality coming soon!'})}
             className="bg-white text-black px-4 py-2 rounded-full font-bold hover:bg-gray-200 transition"
@@ -87,7 +90,6 @@ const BookRide = () => {
       <div className="border-b hidden md:flex items-center px-12 pt-3 justify-between">
         <h2 className="text-2xl font-bold pb-3">Ride</h2>
         
-        {/* ⭐ NEW: These tabs now use the activeTab state to show which one is clicked! */}
         <div className="flex space-x-6 text-sm font-medium text-gray-500">
           <button 
             onClick={() => setActiveTab('request')} 
@@ -124,7 +126,6 @@ const BookRide = () => {
             <span>Current Location (GPS Active)</span>
           </div>
 
-          {/* ⭐ NEW: The title changes based on which tab is clicked! */}
           <h1 className="text-5xl font-bold mb-8">
             {activeTab === 'request' && "Request a secure ride"}
             {activeTab === 'reserve' && "Reserve a ride in advance"}
