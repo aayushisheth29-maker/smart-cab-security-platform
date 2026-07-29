@@ -2,38 +2,217 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
-  ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield 
+  ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
+  User, Phone, Mail, Building, CheckCircle
 } from 'lucide-react';
 
 const BookRide = () => {
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
-  
-  // ⭐ The Magic Switches for our pages!
   const [activeTab, setActiveTab] = useState('request');
-  const [mainView, setMainView] = useState('ride'); // This controls the main Top Menu
+  const [mainView, setMainView] = useState('ride');
+  
+  // ⭐ NEW: Switches for the pop-up forms
+  const [showDriverForm, setShowDriverForm] = useState(false);
+  const [showBusinessForm, setShowBusinessForm] = useState(false);
+  const [formStep, setFormStep] = useState(1);
+  const [formSubmitted, setFormSubmitted] = useState(false);
 
-  // Function to scroll down when "Explore" is clicked
+  // Form Data
+  const [driverData, setDriverData] = useState({ name: '', phone: '', city: '', carModel: '' });
+  const [businessData, setBusinessData] = useState({ company: '', email: '', employees: '' });
+
   const handleExploreClick = () => {
     setActiveTab('explore');
     document.getElementById('explore-section')?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  const closeAllForms = () => {
+    setShowDriverForm(false);
+    setShowBusinessForm(false);
+    setFormStep(1);
+    setFormSubmitted(false);
+    setDriverData({ name: '', phone: '', city: '', carModel: '' });
+    setBusinessData({ company: '', email: '', employees: '' });
+  };
+
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative">
       
-      {/* --- POP-UP MODAL (Still here if you ever need it) --- */}
+      {/* --- SIMPLE INFO POP-UP --- */}
       {selectedCard && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] px-4 transition-all">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] px-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full relative shadow-2xl">
-            <button onClick={() => setSelectedCard(null)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full transition text-gray-500">
+            <button onClick={() => setSelectedCard(null)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full text-gray-500">
               <X className="h-6 w-6" />
             </button>
             <h3 className="text-3xl font-bold mb-4">{selectedCard.title}</h3>
             <p className="text-gray-600 mb-6 text-lg">{selectedCard.description}</p>
-            <button onClick={() => setSelectedCard(null)} className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition shadow-lg">
+            <button onClick={() => setSelectedCard(null)} className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition">
               Close
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* ⭐ --- DRIVER APPLICATION FORM POP-UP --- */}
+      {showDriverForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] px-4">
+          <div className="bg-white rounded-2xl p-8 max-w-lg w-full relative shadow-2xl animate-in fade-in zoom-in duration-200">
+            <button onClick={closeAllForms} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full text-gray-500">
+              <X className="h-6 w-6" />
+            </button>
+
+            {formSubmitted ? (
+              // SUCCESS SCREEN
+              <div className="text-center py-8">
+                <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-6" />
+                <h3 className="text-3xl font-bold mb-4">Application Received!</h3>
+                <p className="text-gray-600 mb-8 text-lg">
+                  Thanks, {driverData.name}! Our team will contact you at {driverData.phone} within 24 hours to begin your background check.
+                </p>
+                <button onClick={closeAllForms} className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition">
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                {/* Progress Bar */}
+                <div className="flex items-center mb-6">
+                  <div className={`h-2 flex-1 rounded-full ${formStep >= 1 ? 'bg-black' : 'bg-gray-200'}`}></div>
+                  <div className={`h-2 flex-1 rounded-full mx-2 ${formStep >= 2 ? 'bg-black' : 'bg-gray-200'}`}></div>
+                  <div className={`h-2 flex-1 rounded-full ${formStep >= 3 ? 'bg-black' : 'bg-gray-200'}`}></div>
+                </div>
+                <p className="text-sm text-gray-500 mb-4">Step {formStep} of 3</p>
+
+                {/* STEP 1: Name & Phone */}
+                {formStep === 1 && (
+                  <div>
+                    <h3 className="text-3xl font-bold mb-2">Let's get you started</h3>
+                    <p className="text-gray-600 mb-6">First, tell us who you are.</p>
+                    <div className="space-y-4">
+                      <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                        <User className="h-5 w-5 text-gray-500 mr-3" />
+                        <input type="text" placeholder="Full Name" value={driverData.name} onChange={(e) => setDriverData({...driverData, name: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                      </div>
+                      <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                        <Phone className="h-5 w-5 text-gray-500 mr-3" />
+                        <input type="tel" placeholder="Phone Number" value={driverData.phone} onChange={(e) => setDriverData({...driverData, phone: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                      </div>
+                    </div>
+                    <button 
+                      onClick={() => setFormStep(2)} 
+                      disabled={!driverData.name || !driverData.phone}
+                      className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition mt-8 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                    >
+                      Continue
+                    </button>
+                  </div>
+                )}
+
+                {/* STEP 2: City */}
+                {formStep === 2 && (
+                  <div>
+                    <h3 className="text-3xl font-bold mb-2">Where do you drive?</h3>
+                    <p className="text-gray-600 mb-6">Select the city where you want to work.</p>
+                    <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                      <MapPin className="h-5 w-5 text-gray-500 mr-3" />
+                      <input type="text" placeholder="Your City (e.g., Mumbai)" value={driverData.city} onChange={(e) => setDriverData({...driverData, city: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                    </div>
+                    <div className="flex space-x-3 mt-8">
+                      <button onClick={() => setFormStep(1)} className="w-1/3 bg-gray-100 text-black font-bold py-4 rounded-xl text-lg hover:bg-gray-200 transition">Back</button>
+                      <button 
+                        onClick={() => setFormStep(3)} 
+                        disabled={!driverData.city}
+                        className="w-2/3 bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition disabled:bg-gray-300"
+                      >
+                        Continue
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 3: Car */}
+                {formStep === 3 && (
+                  <div>
+                    <h3 className="text-3xl font-bold mb-2">Tell us about your car</h3>
+                    <p className="text-gray-600 mb-6">We need to verify it meets our safety standards.</p>
+                    <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                      <Car className="h-5 w-5 text-gray-500 mr-3" />
+                      <input type="text" placeholder="Car Make & Model (e.g. Honda City)" value={driverData.carModel} onChange={(e) => setDriverData({...driverData, carModel: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                    </div>
+                    <div className="flex space-x-3 mt-8">
+                      <button onClick={() => setFormStep(2)} className="w-1/3 bg-gray-100 text-black font-bold py-4 rounded-xl text-lg hover:bg-gray-200 transition">Back</button>
+                      <button 
+                        onClick={() => setFormSubmitted(true)} 
+                        disabled={!driverData.carModel}
+                        className="w-2/3 bg-green-600 text-white font-bold py-4 rounded-xl text-lg hover:bg-green-700 transition disabled:bg-gray-300"
+                      >
+                        Submit Application
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ⭐ --- BUSINESS SETUP FORM POP-UP --- */}
+      {showBusinessForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] px-4">
+          <div className="bg-white rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
+            <button onClick={closeAllForms} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full text-gray-500">
+              <X className="h-6 w-6" />
+            </button>
+
+            {formSubmitted ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-6" />
+                <h3 className="text-3xl font-bold mb-4">Welcome Aboard!</h3>
+                <p className="text-gray-600 mb-8 text-lg">
+                  Thanks, {businessData.company}! A corporate account manager will reach out to {businessData.email} shortly.
+                </p>
+                <button onClick={closeAllForms} className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition">
+                  Done
+                </button>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-3xl font-bold mb-2">Set up your company</h3>
+                <p className="text-gray-600 mb-6">Get corporate billing and safety dashboards.</p>
+                
+                <div className="space-y-4">
+                  <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                    <Building className="h-5 w-5 text-gray-500 mr-3" />
+                    <input type="text" placeholder="Company Name" value={businessData.company} onChange={(e) => setBusinessData({...businessData, company: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                  </div>
+                  <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                    <Mail className="h-5 w-5 text-gray-500 mr-3" />
+                    <input type="email" placeholder="Work Email" value={businessData.email} onChange={(e) => setBusinessData({...businessData, email: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                  </div>
+                  <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                    <User className="h-5 w-5 text-gray-500 mr-3" />
+                    <select value={businessData.employees} onChange={(e) => setBusinessData({...businessData, employees: e.target.value})} className="bg-transparent outline-none w-full font-medium">
+                      <option value="">Number of employees</option>
+                      <option value="1-10">1 - 10</option>
+                      <option value="11-50">11 - 50</option>
+                      <option value="51-200">51 - 200</option>
+                      <option value="200+">200+</option>
+                    </select>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => setFormSubmitted(true)} 
+                  disabled={!businessData.company || !businessData.email || !businessData.employees}
+                  className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition mt-8 disabled:bg-gray-300 disabled:cursor-not-allowed"
+                >
+                  Get Started
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
@@ -46,7 +225,6 @@ const BookRide = () => {
             <span className="text-2xl font-bold tracking-tight">SmartCab</span>
           </div>
           
-          {/* ⭐ The Top Menu Links that change the pages! */}
           <div className="flex flex-wrap justify-center gap-2 md:gap-6 font-medium text-sm">
             <button onClick={() => setMainView('ride')} className={`px-3 py-2 rounded-full transition ${mainView === 'ride' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Ride</button>
             <button onClick={() => setMainView('drive')} className={`px-3 py-2 rounded-full transition ${mainView === 'drive' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Drive</button>
@@ -64,13 +242,9 @@ const BookRide = () => {
       </nav>
 
 
-      {/* ======================================================== */}
-      {/* 🟢 VIEW 1: THE "RIDE" PAGE (Your original amazing page) */}
-      {/* ======================================================== */}
+      {/* 🟢 RIDE PAGE */}
       {mainView === 'ride' && (
         <div className="animate-in fade-in duration-500">
-          
-          {/* Sub-Navigation Tabs */}
           <div className="border-b flex flex-col md:flex-row items-center px-4 md:px-12 pt-3 justify-between gap-2">
             <h2 className="text-2xl font-bold pb-1 md:pb-3">Ride</h2>
             <div className="flex overflow-x-auto w-full md:w-auto space-x-6 text-sm font-medium text-gray-500 pb-2">
@@ -81,7 +255,6 @@ const BookRide = () => {
             </div>
           </div>
 
-          {/* Hero Section */}
           <main className="max-w-7xl mx-auto px-4 md:px-12 py-12 flex flex-col md:flex-row gap-12 items-start">
             <div className="w-full md:w-1/2 flex flex-col">
               <div className="flex items-center space-x-2 text-gray-700 mb-8 font-medium">
@@ -89,7 +262,6 @@ const BookRide = () => {
                 <span>Current Location (GPS Active)</span>
               </div>
 
-              {/* Dynamic Title based on the tab! */}
               <h1 className="text-5xl font-bold mb-8 transition-all">
                 {activeTab === 'request' && "Request a secure ride"}
                 {activeTab === 'reserve' && "Reserve a ride in advance"}
@@ -117,7 +289,6 @@ const BookRide = () => {
                   <input type="text" placeholder="Dropoff location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                 </div>
 
-                {/* ⭐ Magic: Show Date/Time boxes ONLY if they click "Reserve" */}
                 {activeTab === 'reserve' && (
                   <div className="relative z-10 flex space-x-3 pt-2">
                     <input type="date" className="bg-gray-100 rounded-lg px-4 py-3 w-1/2 outline-none focus:ring-2 focus:ring-black text-gray-600 font-medium" />
@@ -142,7 +313,6 @@ const BookRide = () => {
             </div>
           </main>
 
-          {/* Explore Grid */}
           <section id="explore-section" className="max-w-7xl mx-auto px-4 md:px-12 py-16">
             <h2 className="text-3xl font-bold mb-8">Explore what you can do with SmartCab</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -186,56 +356,115 @@ const BookRide = () => {
       )}
 
 
-      {/* ======================================================== */}
-      {/* 🟡 VIEW 2: THE "DRIVE" PAGE */}
-      {/* ======================================================== */}
+      {/* 🟡 DRIVE PAGE (Now with clickable Apply button!) */}
       {mainView === 'drive' && (
-        <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
-          <div className="w-full md:w-1/2 flex flex-col">
-            <h1 className="text-5xl md:text-7xl font-bold mb-6">Drive when you want, make what you need</h1>
-            <p className="text-xl text-gray-600 mb-8">Make money on your schedule. SmartCab's AI-driven security protects our drivers just as much as our riders. We verify every rider before they enter your car.</p>
-            <button className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg">
-              Apply to drive
-            </button>
-          </div>
-          <div className="w-full md:w-1/2">
-            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
-              <img src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&q=80&w=1200" alt="Driver" className="w-full h-full object-cover" />
-              <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold shadow">
-                <ShieldCheck className="h-4 w-4 text-green-600" />
-                <span>Driver Protection Active</span>
+        <div className="animate-in fade-in duration-500">
+          <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center">
+            <div className="w-full md:w-1/2 flex flex-col">
+              <h1 className="text-5xl md:text-7xl font-bold mb-6">Drive when you want, make what you need</h1>
+              <p className="text-xl text-gray-600 mb-8">Make money on your schedule. SmartCab's AI-driven security protects our drivers just as much as our riders.</p>
+              
+              {/* ⭐ CLICKABLE! */}
+              <button 
+                onClick={() => { closeAllForms(); setShowDriverForm(true); }}
+                className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform"
+              >
+                Apply to drive →
+              </button>
+
+              <p className="text-sm text-gray-500 mt-4">Takes only 2 minutes to apply!</p>
+            </div>
+            <div className="w-full md:w-1/2">
+              <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
+                <img src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&q=80&w=1200" alt="Driver" className="w-full h-full object-cover" />
+                <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold shadow">
+                  <ShieldCheck className="h-4 w-4 text-green-600" />
+                  <span>Driver Protection Active</span>
+                </div>
               </div>
             </div>
-          </div>
-        </main>
-      )}
+          </main>
 
-
-      {/* ======================================================== */}
-      {/* 🔵 VIEW 3: THE "BUSINESS" PAGE */}
-      {/* ======================================================== */}
-      {mainView === 'business' && (
-        <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
-          <div className="w-full md:w-1/2 flex flex-col">
-            <h1 className="text-5xl md:text-7xl font-bold mb-6">SmartCab for Business</h1>
-            <p className="text-xl text-gray-600 mb-8">A premium, secure travel solution for your employees. Enjoy corporate billing, automated expense reports, and a real-time safety dashboard for your whole team.</p>
-            <button className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg">
-              Set up your company
-            </button>
-          </div>
-          <div className="w-full md:w-1/2">
-            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl bg-gray-100 flex items-center justify-center">
-              <Shield className="h-32 w-32 text-gray-300" />
-              <h2 className="absolute font-bold text-2xl text-gray-400 mt-40">Enterprise Security</h2>
+          {/* Driver Benefits Section */}
+          <section className="max-w-7xl mx-auto px-4 md:px-12 py-16">
+            <h2 className="text-3xl font-bold mb-8 text-center">Why drive with SmartCab?</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-xl p-8 hover:bg-gray-100 transition cursor-pointer" onClick={() => setSelectedCard({title: 'Flexible Hours', description: 'Drive whenever you want. Turn the app on when you have free time and off when you dont. You are your own boss!'})}>
+                <Clock className="h-10 w-10 text-black mb-4" />
+                <h3 className="font-bold text-xl mb-2">Flexible Hours</h3>
+                <p className="text-gray-600">Work whenever you want. You are the boss.</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-8 hover:bg-gray-100 transition cursor-pointer" onClick={() => setSelectedCard({title: 'Weekly Payments', description: 'Get paid every week directly to your bank account. Plus, you can cash out instantly up to 5 times per day!'})}>
+                <ShieldCheck className="h-10 w-10 text-green-600 mb-4" />
+                <h3 className="font-bold text-xl mb-2">Weekly Payments</h3>
+                <p className="text-gray-600">Get paid weekly, or cash out instantly.</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-8 hover:bg-gray-100 transition cursor-pointer" onClick={() => setSelectedCard({title: 'Safety First', description: 'Our SOS system, verified riders, and 24/7 support team ensure you always feel safe on the road.'})}>
+                <Shield className="h-10 w-10 text-blue-600 mb-4" />
+                <h3 className="font-bold text-xl mb-2">Safety First</h3>
+                <p className="text-gray-600">All riders verified before entering your car.</p>
+              </div>
             </div>
-          </div>
-        </main>
+          </section>
+        </div>
       )}
 
 
-      {/* ======================================================== */}
-      {/* 🟣 VIEW 4: THE "ABOUT" PAGE */}
-      {/* ======================================================== */}
+      {/* 🔵 BUSINESS PAGE (Now clickable!) */}
+      {mainView === 'business' && (
+        <div className="animate-in fade-in duration-500">
+          <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center">
+            <div className="w-full md:w-1/2 flex flex-col">
+              <h1 className="text-5xl md:text-7xl font-bold mb-6">SmartCab for Business</h1>
+              <p className="text-xl text-gray-600 mb-8">A premium, secure travel solution for your employees. Corporate billing, automated expense reports, and a real-time safety dashboard.</p>
+              
+              {/* ⭐ CLICKABLE! */}
+              <button 
+                onClick={() => { closeAllForms(); setShowBusinessForm(true); }}
+                className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform"
+              >
+                Set up your company →
+              </button>
+              
+              <p className="text-sm text-gray-500 mt-4">Free to start. No credit card needed.</p>
+            </div>
+            <div className="w-full md:w-1/2">
+              <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
+                <img src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&q=80&w=1200" alt="Business" className="w-full h-full object-cover" />
+                <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold shadow">
+                  <ShieldCheck className="h-4 w-4 text-blue-600" />
+                  <span>Enterprise Security</span>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          {/* Business Features */}
+          <section className="max-w-7xl mx-auto px-4 md:px-12 py-16">
+            <h2 className="text-3xl font-bold mb-8 text-center">Everything your team needs</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gray-50 rounded-xl p-8 hover:bg-gray-100 transition cursor-pointer" onClick={() => setSelectedCard({title: 'Central Billing', description: 'One monthly invoice for your entire team. No more collecting receipts from individual employees. Simple accounting, always.'})}>
+                <Building className="h-10 w-10 text-black mb-4" />
+                <h3 className="font-bold text-xl mb-2">Central Billing</h3>
+                <p className="text-gray-600">One invoice for the whole company.</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-8 hover:bg-gray-100 transition cursor-pointer" onClick={() => setSelectedCard({title: 'Employee Safety', description: 'Track all employee rides in real-time. Get instant alerts if anyone triggers an SOS. Perfect for late-night workers.'})}>
+                <Shield className="h-10 w-10 text-green-600 mb-4" />
+                <h3 className="font-bold text-xl mb-2">Employee Safety</h3>
+                <p className="text-gray-600">Real-time tracking dashboard for HR.</p>
+              </div>
+              <div className="bg-gray-50 rounded-xl p-8 hover:bg-gray-100 transition cursor-pointer" onClick={() => setSelectedCard({title: 'Custom Policies', description: 'Set spending limits, restrict travel hours, or allow only certain destinations. Full control over corporate travel.'})}>
+                <ShieldCheck className="h-10 w-10 text-purple-600 mb-4" />
+                <h3 className="font-bold text-xl mb-2">Custom Policies</h3>
+                <p className="text-gray-600">Set travel rules that fit your company.</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
+
+
+      {/* 🟣 ABOUT PAGE */}
       {mainView === 'about' && (
         <main className="max-w-4xl mx-auto px-4 md:px-12 py-24 text-center animate-in fade-in duration-500">
           <ShieldCheck className="h-24 w-24 text-green-500 mx-auto mb-8" />
@@ -244,8 +473,24 @@ const BookRide = () => {
             SmartCab was founded on a simple principle: everyone deserves to feel perfectly safe when they travel. 
             By combining military-grade GPS tracking, background-checked drivers, and instant SOS alerts, we are changing the way the world moves.
           </p>
-          <button onClick={() => setMainView('ride')} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg hover:bg-gray-800 transition shadow-lg">
-            Take a Ride
+          
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 my-12">
+            <div className="bg-gray-50 p-6 rounded-xl">
+              <h3 className="text-4xl font-bold text-green-600">10M+</h3>
+              <p className="text-gray-600 mt-2">Safe rides completed</p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl">
+              <h3 className="text-4xl font-bold text-blue-600">50+</h3>
+              <p className="text-gray-600 mt-2">Cities worldwide</p>
+            </div>
+            <div className="bg-gray-50 p-6 rounded-xl">
+              <h3 className="text-4xl font-bold text-purple-600">24/7</h3>
+              <p className="text-gray-600 mt-2">Safety monitoring</p>
+            </div>
+          </div>
+
+          <button onClick={() => setMainView('ride')} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">
+            Take a Ride →
           </button>
         </main>
       )}
