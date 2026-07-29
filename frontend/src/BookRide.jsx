@@ -77,12 +77,12 @@ const BookRide = () => {
             Log in
           </Link>
           
-          <button 
-            onClick={() => setSelectedCard({title: 'Create Account', description: 'Sign up functionality coming soon!'})}
+          <Link 
+            to="/signup"
             className="bg-white text-black px-4 py-2 rounded-full font-bold hover:bg-gray-200 transition"
           >
             Sign up
-          </button>
+          </Link>
         </div>
       </nav>
 
