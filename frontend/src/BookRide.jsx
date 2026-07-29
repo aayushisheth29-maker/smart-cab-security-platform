@@ -66,7 +66,6 @@ const BookRide = () => {
             <Globe className="h-4 w-4 mr-2" /> EN
           </button>
           
-          {/* ⭐ FIXED: Help button changed to a Link! */}
           <Link to="/help" className="hover:bg-gray-800 px-3 py-2 rounded-full transition">
             Help
           </Link>
@@ -229,3 +228,132 @@ const BookRide = () => {
               <Map className="h-16 w-16 text-gray-300 group-hover:text-black transition" />
             </div>
           </div>
+
+          {/* Card 4 */}
+          <div className="bg-gray-50 rounded-xl p-6 flex flex-col justify-between hover:bg-gray-100 transition group">
+            <div>
+              <h3 className="text-xl font-bold mb-2">Secure Parcel</h3>
+              <p className="text-sm text-gray-600 mb-6">SmartCab makes same-day item delivery safe and trackable from end to end.</p>
+            </div>
+            <div className="flex justify-between items-end">
+              <button 
+                onClick={() => setSelectedCard({
+                  title: 'Trackable Parcels',
+                  description: 'Send packages with confidence. You get a live camera feed snapshot of your package placement, and OTP verification is required from the receiver upon drop-off.'
+                })}
+                className="bg-white text-black font-medium px-4 py-2 rounded-full shadow-sm hover:shadow-md transition"
+              >
+                Details
+              </button>
+              <Package className="h-16 w-16 text-gray-300 group-hover:text-black transition" />
+            </div>
+          </div>
+
+          {/* Card 5 */}
+          <div className="bg-gray-50 rounded-xl p-6 flex flex-col justify-between hover:bg-gray-100 transition group">
+            <div>
+              <h3 className="text-xl font-bold mb-2">Rentals</h3>
+              <p className="text-sm text-gray-600 mb-6">Request a trip for a block of time and make multiple stops with SOS active.</p>
+            </div>
+            <div className="flex justify-between items-end">
+              <button 
+                onClick={() => setSelectedCard({
+                  title: 'Time-block Rentals',
+                  description: 'Keep the same trusted driver all day. The driver app tracks all stops, and you can share your live "Rental Route" link with family members for total peace of mind.'
+                })}
+                className="bg-white text-black font-medium px-4 py-2 rounded-full shadow-sm hover:shadow-md transition"
+              >
+                Details
+              </button>
+              <Clock className="h-16 w-16 text-gray-300 group-hover:text-black transition" />
+            </div>
+          </div>
+
+          {/* Card 6 */}
+          <div className="bg-gray-50 rounded-xl p-6 flex flex-col justify-between hover:bg-gray-100 transition group">
+            <div>
+              <h3 className="text-xl font-bold mb-2">Bike</h3>
+              <p className="text-sm text-gray-600 mb-6">Get affordable, verified motorbike rides in minutes right at your doorstep.</p>
+            </div>
+            <div className="flex justify-between items-end">
+              <button 
+                onClick={() => setSelectedCard({
+                  title: 'Secure Moto-Rides',
+                  description: 'All SmartCab Bike riders must pass a helmet-verification selfie check before the app allows them to start the engine, ensuring maximum physical safety.'
+                })}
+                className="bg-white text-black font-medium px-4 py-2 rounded-full shadow-sm hover:shadow-md transition"
+              >
+                Details
+              </button>
+              <Bike className="h-16 w-16 text-gray-300 group-hover:text-black transition" />
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+      {/* --- PLAN FOR LATER SECTION --- */}
+      <section className="max-w-7xl mx-auto px-4 md:px-12 py-16">
+        <h2 className="text-3xl font-bold mb-8">Plan for later</h2>
+        <div className="flex flex-col md:flex-row bg-[#E1EFE9] rounded-2xl overflow-hidden">
+          <div className="w-full md:w-[60%] p-8 md:p-12">
+            <h2 className="text-4xl font-bold mb-8 text-black">Get your ride right with SmartCab Reserve</h2>
+            <div className="max-w-md">
+              <p className="font-medium text-gray-800 mb-4">Choose date and time</p>
+              <div className="flex space-x-4 mb-6">
+                <div className="w-1/2">
+                  <div className="bg-white flex items-center px-4 py-3 rounded-lg border border-gray-300 shadow-sm">
+                    <Calendar className="h-5 w-5 text-gray-600 mr-2" />
+                    <input type="date" className="bg-transparent outline-none w-full text-gray-700 font-medium" />
+                  </div>
+                </div>
+                <div className="w-1/2">
+                  <div className="bg-white flex items-center px-4 py-3 rounded-lg border border-gray-300 shadow-sm">
+                    <Clock className="h-5 w-5 text-gray-600 mr-2" />
+                    <input type="time" className="bg-transparent outline-none w-full text-gray-700 font-medium" />
+                  </div>
+                </div>
+              </div>
+              <button className="bg-black text-white w-full py-4 rounded-lg font-bold text-lg hover:bg-gray-800 transition shadow-lg">
+                Next
+              </button>
+            </div>
+          </div>
+          <div className="w-full md:w-[40%] bg-white p-8 md:p-12 flex flex-col justify-center border-l border-gray-100">
+            <h3 className="text-2xl font-bold mb-6">Security Benefits</h3>
+            <div className="space-y-6">
+              <div className="flex items-start">
+                <CalendarDays className="h-6 w-6 mr-4 mt-1" />
+                <p className="text-gray-700 font-medium">Choose your exact pickup time up to 90 days in advance.</p>
+              </div>
+              <div className="flex items-start border-t pt-6">
+                <Shield className="h-6 w-6 mr-4 mt-1" />
+                <p className="text-gray-700 font-medium">Top-rated, background-verified drivers are assigned to reservations.</p>
+              </div>
+              <div className="flex items-start border-t pt-6">
+                <Clock className="h-6 w-6 mr-4 mt-1" />
+                <p className="text-gray-700 font-medium">Extra wait time included to meet your ride without stress.</p>
+              </div>
+            </div>
+            <a href="#" className="mt-8 text-black underline font-medium hover:text-gray-600 transition">See terms</a>
+          </div>
+        </div>
+      </section>
+
+      {/* --- BOTTOM BANNER --- */}
+      {showBanner && (
+        <div className="fixed bottom-0 left-0 right-0 bg-blue-50 border-t border-blue-100 px-4 py-3 flex justify-between items-center z-50">
+          <div className="flex items-center space-x-4 max-w-7xl mx-auto w-full justify-center text-sm md:text-base font-medium text-blue-900">
+            <ShieldCheck className="h-5 w-5 text-blue-600 hidden md:block" />
+            <p><strong>Welcome to SmartCab:</strong> All rides are monitored via GPS with real-time route deviation detection and SOS features.</p>
+          </div>
+          <button onClick={() => setShowBanner(false)} className="p-2 hover:bg-blue-100 rounded-full transition text-blue-900">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default BookRide;
