@@ -25,31 +25,48 @@ const Help = () => {
         <h1 className="text-4xl font-bold mb-2">Help Center</h1>
         <p className="text-gray-600 mb-10 text-lg">We are here to help keep you safe and moving.</p>
 
-        {/* Contact Cards */}
+        {/* Contact Cards (NOW CLICKABLE!) */}
         <div className="grid md:grid-cols-3 gap-6 mb-16">
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-md transition">
+          
+          {/* Card 1: CALL (Opens Phone Dialer) */}
+          <a 
+            href="tel:+18001234567" 
+            className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-lg hover:scale-105 transition transform cursor-pointer w-full"
+          >
             <div className="bg-blue-50 p-4 rounded-full mb-4">
               <Phone className="h-8 w-8 text-blue-600" />
             </div>
             <h3 className="font-bold text-xl mb-2">Call Us</h3>
             <p className="text-gray-600 text-sm">24/7 Support for urgent safety issues and emergencies.</p>
-          </div>
+            <p className="text-blue-600 font-bold mt-4 text-sm">Tap to Call 📞</p>
+          </a>
           
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-md transition">
+          {/* Card 2: LIVE CHAT (Shows Pop-up Alert) */}
+          <button 
+            onClick={() => alert("Connecting you to our Live Chat security team... Please wait a moment.")}
+            className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-lg hover:scale-105 transition transform cursor-pointer w-full"
+          >
             <div className="bg-green-50 p-4 rounded-full mb-4">
               <MessageCircle className="h-8 w-8 text-green-600" />
             </div>
             <h3 className="font-bold text-xl mb-2">Live Chat</h3>
             <p className="text-gray-600 text-sm">Chat with our support team in real-time regarding your ride.</p>
-          </div>
+            <p className="text-green-600 font-bold mt-4 text-sm">Tap to Chat 💬</p>
+          </button>
           
-          <div className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-md transition">
+          {/* Card 3: EMAIL (Opens Email App) */}
+          <a 
+            href="mailto:support@smartcab.com?subject=SmartCab%20Support%20Request"
+            className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-lg hover:scale-105 transition transform cursor-pointer w-full"
+          >
             <div className="bg-purple-50 p-4 rounded-full mb-4">
               <Mail className="h-8 w-8 text-purple-600" />
             </div>
             <h3 className="font-bold text-xl mb-2">Email Support</h3>
             <p className="text-gray-600 text-sm">Send us a detailed message about non-urgent issues.</p>
-          </div>
+            <p className="text-purple-600 font-bold mt-4 text-sm">Tap to Email ✉️</p>
+          </a>
+
         </div>
 
         {/* FAQs */}
