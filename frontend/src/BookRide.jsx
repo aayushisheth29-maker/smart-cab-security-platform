@@ -44,14 +44,16 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* --- NAVIGATION BAR --- */}
-      <nav className="bg-black text-white flex justify-between items-center px-4 md:px-12 py-4">
-        <div className="flex items-center space-x-8">
+      {/* --- NAVIGATION BAR (FIXED FOR MOBILE) --- */}
+      <nav className="bg-black text-white flex flex-col md:flex-row justify-between items-center px-4 md:px-12 py-4 gap-4">
+        <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <div className="flex items-center space-x-2 cursor-pointer">
             <ShieldCheck className="h-8 w-8 text-green-400" />
             <span className="text-2xl font-bold tracking-tight">SmartCab</span>
           </div>
-          <div className="hidden md:flex space-x-6 font-medium text-sm">
+          
+          {/* ⭐ FIXED: Removed 'hidden', added flex-wrap so it fits on mobile */}
+          <div className="flex flex-wrap justify-center gap-2 md:gap-6 font-medium text-sm">
             <button onClick={() => setSelectedCard({title: 'Ride Page', description: 'Taking you to the Ride dashboard...'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Ride</button>
             <button onClick={() => setSelectedCard({title: 'Drive with us', description: 'Driver registration portal opening soon.'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Drive</button>
             <button onClick={() => setSelectedCard({title: 'SmartCab Business', description: 'Corporate accounts management page.'})} className="hover:bg-gray-800 px-3 py-2 rounded-full transition">Business</button>
@@ -61,7 +63,8 @@ const BookRide = () => {
           </div>
         </div>
         
-        <div className="hidden md:flex items-center space-x-6 font-medium text-sm">
+        {/* ⭐ FIXED: Removed 'hidden', added flex-wrap so Login/Signup show on mobile */}
+        <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
           <button className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full transition">
             <Globe className="h-4 w-4 mr-2" /> EN
           </button>
@@ -80,32 +83,33 @@ const BookRide = () => {
         </div>
       </nav>
 
-      {/* --- SUB-NAVIGATION (TABS) --- */}
-      <div className="border-b hidden md:flex items-center px-12 pt-3 justify-between">
-        <h2 className="text-2xl font-bold pb-3">Ride</h2>
+      {/* --- SUB-NAVIGATION (TABS) (FIXED FOR MOBILE) --- */}
+      {/* ⭐ FIXED: Removed 'hidden' so the mobile users can see Reserve, Prices, etc. */}
+      <div className="border-b flex flex-col md:flex-row items-center px-4 md:px-12 pt-3 justify-between gap-2">
+        <h2 className="text-2xl font-bold pb-1 md:pb-3">Ride</h2>
         
-        <div className="flex space-x-6 text-sm font-medium text-gray-500">
+        <div className="flex overflow-x-auto w-full md:w-auto space-x-6 text-sm font-medium text-gray-500 pb-2">
           <button 
             onClick={() => setActiveTab('request')} 
-            className={`pb-4 border-b-2 transition-colors ${activeTab === 'request' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
+            className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'request' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
           >
             Request a ride
           </button>
           <button 
             onClick={() => setActiveTab('reserve')} 
-            className={`pb-4 border-b-2 transition-colors ${activeTab === 'reserve' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
+            className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'reserve' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
           >
             Reserve a ride
           </button>
           <button 
             onClick={() => setActiveTab('prices')} 
-            className={`pb-4 border-b-2 transition-colors ${activeTab === 'prices' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
+            className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'prices' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
           >
             See prices
           </button>
           <button 
             onClick={() => setActiveTab('explore')} 
-            className={`pb-4 border-b-2 transition-colors ${activeTab === 'explore' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
+            className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'explore' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
           >
             Explore ride options
           </button>
