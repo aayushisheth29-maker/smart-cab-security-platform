@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom';
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
-  User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2
+  User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
+  CreditCard, Users, Plane
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
@@ -75,7 +76,7 @@ const BookRide = () => {
     if (rideConfirmed && rideProgress < 100) {
       const timer = setInterval(() => {
         setRideProgress((prev) => {
-          const next = prev + 1; // Slowed down slightly for longer trips
+          const next = prev + 1;
           return next > 100 ? 100 : next;
         });
       }, 1000);
@@ -116,7 +117,7 @@ const BookRide = () => {
       setMapZoom(12); 
       setRideConfirmed(true);
     } else {
-      alert("We couldn't find one of those locations on the map. Try adding the city or state name (e.g., 'Andheri, Mumbai').");
+      alert("We couldn't find one of those locations on the map. Try adding the city or state name.");
     }
   };
 
@@ -224,7 +225,7 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* --- BUSINESS FORM POP-UP --- */}
+      {/* BUSINESS FORM POP-UP */}
       {showBusinessForm && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] px-4">
           <div className="bg-white rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
@@ -449,16 +450,11 @@ const BookRide = () => {
           <section id="explore-section" className="max-w-7xl mx-auto px-4 md:px-12 py-16">
             <h2 className="text-3xl font-bold mb-8">Explore what you can do with SmartCab</h2>
             
-            {/* Grid updated to hold 6 cards like Uber */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              
               {/* 1. RIDE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({
-                  title: 'Secure Rides', 
-                  description: 'Go anywhere with full GPS tracking. Every SmartCab ride is connected to our central AI dispatch. If your car deviates from the designated GPS route by more than 500 meters, an automated alert is sent to our safety team and your emergency contacts.'
-                })}
+                onClick={() => setSelectedCard({ title: 'Secure Rides', description: 'Go anywhere with full GPS tracking. Every SmartCab ride is connected to our central AI dispatch. If your car deviates from the designated GPS route by more than 500 meters, an automated alert is sent to our safety team and your emergency contacts.' })}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -473,10 +469,7 @@ const BookRide = () => {
               {/* 2. RESERVE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({
-                  title: 'Advance Reservations', 
-                  description: 'Reserve your secure ride up to 30 days in advance. When you reserve, we ensure only our highest-rated, tier-1 background-verified drivers are assigned to your trip. Perfect for early morning airport runs.'
-                })}
+                onClick={() => setSelectedCard({ title: 'Advance Reservations', description: 'Reserve your secure ride up to 30 days in advance. When you reserve, we ensure only our highest-rated, tier-1 background-verified drivers are assigned to your trip. Perfect for early morning airport runs.' })}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -491,10 +484,7 @@ const BookRide = () => {
               {/* 3. INTERCITY */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({
-                  title: 'Intercity Travel', 
-                  description: 'Comfortable outstation cabs for long-distance travel. All intercity vehicles undergo a 24-point maintenance check before dispatch and feature physical SOS panic buttons installed in the rear passenger seats.'
-                })}
+                onClick={() => setSelectedCard({ title: 'Intercity Travel', description: 'Comfortable outstation cabs for long-distance travel. All intercity vehicles undergo a 24-point maintenance check before dispatch and feature physical SOS panic buttons installed in the rear passenger seats.' })}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -509,10 +499,7 @@ const BookRide = () => {
               {/* 4. PARCEL */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({
-                  title: 'SmartCab Parcel', 
-                  description: 'Send packages across the city securely. Our delivery partners use OTP verification at both pickup and dropoff points ensuring your valuable items never end up in the wrong hands.'
-                })}
+                onClick={() => setSelectedCard({ title: 'SmartCab Parcel', description: 'Send packages across the city securely. Our delivery partners use OTP verification at both pickup and dropoff points ensuring your valuable items never end up in the wrong hands.' })}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -527,10 +514,7 @@ const BookRide = () => {
               {/* 5. RENTALS */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({
-                  title: 'Hourly Rentals', 
-                  description: 'Keep your car and driver with you for multiple stops. Book packages starting from 1 hour / 10 km up to 12 hours / 120 km. Perfect for shopping trips or consecutive business meetings.'
-                })}
+                onClick={() => setSelectedCard({ title: 'Hourly Rentals', description: 'Keep your car and driver with you for multiple stops. Book packages starting from 1 hour / 10 km up to 12 hours / 120 km. Perfect for shopping trips or consecutive business meetings.' })}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -545,10 +529,7 @@ const BookRide = () => {
               {/* 6. BIKE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({
-                  title: 'SmartBike', 
-                  description: 'Beat the traffic with our fast and affordable motorcycle rides. We enforce a strict helmet-verification protocol—the ride cannot start until the driver uploads a selfie wearing their helmet.'
-                })}
+                onClick={() => setSelectedCard({ title: 'SmartBike', description: 'Beat the traffic with our fast and affordable motorcycle rides. We enforce a strict helmet-verification protocol—the ride cannot start until the driver uploads a selfie wearing their helmet.' })}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -559,7 +540,174 @@ const BookRide = () => {
                 </div>
                 <Bike className="h-20 w-20 text-red-500 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
+            </div>
+          </section>
 
+          {/* --- NEW: PLAN FOR LATER SECTION --- */}
+          <section className="max-w-7xl mx-auto px-4 md:px-12 py-12">
+            <h2 className="text-3xl font-bold mb-8">Plan for later</h2>
+            
+            <div className="flex flex-col lg:flex-row bg-[#e2f1f8] rounded-2xl overflow-hidden relative">
+              
+              {/* Left Side: Form */}
+              <div className="w-full lg:w-1/2 p-8 md:p-12 z-10 flex flex-col justify-center">
+                <h3 className="text-4xl md:text-5xl font-bold mb-8 leading-tight text-gray-900">Get your ride right<br/>with SmartCab Reserve</h3>
+                
+                <p className="font-bold mb-2">Choose date and time</p>
+                <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                  <div className="flex-1 bg-white rounded-xl flex items-center px-4 py-3 shadow-sm border border-gray-200 focus-within:ring-2 ring-black">
+                    <Calendar className="h-5 w-5 mr-3 text-gray-600" />
+                    <input type="date" className="outline-none w-full bg-transparent text-gray-800" />
+                  </div>
+                  <div className="flex-1 bg-white rounded-xl flex items-center px-4 py-3 shadow-sm border border-gray-200 focus-within:ring-2 ring-black">
+                    <Clock className="h-5 w-5 mr-3 text-gray-600" />
+                    <input type="time" className="outline-none w-full bg-transparent text-gray-800" />
+                  </div>
+                </div>
+                
+                <button 
+                  onClick={() => setSelectedCard({
+                    title: 'Reservation Confirmed', 
+                    description: 'Your ride has been scheduled! We will assign a top-rated driver 24 hours before your pickup time and notify you via SMS.'
+                  })}
+                  className="bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition shadow-lg w-full md:w-max px-12"
+                >
+                  Next
+                </button>
+              </div>
+
+              {/* Right Side: Benefits Card */}
+              <div className="w-full lg:w-1/2 p-8 md:p-12 flex items-center justify-center lg:justify-end relative">
+                {/* Decorative background shape */}
+                <div className="absolute top-10 right-10 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
+                
+                <div className="bg-white rounded-2xl p-8 shadow-xl max-w-md w-full z-10 border border-gray-100">
+                  <h4 className="text-2xl font-bold mb-6">Benefits</h4>
+                  
+                  <div className="space-y-6">
+                    <div className="flex items-start">
+                      <CalendarDays className="h-6 w-6 mr-4 text-black shrink-0 mt-1" />
+                      <p className="text-gray-700">Choose your exact pickup time up to 90 days in advance.</p>
+                    </div>
+                    <div className="flex items-start">
+                      <Clock className="h-6 w-6 mr-4 text-black shrink-0 mt-1" />
+                      <p className="text-gray-700">Extra wait time included to meet your ride.</p>
+                    </div>
+                    <div className="flex items-start">
+                      <CreditCard className="h-6 w-6 mr-4 text-black shrink-0 mt-1" />
+                      <p className="text-gray-700">Cancel at no charge up to 60 minutes in advance.</p>
+                    </div>
+                  </div>
+                  <button className="mt-8 text-gray-500 underline text-sm hover:text-black transition">See terms</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* --- NEW: GROUP RIDES SECTION --- */}
+          <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
+            <div className="flex flex-col md:flex-row items-center gap-12">
+              
+              {/* Fake App Mockup */}
+              <div className="w-full md:w-1/2 flex justify-center">
+                <div className="border-[8px] border-black rounded-[2.5rem] w-full max-w-[320px] bg-white overflow-hidden shadow-2xl relative">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-3xl z-20"></div> {/* Fake Notch */}
+                  
+                  <div className="p-6 pt-12 pb-24">
+                    <h4 className="text-2xl font-bold mb-6">Rahul's group ride</h4>
+                    <div className="bg-white rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.1)] p-4 border border-gray-100">
+                      <p className="font-bold mb-4">Set pickup order</p>
+                      
+                      <div className="relative border-l-2 border-black ml-3 space-y-6 pb-2">
+                        <div className="relative pl-6">
+                          <div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">1</div>
+                          <div className="flex justify-between items-center">
+                            <div><p className="font-bold">Rahul</p><div className="h-2 w-16 bg-gray-200 rounded mt-1"></div></div>
+                            <div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div>
+                          </div>
+                        </div>
+                        <div className="relative pl-6">
+                          <div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">2</div>
+                          <div className="flex justify-between items-center">
+                            <div><p className="font-bold">Priya</p><div className="h-2 w-24 bg-gray-200 rounded mt-1"></div></div>
+                            <div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Text Side */}
+              <div className="w-full md:w-1/2">
+                <h2 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">Ride with friends seamlessly</h2>
+                <p className="text-lg text-gray-600 mb-6">Riding with friends just got easier: set up a group ride in the SmartCab app, invite your friends, and arrive at your destination. Friends who ride together save together.</p>
+                <button 
+                  onClick={() => setSelectedCard({
+                    title: 'Group Rides', 
+                    description: 'Share a link with up to 3 friends. The app will automatically calculate the most efficient route to pick everyone up and split the fare evenly among all passengers!'
+                  })}
+                  className="font-medium border-b border-black pb-1 hover:text-gray-600 transition"
+                >
+                  Learn more
+                </button>
+              </div>
+            </div>
+          </section>
+
+          {/* --- NEW: 3-COLUMN INFO SECTION --- */}
+          <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
+            <h2 className="text-3xl font-bold mb-8 text-center md:text-left">Use the SmartCab app to help you travel your way</h2>
+            
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+              {/* Card 1 */}
+              <div className="flex flex-col h-full">
+                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
+                  <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600" alt="Ride options" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">Ride options</h3>
+                <p className="text-gray-600 mb-6 flex-grow">There’s more than one way to move with SmartCab, no matter where you are or where you’re headed next.</p>
+                <button 
+                  onClick={() => {
+                    setActiveTab('prices');
+                    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll back to the top map
+                  }}
+                  className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max"
+                >
+                  Search ride options
+                </button>
+              </div>
+
+              {/* Card 2 */}
+              <div className="flex flex-col h-full">
+                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
+                  <img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=600" alt="Airports" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">700+ airports</h3>
+                <p className="text-gray-600 mb-6 flex-grow">You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.</p>
+                <button 
+                  onClick={() => setSelectedCard({ title: 'Airport Transfers', description: 'Our drivers monitor your flight status in real-time. If your flight is delayed, we automatically adjust your pickup time at no extra cost.' })}
+                  className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"
+                >
+                  <Plane className="h-4 w-4 mr-2" /> Search airports
+                </button>
+              </div>
+
+              {/* Card 3 */}
+              <div className="flex flex-col h-full">
+                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
+                  <img src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600" alt="Cities" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">15,000+ cities</h3>
+                <p className="text-gray-600 mb-6 flex-grow">The app is available in thousands of cities worldwide, so you can request a ride even when you’re far from home.</p>
+                <button 
+                  onClick={() => setSelectedCard({ title: 'Global Coverage', description: 'We currently operate in tier 1, 2, and 3 cities across India, with global expansion planned for next year.' })}
+                  className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"
+                >
+                  <Globe className="h-4 w-4 mr-2" /> Search cities
+                </button>
+              </div>
             </div>
           </section>
         </div>
