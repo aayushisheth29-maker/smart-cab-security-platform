@@ -83,10 +83,9 @@ const BookRide = () => {
     }
   }, [rideConfirmed, rideProgress]);
 
-  // ⭐ NEW: Geocoding Function (Turns text into Map Coordinates)
+  // Geocoding Function (Turns text into Map Coordinates)
   const geocodeLocation = async (address) => {
     try {
-      // Adding "India" to search helps it be more accurate, remove if you want global
       const searchQuery = encodeURIComponent(address + ", India"); 
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${searchQuery}&limit=1`);
       const data = await response.json();
@@ -101,11 +100,10 @@ const BookRide = () => {
     }
   };
 
-  // ⭐ NEW: Handle Ride Confirmation (Searches coordinates first)
+  // Handle Ride Confirmation (Searches coordinates first)
   const handleConfirmRide = async () => {
     setIsSearching(true);
     
-    // Fetch coordinates for both places
     const pCoords = await geocodeLocation(pickup);
     const dCoords = await geocodeLocation(dropoff);
     
@@ -114,8 +112,8 @@ const BookRide = () => {
     if (pCoords && dCoords) {
       setPickupCoords(pCoords);
       setDropoffCoords(dCoords);
-      setMapCenter(pCoords); // Center map on pickup location
-      setMapZoom(12); // Zoom in
+      setMapCenter(pCoords); 
+      setMapZoom(12); 
       setRideConfirmed(true);
     } else {
       alert("We couldn't find one of those locations on the map. Try adding the city or state name (e.g., 'Andheri, Mumbai').");
@@ -149,7 +147,7 @@ const BookRide = () => {
     setDropoff('');
     setPickupCoords(null);
     setDropoffCoords(null);
-    setMapCenter([20.5937, 78.9629]); // Reset to India center
+    setMapCenter([20.5937, 78.9629]); 
     setMapZoom(5);
   };
 
@@ -220,6 +218,39 @@ const BookRide = () => {
                     </div>
                   </div>
                 )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* --- BUSINESS FORM POP-UP --- */}
+      {showBusinessForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[100] px-4">
+          <div className="bg-white rounded-2xl p-8 max-w-lg w-full relative shadow-2xl">
+            <button onClick={closeAllForms} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full text-gray-500"><X className="h-6 w-6" /></button>
+            {formSubmitted ? (
+              <div className="text-center py-8">
+                <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-6" />
+                <h3 className="text-3xl font-bold mb-4">Welcome Aboard!</h3>
+                <p className="text-gray-600 mb-8 text-lg">Thanks, {businessData.company}! A corporate account manager will reach out to {businessData.email} shortly.</p>
+                <button onClick={closeAllForms} className="w-full bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800">Done</button>
+              </div>
+            ) : (
+              <>
+                <h3 className="text-3xl font-bold mb-2">Set up your company</h3>
+                <p className="text-gray-600 mb-6">Get corporate billing and safety dashboards.</p>
+                <div className="space-y-4">
+                  <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                    <Building className="h-5 w-5 text-gray-500 mr-3" />
+                    <input type="text" placeholder="Company Name" value={businessData.company} onChange={(e) => setBusinessData({...businessData, company: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                  </div>
+                  <div className="flex items-center bg-gray-100 rounded-lg px-4 py-3">
+                    <Mail className="h-5 w-5 text-gray-500 mr-3" />
+                    <input type="email" placeholder="Work Email" value={businessData.email} onChange={(e) => setBusinessData({...businessData, email: e.target.value})} className="bg-transparent outline-none w-full font-medium" />
+                  </div>
+                </div>
+                <button onClick={() => setFormSubmitted(true)} disabled={!businessData.company || !businessData.email} className="w-full bg-black text-white font-bold py-4 rounded-xl mt-8 hover:bg-gray-800 disabled:bg-gray-300">Get Started</button>
               </>
             )}
           </div>
@@ -417,14 +448,172 @@ const BookRide = () => {
           {/* EXPLORE SECTION */}
           <section id="explore-section" className="max-w-7xl mx-auto px-4 md:px-12 py-16">
             <h2 className="text-3xl font-bold mb-8">Explore what you can do with SmartCab</h2>
+            
+            {/* Grid updated to hold 6 cards like Uber */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div className="bg-gray-50 rounded-xl p-6 flex flex-col justify-between hover:bg-gray-100 transition group cursor-pointer" onClick={() => setSelectedCard({title: 'Secure Rides', description: 'Every SmartCab ride is connected to our central AI dispatch.'})}>
-                <div><h3 className="text-xl font-bold mb-2">Ride</h3><p className="text-sm text-gray-600 mb-6">Go anywhere with full GPS tracking. Request a ride, hop in, and go safely.</p></div>
-                <div className="flex justify-between items-end"><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm">Details</button><Car className="h-16 w-16 text-gray-300 group-hover:text-black transition" /></div>
+              
+              {/* 1. RIDE */}
+              <div 
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
+                onClick={() => setSelectedCard({
+                  title: 'Secure Rides', 
+                  description: 'Go anywhere with full GPS tracking. Every SmartCab ride is connected to our central AI dispatch. If your car deviates from the designated GPS route by more than 500 meters, an automated alert is sent to our safety team and your emergency contacts.'
+                })}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Ride</h3>
+                    <p className="text-sm text-gray-600 mb-6">Go anywhere with full GPS tracking. Request a ride, hop in, and go safely.</p>
+                  </div>
+                  <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
+                </div>
+                <Car className="h-20 w-20 text-gray-700 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
-              {/* other cards removed for brevity in display, you can add them back if you want, but I kept the first one */}
+
+              {/* 2. RESERVE */}
+              <div 
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
+                onClick={() => setSelectedCard({
+                  title: 'Advance Reservations', 
+                  description: 'Reserve your secure ride up to 30 days in advance. When you reserve, we ensure only our highest-rated, tier-1 background-verified drivers are assigned to your trip. Perfect for early morning airport runs.'
+                })}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Reserve</h3>
+                    <p className="text-sm text-gray-600 mb-6">Reserve your secure ride in advance. Pre-vetted drivers assigned for safety.</p>
+                  </div>
+                  <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
+                </div>
+                <Calendar className="h-20 w-20 text-blue-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+              </div>
+
+              {/* 3. INTERCITY */}
+              <div 
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
+                onClick={() => setSelectedCard({
+                  title: 'Intercity Travel', 
+                  description: 'Comfortable outstation cabs for long-distance travel. All intercity vehicles undergo a 24-point maintenance check before dispatch and feature physical SOS panic buttons installed in the rear passenger seats.'
+                })}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Intercity</h3>
+                    <p className="text-sm text-gray-600 mb-6">Get convenient, affordable outstation cabs with real-time route alerts.</p>
+                  </div>
+                  <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
+                </div>
+                <Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+              </div>
+
+              {/* 4. PARCEL */}
+              <div 
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
+                onClick={() => setSelectedCard({
+                  title: 'SmartCab Parcel', 
+                  description: 'Send packages across the city securely. Our delivery partners use OTP verification at both pickup and dropoff points ensuring your valuable items never end up in the wrong hands.'
+                })}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Parcel</h3>
+                    <p className="text-sm text-gray-600 mb-6">SmartCab makes same-day item delivery easier and safer than ever.</p>
+                  </div>
+                  <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
+                </div>
+                <Package className="h-20 w-20 text-amber-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+              </div>
+
+              {/* 5. RENTALS */}
+              <div 
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
+                onClick={() => setSelectedCard({
+                  title: 'Hourly Rentals', 
+                  description: 'Keep your car and driver with you for multiple stops. Book packages starting from 1 hour / 10 km up to 12 hours / 120 km. Perfect for shopping trips or consecutive business meetings.'
+                })}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Rentals</h3>
+                    <p className="text-sm text-gray-600 mb-6">Request a trip for a block of time and make multiple stops easily.</p>
+                  </div>
+                  <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
+                </div>
+                <Clock className="h-20 w-20 text-purple-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+              </div>
+
+              {/* 6. BIKE */}
+              <div 
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
+                onClick={() => setSelectedCard({
+                  title: 'SmartBike', 
+                  description: 'Beat the traffic with our fast and affordable motorcycle rides. We enforce a strict helmet-verification protocol—the ride cannot start until the driver uploads a selfie wearing their helmet.'
+                })}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Bike</h3>
+                    <p className="text-sm text-gray-600 mb-6">Get affordable, quick motorbike rides in minutes at your doorstep.</p>
+                  </div>
+                  <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
+                </div>
+                <Bike className="h-20 w-20 text-red-500 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+              </div>
+
             </div>
           </section>
+        </div>
+      )}
+
+      {/* 🟡 DRIVE PAGE  */}
+      {mainView === 'drive' && (
+        <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
+          <div className="w-full md:w-1/2 flex flex-col">
+            <h1 className="text-5xl md:text-7xl font-bold mb-6">Drive when you want, make what you need</h1>
+            <p className="text-xl text-gray-600 mb-8">Make money on your schedule. SmartCab's AI-driven security protects our drivers just as much as our riders.</p>
+            <button onClick={() => { closeAllForms(); setShowDriverForm(true); }} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Apply to drive →</button>
+          </div>
+          <div className="w-full md:w-1/2">
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
+              <img src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&q=80&w=1200" alt="Driver" className="w-full h-full object-cover" />
+              <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold shadow"><ShieldCheck className="h-4 w-4 text-green-600" /><span>Driver Protection Active</span></div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* 🔵 BUSINESS PAGE  */}
+      {mainView === 'business' && (
+        <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
+          <div className="w-full md:w-1/2 flex flex-col">
+            <h1 className="text-5xl md:text-7xl font-bold mb-6">SmartCab for Business</h1>
+            <p className="text-xl text-gray-600 mb-8">A premium, secure travel solution for your employees. Corporate billing and a real-time safety dashboard.</p>
+            <button onClick={() => { closeAllForms(); setShowBusinessForm(true); }} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Set up your company →</button>
+          </div>
+          <div className="w-full md:w-1/2">
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
+              <img src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&q=80&w=1200" alt="Business" className="w-full h-full object-cover" />
+              <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold shadow"><ShieldCheck className="h-4 w-4 text-blue-600" /><span>Enterprise Security</span></div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* 🟣 ABOUT PAGE */}
+      {mainView === 'about' && (
+        <main className="max-w-4xl mx-auto px-4 md:px-12 py-24 text-center animate-in fade-in duration-500">
+          <ShieldCheck className="h-24 w-24 text-green-500 mx-auto mb-8" />
+          <h1 className="text-5xl font-bold mb-6">Built for Safety. Built for You.</h1>
+          <p className="text-2xl text-gray-600 mb-8 leading-relaxed">SmartCab was founded on a simple principle: everyone deserves to feel perfectly safe when they travel. We are changing the way India moves.</p>
+          <button onClick={() => setMainView('ride')} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Take a Ride →</button>
+        </main>
+      )}
+
+      {/* --- BOTTOM BANNER --- */}
+      {showBanner && (
+        <div className="fixed bottom-0 left-0 right-0 bg-blue-50 border-t border-blue-100 px-4 py-3 flex justify-between items-center z-50">
+          <div className="flex items-center space-x-4 max-w-7xl mx-auto w-full justify-center text-sm md:text-base font-medium text-blue-900"><ShieldCheck className="h-5 w-5 text-blue-600 hidden md:block" /><p><strong>Welcome to SmartCab:</strong> All rides are monitored via GPS with real-time route deviation detection and SOS features.</p></div>
+          <button onClick={() => setShowBanner(false)} className="p-2 hover:bg-blue-100 rounded-full transition text-blue-900"><X className="h-5 w-5" /></button>
         </div>
       )}
     </div>
