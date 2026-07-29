@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
@@ -28,6 +28,22 @@ const BookRide = () => {
   const [showPrices, setShowPrices] = useState(false);
   const [rideConfirmed, setRideConfirmed] = useState(false);
   const [selectedCar, setSelectedCar] = useState('SmartMini');
+  
+  // ⭐ NEW: Tracking State
+  const [rideProgress, setRideProgress] = useState(0);
+
+  // ⭐ NEW: Auto-driving timer effect
+  useEffect(() => {
+    if (rideConfirmed && rideProgress < 100) {
+      const timer = setInterval(() => {
+        setRideProgress((prev) => {
+          const next = prev + 2;
+          return next > 100 ? 100 : next;
+        });
+      }, 800);
+      return () => clearInterval(timer);
+    }
+  }, [rideConfirmed, rideProgress]);
 
   const handleExploreClick = () => {
     setActiveTab('explore');
@@ -46,6 +62,7 @@ const BookRide = () => {
   const resetRide = () => {
     setShowPrices(false);
     setRideConfirmed(false);
+    setRideProgress(0);
     setPickup('');
     setDropoff('');
   };
@@ -82,7 +99,7 @@ const BookRide = () => {
                 <CheckCircle className="h-20 w-20 text-green-500 mx-auto mb-6" />
                 <h3 className="text-3xl font-bold mb-4">Application Received!</h3>
                 <p className="text-gray-600 mb-8 text-lg">
-                  Thanks, {driverData.name}! Our team will contact you at {driverData.phone} within 24 hours to begin your background check.
+                  Thanks, {driverData.name}! Our team will contact you at {driverData.phone} within 24 hours.
                 </p>
                 <button onClick={closeAllForms} className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition">Done</button>
               </div>
@@ -214,40 +231,82 @@ const BookRide = () => {
 
           <main className="max-w-7xl mx-auto px-4 md:px-12 py-12 flex flex-col md:flex-row gap-12 items-start">
             
-            {/* LEFT COLUMN: Input Form OR Prices OR Success */}
+            {/* LEFT COLUMN */}
             <div className="w-full md:w-1/2 flex flex-col relative h-[500px]">
               
               {rideConfirmed ? (
-                // SUCCESS SCREEN
-                <div className="animate-in slide-in-from-bottom-4 duration-500 bg-green-50 p-8 rounded-2xl border border-green-200 text-center mt-4">
-                  <CheckCircle className="h-20 w-20 text-green-600 mx-auto mb-4" />
-                  <h2 className="text-3xl font-bold text-gray-900 mb-2">Driver Assigned!</h2>
-                  <p className="text-gray-600 mb-6">Your <strong>{selectedCar}</strong> is on the way. The driver's background is verified.</p>
+                // ⭐ NEW: LIVE MAP TRACKING SCREEN
+                <div className="w-full h-[500px] bg-gradient-to-b from-blue-50 to-blue-100 rounded-3xl overflow-hidden shadow-2xl relative border border-blue-200">
                   
-                  <div className="bg-white p-4 rounded-xl flex items-center justify-between mb-6 shadow-sm">
-                    <div className="flex items-center space-x-4">
-                      <div className="bg-gray-200 h-12 w-12 rounded-full flex items-center justify-center">
-                        <User className="h-6 w-6 text-gray-500" />
-                      </div>
-                      <div className="text-left">
-                        <p className="font-bold">Rahul S. <span className="text-sm font-normal text-yellow-500">★ 4.9</span></p>
-                        <p className="text-sm text-gray-500">MH 01 AB 1234</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-bold text-xl">3 min</p>
-                      <p className="text-xs text-gray-500">Away</p>
+                  {/* Fake Map Roads */}
+                  <div className="absolute inset-0 opacity-30">
+                    <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80&w=1000" alt="map texture" className="w-full h-full object-cover mix-blend-multiply" />
+                  </div>
+                  <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
+                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e40af" strokeWidth="1"/>
+                    </pattern>
+                    <rect width="100%" height="100%" fill="url(#grid)" />
+                  </svg>
+
+                  {/* Pickup Marker */}
+                  <div className="absolute top-12 left-8 z-10">
+                    <div className="bg-black text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">Pickup</div>
+                    <div className="w-4 h-4 bg-black rounded-full mx-auto mt-1 shadow-lg border-2 border-white"></div>
+                  </div>
+
+                  {/* Dropoff Marker */}
+                  <div className="absolute bottom-24 right-8 z-10">
+                    <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">Dropoff</div>
+                    <div className="w-4 h-4 bg-green-600 rounded-full mx-auto mt-1 shadow-lg border-2 border-white"></div>
+                  </div>
+
+                  {/* MOVING CAR */}
+                  <div 
+                    className="absolute bottom-1/2 left-0 w-full h-20 transition-all duration-700 ease-linear z-20 pointer-events-none"
+                    style={{ left: `calc(${Math.min(rideProgress, 85)}% - 20px)` }}
+                  >
+                    <div className="relative">
+                      <Car className="h-12 w-12 text-blue-600 drop-shadow-2xl animate-bounce" style={{ animationDuration: '2s' }} />
+                      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-8 h-2 bg-black/20 rounded-full blur-md"></div>
                     </div>
                   </div>
 
-                  <button onClick={resetRide} className="text-green-700 font-bold hover:underline">Book another ride</button>
+                  {/* Bottom Tracking Card */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-blue-100">
+                    <div className="flex justify-between items-center mb-2">
+                      <h2 className="text-xl font-bold text-gray-900">Ride in Progress</h2>
+                      <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
+                        {rideProgress < 50 ? 'Approaching' : rideProgress < 90 ? 'Nearby' : 'Arrived'}
+                      </span>
+                    </div>
+                    <p className="text-gray-600 mb-3">Driver Rahul S. ({selectedCar}) • License MH 01 AB 1234</p>
+                    
+                    {/* Progress Bar */}
+                    <div className="w-full bg-blue-100 rounded-full h-3 mb-2 overflow-hidden">
+                      <div 
+                        className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm"
+                        style={{ width: `${rideProgress}%` }}
+                      ></div>
+                    </div>
+                    
+                    <div className="flex justify-between text-xs text-gray-500 font-medium">
+                      <span>Pickup</span>
+                      <span className="font-bold text-green-600">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}% Complete`}</span>
+                      <span>Dropoff</span>
+                    </div>
+                    
+                    {rideProgress === 100 && (
+                      <button onClick={resetRide} className="w-full mt-4 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition shadow-lg">
+                        Ride Completed • Book Again
+                      </button>
+                    )}
+                  </div>
                 </div>
 
               ) : showPrices ? (
-                // ⭐ FIXED: SCROLLABLE CAR PRICES LIST
+                // SCROLLABLE CAR PRICES LIST
                 <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md h-full flex flex-col">
-                  
-                  {/* Pinned Top Area */}
                   <div className="shrink-0">
                     <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-4">
                       <ArrowLeft className="h-4 w-4 mr-1" /> Back to locations
@@ -255,7 +314,6 @@ const BookRide = () => {
                     <h2 className="text-3xl font-bold mb-4">Choose your ride</h2>
                   </div>
 
-                  {/* Scrollable Car Area */}
                   <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
                     {/* SmartMini */}
                     <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md scale-[1.02]' : 'border-gray-200 hover:border-black'}`}>
@@ -306,7 +364,6 @@ const BookRide = () => {
                     </div>
                   </div>
 
-                  {/* ⭐ Pinned Confirm Button */}
                   <div className="shrink-0 pt-2 border-t border-gray-100">
                     <button onClick={() => setRideConfirmed(true)} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg">
                       Confirm {selectedCar}
@@ -357,7 +414,6 @@ const BookRide = () => {
                     )}
                   </div>
 
-                  {/* Pinned Prices Button */}
                   <div className="mt-auto pt-8">
                     <button 
                       onClick={() => setShowPrices(true)}
