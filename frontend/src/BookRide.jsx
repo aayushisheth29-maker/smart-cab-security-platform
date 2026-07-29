@@ -22,7 +22,7 @@ const BookRide = () => {
   const [driverData, setDriverData] = useState({ name: '', phone: '', city: '', carModel: '' });
   const [businessData, setBusinessData] = useState({ company: '', email: '', employees: '' });
 
-  // ⭐ NEW: Ride Booking State
+  // Ride Booking State
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
   const [showPrices, setShowPrices] = useState(false);
@@ -215,7 +215,7 @@ const BookRide = () => {
           <main className="max-w-7xl mx-auto px-4 md:px-12 py-12 flex flex-col md:flex-row gap-12 items-start">
             
             {/* LEFT COLUMN: Input Form OR Prices OR Success */}
-            <div className="w-full md:w-1/2 flex flex-col relative min-h-[400px]">
+            <div className="w-full md:w-1/2 flex flex-col relative h-[500px]">
               
               {rideConfirmed ? (
                 // SUCCESS SCREEN
@@ -244,69 +244,79 @@ const BookRide = () => {
                 </div>
 
               ) : showPrices ? (
-                // CAR PRICES LIST
-                <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md">
-                  <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-6">
-                    <ArrowLeft className="h-4 w-4 mr-1" /> Back to locations
-                  </button>
-                  <h2 className="text-3xl font-bold mb-6">Choose your ride</h2>
-
-                  {/* SmartMini */}
-                  <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl mb-3 cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-black'}`}>
-                    <div className="flex items-center space-x-4">
-                      <Car className="h-8 w-8 text-gray-700" />
-                      <div>
-                        <h3 className="font-bold text-lg">SmartMini <span className="text-sm font-normal text-gray-500 ml-1">4 min</span></h3>
-                        <p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p>
-                      </div>
-                    </div>
-                    <div className="text-xl font-bold">₹240</div>
+                // ⭐ FIXED: SCROLLABLE CAR PRICES LIST
+                <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md h-full flex flex-col">
+                  
+                  {/* Pinned Top Area */}
+                  <div className="shrink-0">
+                    <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-4">
+                      <ArrowLeft className="h-4 w-4 mr-1" /> Back to locations
+                    </button>
+                    <h2 className="text-3xl font-bold mb-4">Choose your ride</h2>
                   </div>
 
-                  {/* SmartSedan */}
-                  <div onClick={() => setSelectedCar('SmartSedan')} className={`flex items-center justify-between p-4 border-2 rounded-xl mb-3 cursor-pointer transition ${selectedCar === 'SmartSedan' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-black'}`}>
-                    <div className="flex items-center space-x-4">
-                      <Car className="h-10 w-10 text-gray-900" />
-                      <div>
-                        <h3 className="font-bold text-lg">SmartSedan <span className="text-sm font-normal text-gray-500 ml-1">7 min</span></h3>
-                        <p className="text-xs text-blue-600 font-medium flex items-center mt-1"><Shield className="h-3 w-3 mr-1"/> Top Rated Driver</p>
+                  {/* Scrollable Car Area */}
+                  <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
+                    {/* SmartMini */}
+                    <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md scale-[1.02]' : 'border-gray-200 hover:border-black'}`}>
+                      <div className="flex items-center space-x-4">
+                        <Car className="h-8 w-8 text-gray-700" />
+                        <div>
+                          <h3 className="font-bold text-lg">SmartMini <span className="text-sm font-normal text-gray-500 ml-1">4 min</span></h3>
+                          <p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p>
+                        </div>
                       </div>
+                      <div className="text-xl font-bold">₹240</div>
                     </div>
-                    <div className="text-xl font-bold">₹320</div>
+
+                    {/* SmartSedan */}
+                    <div onClick={() => setSelectedCar('SmartSedan')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSedan' ? 'border-black bg-gray-50 shadow-md scale-[1.02]' : 'border-gray-200 hover:border-black'}`}>
+                      <div className="flex items-center space-x-4">
+                        <Car className="h-10 w-10 text-gray-900" />
+                        <div>
+                          <h3 className="font-bold text-lg">SmartSedan <span className="text-sm font-normal text-gray-500 ml-1">7 min</span></h3>
+                          <p className="text-xs text-blue-600 font-medium flex items-center mt-1"><Shield className="h-3 w-3 mr-1"/> Top Rated Driver</p>
+                        </div>
+                      </div>
+                      <div className="text-xl font-bold">₹320</div>
+                    </div>
+
+                    {/* SmartSUV */}
+                    <div onClick={() => setSelectedCar('SmartSUV')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSUV' ? 'border-black bg-gray-50 shadow-md scale-[1.02]' : 'border-gray-200 hover:border-black'}`}>
+                      <div className="flex items-center space-x-4">
+                        <Car className="h-12 w-12 text-black" />
+                        <div>
+                          <h3 className="font-bold text-lg">SmartSUV <span className="text-sm font-normal text-gray-500 ml-1">10 min</span></h3>
+                          <p className="text-xs text-purple-600 font-medium flex items-center mt-1"><User className="h-3 w-3 mr-1"/> 6 Seats</p>
+                        </div>
+                      </div>
+                      <div className="text-xl font-bold">₹450</div>
+                    </div>
+
+                    {/* SmartBike */}
+                    <div onClick={() => setSelectedCar('SmartBike')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartBike' ? 'border-black bg-gray-50 shadow-md scale-[1.02]' : 'border-gray-200 hover:border-black'}`}>
+                      <div className="flex items-center space-x-4">
+                        <Bike className="h-8 w-8 text-gray-700" />
+                        <div>
+                          <h3 className="font-bold text-lg">SmartBike <span className="text-sm font-normal text-gray-500 ml-1">2 min</span></h3>
+                          <p className="text-xs text-orange-600 font-medium flex items-center mt-1">Helmet Verified</p>
+                        </div>
+                      </div>
+                      <div className="text-xl font-bold">₹80</div>
+                    </div>
                   </div>
 
-                  {/* SmartSUV */}
-                  <div onClick={() => setSelectedCar('SmartSUV')} className={`flex items-center justify-between p-4 border-2 rounded-xl mb-3 cursor-pointer transition ${selectedCar === 'SmartSUV' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-black'}`}>
-                    <div className="flex items-center space-x-4">
-                      <Car className="h-12 w-12 text-black" />
-                      <div>
-                        <h3 className="font-bold text-lg">SmartSUV <span className="text-sm font-normal text-gray-500 ml-1">10 min</span></h3>
-                        <p className="text-xs text-purple-600 font-medium flex items-center mt-1"><User className="h-3 w-3 mr-1"/> 6 Seats</p>
-                      </div>
-                    </div>
-                    <div className="text-xl font-bold">₹450</div>
+                  {/* ⭐ Pinned Confirm Button */}
+                  <div className="shrink-0 pt-2 border-t border-gray-100">
+                    <button onClick={() => setRideConfirmed(true)} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg">
+                      Confirm {selectedCar}
+                    </button>
                   </div>
-
-                  {/* SmartBike */}
-                  <div onClick={() => setSelectedCar('SmartBike')} className={`flex items-center justify-between p-4 border-2 rounded-xl mb-6 cursor-pointer transition ${selectedCar === 'SmartBike' ? 'border-black bg-gray-50' : 'border-gray-200 hover:border-black'}`}>
-                    <div className="flex items-center space-x-4">
-                      <Bike className="h-8 w-8 text-gray-700" />
-                      <div>
-                        <h3 className="font-bold text-lg">SmartBike <span className="text-sm font-normal text-gray-500 ml-1">2 min</span></h3>
-                        <p className="text-xs text-orange-600 font-medium flex items-center mt-1">Helmet Verified</p>
-                      </div>
-                    </div>
-                    <div className="text-xl font-bold">₹80</div>
-                  </div>
-
-                  <button onClick={() => setRideConfirmed(true)} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg">
-                    Confirm {selectedCar}
-                  </button>
                 </div>
 
               ) : (
                 // LOCATION INPUT FORM
-                <div className="animate-in fade-in duration-300 w-full max-w-md">
+                <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   <div className="flex items-center space-x-2 text-gray-700 mb-8 font-medium">
                     <MapPin className="h-5 w-5 text-black" />
                     <span>Current Location (GPS Active)</span>
@@ -347,22 +357,24 @@ const BookRide = () => {
                     )}
                   </div>
 
-                  {/* ⭐ CLICKABLE PRICES BUTTON */}
-                  <button 
-                    onClick={() => setShowPrices(true)}
-                    disabled={!pickup || !dropoff}
-                    className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg mt-8 w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform"
-                  >
-                    See prices & security features
-                  </button>
-                  {(!pickup || !dropoff) && <p className="text-xs text-gray-400 mt-2 text-center">Please enter pickup and dropoff to see prices</p>}
+                  {/* Pinned Prices Button */}
+                  <div className="mt-auto pt-8">
+                    <button 
+                      onClick={() => setShowPrices(true)}
+                      disabled={!pickup || !dropoff}
+                      className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform"
+                    >
+                      See prices & security features
+                    </button>
+                    {(!pickup || !dropoff) && <p className="text-xs text-gray-400 mt-2 text-center">Please enter pickup and dropoff to see prices</p>}
+                  </div>
                 </div>
               )}
             </div>
 
             {/* RIGHT COLUMN: The Image */}
-            <div className="w-full md:w-1/2 mt-8 md:mt-0">
-              <div className="relative w-full aspect-video md:aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
+            <div className="w-full md:w-1/2 mt-8 md:mt-0 h-[500px]">
+              <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl">
                 <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=1200" alt="Secure Cab" className="w-full h-full object-cover" />
                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold text-green-700 shadow">
                   <ShieldCheck className="h-4 w-4" />
