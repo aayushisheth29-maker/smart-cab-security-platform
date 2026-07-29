@@ -6,6 +6,31 @@ import {
   User, Phone, Mail, Building, CheckCircle, ArrowLeft
 } from 'lucide-react';
 
+// ⭐ NEW IMPORTS FOR REAL MAP
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import L from 'leaflet';
+
+// ⭐ CREATE CUSTOM MAP ICONS
+// We use custom HTML icons so we don't have to worry about missing image files in Vite
+const pickupIcon = new L.DivIcon({
+  className: 'custom-map-icon',
+  html: `<div style="background-color: black; color: white; padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-align: center; width: max-content;">Pickup</div>`,
+  iconAnchor: [30, 15] // Centers the icon
+});
+
+const dropoffIcon = new L.DivIcon({
+  className: 'custom-map-icon',
+  html: `<div style="background-color: #16a34a; color: white; padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-align: center; width: max-content;">Dropoff</div>`,
+  iconAnchor: [30, 15]
+});
+
+const carIcon = new L.DivIcon({
+  className: 'custom-map-icon',
+  html: `<div style="background-color: #2563eb; color: white; border-radius: 50%; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border: 3px solid white; box-shadow: 0 4px 10px rgba(0,0,0,0.4);"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></svg></div>`,
+  iconAnchor: [18, 18]
+});
+
+
 const BookRide = () => {
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
@@ -29,10 +54,10 @@ const BookRide = () => {
   const [rideConfirmed, setRideConfirmed] = useState(false);
   const [selectedCar, setSelectedCar] = useState('SmartMini');
   
-  // ⭐ NEW: Tracking State
+  // Tracking State
   const [rideProgress, setRideProgress] = useState(0);
 
-  // ⭐ NEW: Auto-driving timer effect
+  // Auto-driving timer effect
   useEffect(() => {
     if (rideConfirmed && rideProgress < 100) {
       const timer = setInterval(() => {
@@ -44,6 +69,14 @@ const BookRide = () => {
       return () => clearInterval(timer);
     }
   }, [rideConfirmed, rideProgress]);
+
+  // ⭐ NEW: GPS Coordinates for Map Tracking (Example: Mumbai)
+  const pickupCoords = [19.0760, 72.8777];
+  const dropoffCoords = [19.0460, 72.8377]; // A few km away
+  
+  // Calculate dynamic car position based on rideProgress (0 to 100)
+  const currentCarLat = pickupCoords[0] + (dropoffCoords[0] - pickupCoords[0]) * (rideProgress / 100);
+  const currentCarLng = pickupCoords[1] + (dropoffCoords[1] - pickupCoords[1]) * (rideProgress / 100);
 
   const handleExploreClick = () => {
     setActiveTab('explore');
@@ -235,45 +268,34 @@ const BookRide = () => {
             <div className="w-full md:w-1/2 flex flex-col relative h-[500px]">
               
               {rideConfirmed ? (
-                // ⭐ NEW: LIVE MAP TRACKING SCREEN
-                <div className="w-full h-[500px] bg-gradient-to-b from-blue-50 to-blue-100 rounded-3xl overflow-hidden shadow-2xl relative border border-blue-200">
+                // ⭐ UPDATED: REAL LEAFLET MAP TRACKING SCREEN
+                <div className="w-full h-[500px] bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200">
                   
-                  {/* Fake Map Roads */}
-                  <div className="absolute inset-0 opacity-30">
-                    <img src="https://images.unsplash.com/photo-1524661135-423995f22d0b?auto=format&fit=crop&q=80&w=1000" alt="map texture" className="w-full h-full object-cover mix-blend-multiply" />
-                  </div>
-                  <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-                    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-                      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#1e40af" strokeWidth="1"/>
-                    </pattern>
-                    <rect width="100%" height="100%" fill="url(#grid)" />
-                  </svg>
-
-                  {/* Pickup Marker */}
-                  <div className="absolute top-12 left-8 z-10">
-                    <div className="bg-black text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">Pickup</div>
-                    <div className="w-4 h-4 bg-black rounded-full mx-auto mt-1 shadow-lg border-2 border-white"></div>
-                  </div>
-
-                  {/* Dropoff Marker */}
-                  <div className="absolute bottom-24 right-8 z-10">
-                    <div className="bg-green-600 text-white px-3 py-1 rounded-full text-xs font-bold shadow-lg">Dropoff</div>
-                    <div className="w-4 h-4 bg-green-600 rounded-full mx-auto mt-1 shadow-lg border-2 border-white"></div>
-                  </div>
-
-                  {/* MOVING CAR */}
-                  <div 
-                    className="absolute bottom-1/2 left-0 w-full h-20 transition-all duration-700 ease-linear z-20 pointer-events-none"
-                    style={{ left: `calc(${Math.min(rideProgress, 85)}% - 20px)` }}
-                  >
-                    <div className="relative">
-                      <Car className="h-12 w-12 text-blue-600 drop-shadow-2xl animate-bounce" style={{ animationDuration: '2s' }} />
-                      <div className="absolute -bottom-3 left-1/2 -translate-x-1/2 w-8 h-2 bg-black/20 rounded-full blur-md"></div>
-                    </div>
+                  {/* REAL MAP COMPONENT */}
+                  <div className="absolute inset-0 z-0">
+                    <MapContainer 
+                      center={[19.0610, 72.8577]} // Centers the view between pickup/dropoff
+                      zoom={12} 
+                      scrollWheelZoom={false} 
+                      style={{ height: '100%', width: '100%', zIndex: 0 }}
+                      zoomControl={false}
+                    >
+                      <TileLayer
+                        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        attribution='&copy; OpenStreetMap'
+                      />
+                      
+                      {/* Place the 3 markers on the real map */}
+                      <Marker position={pickupCoords} icon={pickupIcon} />
+                      <Marker position={dropoffCoords} icon={dropoffIcon} />
+                      
+                      {/* The dynamically moving car */}
+                      <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />
+                    </MapContainer>
                   </div>
 
-                  {/* Bottom Tracking Card */}
-                  <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-blue-100">
+                  {/* Overlay: Bottom Tracking Card (Stays on top of map!) */}
+                  <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
                     <div className="flex justify-between items-center mb-2">
                       <h2 className="text-xl font-bold text-gray-900">Ride in Progress</h2>
                       <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">
