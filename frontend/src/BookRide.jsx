@@ -1,3 +1,4 @@
+import StartModal from './components/StartModal';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
@@ -39,6 +40,9 @@ const MapUpdater = ({ center, zoom }) => {
 };
 
 const BookRide = () => {
+  // --- ADDED NEW STATE FOR START MODAL ---
+  const [isStartModalOpen, setIsStartModalOpen] = useState(false);
+
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
   const [activeTab, setActiveTab] = useState('request');
@@ -669,10 +673,7 @@ const BookRide = () => {
                 <h3 className="text-xl font-bold mb-3">Ride options</h3>
                 <p className="text-gray-600 mb-6 flex-grow">There’s more than one way to move with SmartCab, no matter where you are or where you’re headed next.</p>
                 <button 
-                  onClick={() => {
-                    setActiveTab('prices');
-                    window.scrollTo({ top: 0, behavior: 'smooth' }); // Scroll back to the top map
-                  }}
+                  onClick={() => setIsStartModalOpen(true)}
                   className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max"
                 >
                   Search ride options
@@ -687,7 +688,7 @@ const BookRide = () => {
                 <h3 className="text-xl font-bold mb-3">700+ airports</h3>
                 <p className="text-gray-600 mb-6 flex-grow">You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.</p>
                 <button 
-                  onClick={() => setSelectedCard({ title: 'Airport Transfers', description: 'Our drivers monitor your flight status in real-time. If your flight is delayed, we automatically adjust your pickup time at no extra cost.' })}
+                  onClick={() => setIsStartModalOpen(true)}
                   className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"
                 >
                   <Plane className="h-4 w-4 mr-2" /> Search airports
@@ -702,7 +703,7 @@ const BookRide = () => {
                 <h3 className="text-xl font-bold mb-3">15,000+ cities</h3>
                 <p className="text-gray-600 mb-6 flex-grow">The app is available in thousands of cities worldwide, so you can request a ride even when you’re far from home.</p>
                 <button 
-                  onClick={() => setSelectedCard({ title: 'Global Coverage', description: 'We currently operate in tier 1, 2, and 3 cities across India, with global expansion planned for next year.' })}
+                  onClick={() => setIsStartModalOpen(true)}
                   className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"
                 >
                   <Globe className="h-4 w-4 mr-2" /> Search cities
@@ -764,6 +765,13 @@ const BookRide = () => {
           <button onClick={() => setShowBanner(false)} className="p-2 hover:bg-blue-100 rounded-full transition text-blue-900"><X className="h-5 w-5" /></button>
         </div>
       )}
+
+      {/* --- OUR NEW MODAL --- */}
+      <StartModal 
+        isOpen={isStartModalOpen} 
+        onClose={() => setIsStartModalOpen(false)} 
+      />
+
     </div>
   );
 };
