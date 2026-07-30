@@ -5,7 +5,7 @@ import {
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
-  CreditCard, Users, Plane
+  CreditCard, Users, Plane, Box
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
@@ -44,9 +44,14 @@ const BookRide = () => {
 
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
+  
+  // activeTab now supports 'request', 'reserve', 'prices', 'explore', 'parcel', 'rentals'
   const [activeTab, setActiveTab] = useState('request');
   const [mainView, setMainView] = useState('ride');
   
+  // NEW STATE: For the parcel Send/Receive toggle
+  const [parcelMode, setParcelMode] = useState('send');
+
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [showBusinessForm, setShowBusinessForm] = useState(false);
   const [formStep, setFormStep] = useState(1);
@@ -84,7 +89,6 @@ const BookRide = () => {
   }, []);
 
   const handleLanguageChange = (langCode) => {
-    // This connects to Google's hidden cookie to translate the whole site
     if (langCode === 'en') {
       document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
       document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
@@ -93,7 +97,7 @@ const BookRide = () => {
       document.cookie = `googtrans=/en/${langCode}; path=/; domain=${window.location.hostname};`;
     }
     setIsLangModalOpen(false);
-    window.location.reload(); // Reload to apply the translation!
+    window.location.reload(); 
   };
   // ------------------------------------
 
@@ -153,6 +157,12 @@ const BookRide = () => {
     document.getElementById('explore-section')?.scrollIntoView({ behavior: 'smooth' });
   };
 
+  // --- NEW: Scroll to top and switch tab handler ---
+  const handleFeatureCardClick = (feature) => {
+    setActiveTab(feature);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const closeAllForms = () => {
     setShowDriverForm(false);
     setShowBusinessForm(false);
@@ -175,7 +185,7 @@ const BookRide = () => {
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative">
       
-      {/* THIS CSS HIDES THE UGLY GOOGLE TRANSLATE BAR AT THE TOP */}
+      {/* CSS HIDES THE UGLY GOOGLE TRANSLATE BAR */}
       <style>{`
         body { top: 0 !important; position: static !important; }
         .skiptranslate { display: none !important; }
@@ -185,7 +195,7 @@ const BookRide = () => {
       {/* Hidden Div required for Google Translate */}
       <div id="google_translate_element" style={{ display: 'none' }}></div>
 
-      {/* --- NEW LANGUAGE SELECTION MODAL --- */}
+      {/* LANGUAGE SELECTION MODAL */}
       {isLangModalOpen && (
         <div className="fixed inset-0 bg-white z-[200] overflow-y-auto animate-in fade-in duration-200">
           <div className="p-6 md:p-12 max-w-6xl mx-auto relative min-h-screen">
@@ -200,7 +210,6 @@ const BookRide = () => {
               <h2 className="text-4xl md:text-5xl font-bold mb-16 notranslate">Select your preferred language</h2>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-8">
-                {/* NOW THESE BUTTONS HAVE CODES THAT TELL GOOGLE WHAT TO DO */}
                 {[
                   { eng: 'Bangla', native: 'বাংলা', code: 'bn' },
                   { eng: 'English', native: 'English', code: 'en' },
@@ -350,153 +359,251 @@ const BookRide = () => {
         </div>
       </nav>
 
-      {/* 🟢 RIDE PAGE */}
+      {/* 🟢 RIDE PAGE (Contains all features including Parcel and Rentals) */}
       {mainView === 'ride' && (
         <div className="animate-in fade-in duration-500">
-          <div className="border-b flex flex-col md:flex-row items-center px-4 md:px-12 pt-3 justify-between gap-2">
-            <h2 className="text-2xl font-bold pb-1 md:pb-3">Ride</h2>
-            <div className="flex overflow-x-auto w-full md:w-auto space-x-6 text-sm font-medium text-gray-500 pb-2">
+          
+          {/* UPDATED SUB-NAVBAR TO INCLUDE PARCEL AND RENTALS */}
+          <div className="border-b flex flex-col md:flex-row items-center px-4 md:px-12 pt-3 justify-between gap-2 overflow-hidden">
+            <h2 className="text-2xl font-bold pb-1 md:pb-3 shrink-0">Ride</h2>
+            <div className="flex overflow-x-auto w-full space-x-6 text-sm font-medium text-gray-500 pb-2 hide-scrollbar">
               <button onClick={() => {setActiveTab('request'); setShowPrices(false);}} className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'request' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}>Request a ride</button>
               <button onClick={() => {setActiveTab('reserve'); setShowPrices(false);}} className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'reserve' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}>Reserve a ride</button>
-              <button onClick={() => {setActiveTab('prices'); setShowPrices(false);}} className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'prices' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}>See prices</button>
+              <button onClick={() => {setActiveTab('parcel'); setShowPrices(false);}} className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'parcel' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}>Parcel</button>
+              <button onClick={() => {setActiveTab('rentals'); setShowPrices(false);}} className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'rentals' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}>Rentals</button>
               <button onClick={handleExploreClick} className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'explore' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}>Explore options</button>
             </div>
           </div>
 
           <main className="max-w-7xl mx-auto px-4 md:px-12 py-12 flex flex-col md:flex-row gap-12 items-start">
             
-            {/* LEFT COLUMN */}
-            <div className="w-full md:w-1/2 flex flex-col relative h-[500px]">
+            {/* LEFT COLUMN: THE FORMS */}
+            <div className="w-full md:w-1/2 flex flex-col relative min-h-[500px]">
               
-              {rideConfirmed ? (
-                // MAP TRACKING SCREEN
-                <div className="w-full h-[500px] bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200">
-                  <div className="absolute inset-0 z-0">
-                    <MapContainer 
-                      center={mapCenter} 
-                      zoom={mapZoom} 
-                      scrollWheelZoom={false} 
-                      style={{ height: '100%', width: '100%', zIndex: 0 }}
-                      zoomControl={false}
-                    >
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
-                      <MapUpdater center={mapCenter} zoom={mapZoom} />
-                      
-                      {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
-                      {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
-                      {pickupCoords && dropoffCoords && <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />}
-                    </MapContainer>
+              {/* --- 📦 PARCEL VIEW (From Screenshot 1) --- */}
+              {activeTab === 'parcel' && (
+                <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
+                  {/* Banner Image */}
+                  <div className="w-full h-40 bg-orange-100 rounded-t-2xl overflow-hidden mb-6 relative">
+                    <img src="https://images.unsplash.com/photo-1617500585800-47b220b396b2?auto=format&fit=crop&q=80&w=800" alt="Courier" className="w-full h-full object-cover" />
                   </div>
+                  
+                  <h1 className="text-4xl font-bold mb-3">Courier</h1>
+                  <p className="text-gray-600 mb-6 text-lg">Have a courier deliver something for you. Get packages delivered in the time it takes to drive there.</p>
 
-                  <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
-                    <div className="flex justify-between items-center mb-2">
-                      <h2 className="text-xl font-bold text-gray-900">Ride in Progress</h2>
-                      <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{rideProgress < 50 ? 'Approaching' : rideProgress < 90 ? 'Nearby' : 'Arrived'}</span>
-                    </div>
-                    <p className="text-gray-600 mb-3 text-sm">Driver Rahul S. ({selectedCar}) • Route: {pickup} to {dropoff}</p>
-                    
-                    <div className="w-full bg-blue-100 rounded-full h-3 mb-2 overflow-hidden">
-                      <div className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${rideProgress}%` }}></div>
-                    </div>
-                    
-                    <div className="flex justify-between text-xs text-gray-500 font-medium">
-                      <span>Pickup</span>
-                      <span className="font-bold text-green-600">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}% Complete`}</span>
-                      <span>Dropoff</span>
-                    </div>
-                    
-                    {rideProgress === 100 && (
-                      <button onClick={resetRide} className="w-full mt-4 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition shadow-lg">Ride Completed • Book Again</button>
-                    )}
-                  </div>
-                </div>
-
-              ) : showPrices ? (
-                // CAR PRICES LIST
-                <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md h-full flex flex-col">
-                  <div className="shrink-0">
-                    <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-4"><ArrowLeft className="h-4 w-4 mr-1" /> Back to locations</button>
-                    <h2 className="text-3xl font-bold mb-4">Choose your ride</h2>
-                  </div>
-
-                  <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
-                    {/* Cars */}
-                    <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
-                      <div className="flex items-center space-x-4"><Car className="h-8 w-8 text-gray-700" /><div><h3 className="font-bold text-lg notranslate">SmartMini</h3><p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p></div></div>
-                      <div className="text-xl font-bold">₹240</div>
-                    </div>
-                    <div onClick={() => setSelectedCar('SmartSedan')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSedan' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
-                      <div className="flex items-center space-x-4"><Car className="h-10 w-10 text-gray-900" /><div><h3 className="font-bold text-lg notranslate">SmartSedan</h3><p className="text-xs text-blue-600 font-medium flex items-center mt-1"><Shield className="h-3 w-3 mr-1"/> Top Rated Driver</p></div></div>
-                      <div className="text-xl font-bold">₹320</div>
-                    </div>
-                    <div onClick={() => setSelectedCar('SmartSUV')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSUV' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
-                      <div className="flex items-center space-x-4"><Car className="h-12 w-12 text-black" /><div><h3 className="font-bold text-lg notranslate">SmartSUV</h3><p className="text-xs text-purple-600 font-medium flex items-center mt-1"><User className="h-3 w-3 mr-1"/> 6 Seats</p></div></div>
-                      <div className="text-xl font-bold">₹450</div>
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 pt-2 border-t border-gray-100">
+                  {/* Send / Receive Toggle */}
+                  <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
                     <button 
-                      onClick={handleConfirmRide} 
-                      disabled={isSearching}
-                      className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg flex justify-center items-center disabled:bg-gray-400"
+                      onClick={() => setParcelMode('send')}
+                      className={`flex-1 py-3 text-lg font-bold rounded-lg transition-all ${parcelMode === 'send' ? 'bg-white shadow-sm border border-gray-200 text-black' : 'text-gray-500 hover:text-black'}`}
                     >
-                      {isSearching ? <><Loader2 className="animate-spin mr-2 h-5 w-5"/> Locating...</> : `Confirm ${selectedCar}`}
+                      Send
+                    </button>
+                    <button 
+                      onClick={() => setParcelMode('receive')}
+                      className={`flex-1 py-3 text-lg font-bold rounded-lg transition-all ${parcelMode === 'receive' ? 'bg-white shadow-sm border border-gray-200 text-black' : 'text-gray-500 hover:text-black'}`}
+                    >
+                      Receive
                     </button>
                   </div>
-                </div>
 
-              ) : (
-                // LOCATION INPUT FORM
-                <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
-                  <div className="flex items-center space-x-2 text-gray-700 mb-8 font-medium">
-                    <MapPin className="h-5 w-5 text-black" />
-                    <span>Current Location (GPS Active)</span>
-                  </div>
-
-                  <h1 className="text-5xl font-bold mb-8 transition-all">
-                    {activeTab === 'request' && "Request a secure ride"}
-                    {activeTab === 'reserve' && "Reserve a ride in advance"}
-                    {activeTab === 'prices' && "Check ride estimates"}
-                    {activeTab === 'explore' && "Explore your options"}
-                  </h1>
-
-                  <button className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 w-max px-4 py-3 rounded-full font-medium mb-6 transition">
-                    <Clock className="h-5 w-5" />
-                    <span>{activeTab === 'reserve' ? 'Schedule for later' : 'Pickup now'}</span>
-                    <ChevronDown className="h-5 w-5" />
-                  </button>
-
-                  <div className="relative flex flex-col space-y-3 w-full">
+                  {/* Inputs */}
+                  <div className="relative flex flex-col space-y-3 w-full mb-8">
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
                     
-                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black">
+                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
-                      <input type="text" placeholder="Pickup (e.g., Delhi, Bangalore)" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
-                      <Navigation className="h-5 w-5 text-gray-500 ml-2" />
+                      <input type="text" placeholder="Choose sender's location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
 
-                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black">
+                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
-                      <input type="text" placeholder="Dropoff (e.g., Mumbai, Goa)" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                      <input type="text" placeholder="Choose recipient's location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
                   </div>
 
-                  <div className="mt-auto pt-8">
-                    <button 
-                      onClick={() => setShowPrices(true)}
-                      disabled={!pickup || !dropoff}
-                      className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform"
-                    >
-                      Search route & see prices
-                    </button>
-                    {(!pickup || !dropoff) && <p className="text-xs text-gray-400 mt-2 text-center">Please enter pickup and dropoff to search</p>}
-                  </div>
+                  <button className="bg-gray-200 text-gray-500 text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto cursor-not-allowed">
+                    Search
+                  </button>
                 </div>
+              )}
+
+              {/* --- 🚗 RENTALS VIEW (From Screenshot 2) --- */}
+              {activeTab === 'rentals' && (
+                <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
+                  
+                  <h1 className="text-4xl font-bold mb-8 mt-4">Find a trip</h1>
+
+                  {/* Inputs */}
+                  <div className="relative flex flex-col space-y-3 w-full mb-6">
+                    <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
+                    
+                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
+                      <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
+                      <input type="text" placeholder="Pick-up location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                    </div>
+
+                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
+                      <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
+                      <input type="text" placeholder="Drop-off location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 mb-3 hover:bg-gray-200 cursor-pointer transition">
+                    <div className="flex items-center">
+                      <Clock className="h-5 w-5 text-black mr-4" />
+                      <span className="text-lg font-medium">Pick up now</span>
+                    </div>
+                    <ChevronDown className="h-5 w-5 text-gray-500" />
+                  </div>
+
+                  <div className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 mb-8 hover:bg-gray-200 cursor-pointer transition w-max pr-6">
+                    <div className="flex items-center">
+                      <User className="h-5 w-5 text-black mr-4" />
+                      <span className="text-lg font-medium">For me</span>
+                    </div>
+                    <ChevronDown className="h-5 w-5 text-gray-500 ml-4" />
+                  </div>
+
+                  <button className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto hover:bg-gray-800 transition">
+                    Search
+                  </button>
+                </div>
+              )}
+
+              {/* --- STANDARD RIDE VIEWS (Request, Reserve, Prices, etc.) --- */}
+              {['request', 'reserve', 'prices', 'explore'].includes(activeTab) && (
+                <>
+                  {rideConfirmed ? (
+                    // MAP TRACKING SCREEN
+                    <div className="w-full h-[500px] bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200">
+                      <div className="absolute inset-0 z-0">
+                        <MapContainer 
+                          center={mapCenter} 
+                          zoom={mapZoom} 
+                          scrollWheelZoom={false} 
+                          style={{ height: '100%', width: '100%', zIndex: 0 }}
+                          zoomControl={false}
+                        >
+                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
+                          <MapUpdater center={mapCenter} zoom={mapZoom} />
+                          
+                          {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
+                          {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
+                          {pickupCoords && dropoffCoords && <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />}
+                        </MapContainer>
+                      </div>
+
+                      <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
+                        <div className="flex justify-between items-center mb-2">
+                          <h2 className="text-xl font-bold text-gray-900">Ride in Progress</h2>
+                          <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{rideProgress < 50 ? 'Approaching' : rideProgress < 90 ? 'Nearby' : 'Arrived'}</span>
+                        </div>
+                        <p className="text-gray-600 mb-3 text-sm">Driver Rahul S. ({selectedCar}) • Route: {pickup} to {dropoff}</p>
+                        
+                        <div className="w-full bg-blue-100 rounded-full h-3 mb-2 overflow-hidden">
+                          <div className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${rideProgress}%` }}></div>
+                        </div>
+                        
+                        <div className="flex justify-between text-xs text-gray-500 font-medium">
+                          <span>Pickup</span>
+                          <span className="font-bold text-green-600">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}% Complete`}</span>
+                          <span>Dropoff</span>
+                        </div>
+                        
+                        {rideProgress === 100 && (
+                          <button onClick={resetRide} className="w-full mt-4 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition shadow-lg">Ride Completed • Book Again</button>
+                        )}
+                      </div>
+                    </div>
+
+                  ) : showPrices ? (
+                    // CAR PRICES LIST
+                    <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md h-full flex flex-col">
+                      <div className="shrink-0">
+                        <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-4"><ArrowLeft className="h-4 w-4 mr-1" /> Back to locations</button>
+                        <h2 className="text-3xl font-bold mb-4">Choose your ride</h2>
+                      </div>
+
+                      <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
+                        {/* Cars */}
+                        <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
+                          <div className="flex items-center space-x-4"><Car className="h-8 w-8 text-gray-700" /><div><h3 className="font-bold text-lg notranslate">SmartMini</h3><p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p></div></div>
+                          <div className="text-xl font-bold">₹240</div>
+                        </div>
+                        <div onClick={() => setSelectedCar('SmartSedan')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSedan' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
+                          <div className="flex items-center space-x-4"><Car className="h-10 w-10 text-gray-900" /><div><h3 className="font-bold text-lg notranslate">SmartSedan</h3><p className="text-xs text-blue-600 font-medium flex items-center mt-1"><Shield className="h-3 w-3 mr-1"/> Top Rated Driver</p></div></div>
+                          <div className="text-xl font-bold">₹320</div>
+                        </div>
+                        <div onClick={() => setSelectedCar('SmartSUV')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSUV' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
+                          <div className="flex items-center space-x-4"><Car className="h-12 w-12 text-black" /><div><h3 className="font-bold text-lg notranslate">SmartSUV</h3><p className="text-xs text-purple-600 font-medium flex items-center mt-1"><User className="h-3 w-3 mr-1"/> 6 Seats</p></div></div>
+                          <div className="text-xl font-bold">₹450</div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 pt-2 border-t border-gray-100">
+                        <button 
+                          onClick={handleConfirmRide} 
+                          disabled={isSearching}
+                          className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg flex justify-center items-center disabled:bg-gray-400"
+                        >
+                          {isSearching ? <><Loader2 className="animate-spin mr-2 h-5 w-5"/> Locating...</> : `Confirm ${selectedCar}`}
+                        </button>
+                      </div>
+                    </div>
+
+                  ) : (
+                    // STANDARD LOCATION INPUT FORM
+                    <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
+                      <div className="flex items-center space-x-2 text-gray-700 mb-8 font-medium">
+                        <MapPin className="h-5 w-5 text-black" />
+                        <span>Current Location (GPS Active)</span>
+                      </div>
+
+                      <h1 className="text-5xl font-bold mb-8 transition-all">
+                        {activeTab === 'request' && "Request a secure ride"}
+                        {activeTab === 'reserve' && "Reserve a ride in advance"}
+                        {activeTab === 'explore' && "Explore your options"}
+                      </h1>
+
+                      <button className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 w-max px-4 py-3 rounded-full font-medium mb-6 transition">
+                        <Clock className="h-5 w-5" />
+                        <span>{activeTab === 'reserve' ? 'Schedule for later' : 'Pickup now'}</span>
+                        <ChevronDown className="h-5 w-5" />
+                      </button>
+
+                      <div className="relative flex flex-col space-y-3 w-full">
+                        <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
+                        
+                        <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black">
+                          <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
+                          <input type="text" placeholder="Pickup (e.g., Delhi, Bangalore)" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                          <Navigation className="h-5 w-5 text-gray-500 ml-2" />
+                        </div>
+
+                        <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black">
+                          <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
+                          <input type="text" placeholder="Dropoff (e.g., Mumbai, Goa)" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                        </div>
+                      </div>
+
+                      <div className="mt-auto pt-8">
+                        <button 
+                          onClick={() => setShowPrices(true)}
+                          disabled={!pickup || !dropoff}
+                          className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform"
+                        >
+                          Search route & see prices
+                        </button>
+                        {(!pickup || !dropoff) && <p className="text-xs text-gray-400 mt-2 text-center">Please enter pickup and dropoff to search</p>}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
-            {/* RIGHT COLUMN: The Image / Initial Map */}
+            {/* RIGHT COLUMN: The Map */}
             <div className="w-full md:w-1/2 mt-8 md:mt-0 h-[500px]">
               <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl bg-gray-100">
                 <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
@@ -504,9 +611,12 @@ const BookRide = () => {
                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                    </MapContainer>
                 </div>
-                <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8">
-                   <h3 className="text-white text-3xl font-bold w-3/4">Travel safely anywhere in India.</h3>
-                </div>
+                {/* Only show the big text overlay if we aren't tracking a live ride */}
+                {!rideConfirmed && (
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8">
+                    <h3 className="text-white text-3xl font-bold w-3/4">Travel safely anywhere in India.</h3>
+                  </div>
+                )}
                 <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold text-green-700 shadow z-20">
                   <ShieldCheck className="h-4 w-4" />
                   <span>AI Security Active</span>
@@ -523,7 +633,7 @@ const BookRide = () => {
               {/* 1. RIDE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({ title: 'Secure Rides', description: 'Go anywhere with full GPS tracking. Every SmartCab ride is connected to our central AI dispatch. If your car deviates from the designated GPS route by more than 500 meters, an automated alert is sent to our safety team and your emergency contacts.' })}
+                onClick={() => handleFeatureCardClick('request')}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -538,7 +648,7 @@ const BookRide = () => {
               {/* 2. RESERVE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({ title: 'Advance Reservations', description: 'Reserve your secure ride up to 30 days in advance. When you reserve, we ensure only our highest-rated, tier-1 background-verified drivers are assigned to your trip. Perfect for early morning airport runs.' })}
+                onClick={() => handleFeatureCardClick('reserve')}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -565,10 +675,10 @@ const BookRide = () => {
                 <Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              {/* 4. PARCEL */}
+              {/* 4. PARCEL - NOW LINKS TO TOP */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({ title: 'SmartCab Parcel', description: 'Send packages across the city securely. Our delivery partners use OTP verification at both pickup and dropoff points ensuring your valuable items never end up in the wrong hands.' })}
+                onClick={() => handleFeatureCardClick('parcel')}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -580,10 +690,10 @@ const BookRide = () => {
                 <Package className="h-20 w-20 text-amber-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              {/* 5. RENTALS */}
+              {/* 5. RENTALS - NOW LINKS TO TOP */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({ title: 'Hourly Rentals', description: 'Keep your car and driver with you for multiple stops. Book packages starting from 1 hour / 10 km up to 12 hours / 120 km. Perfect for shopping trips or consecutive business meetings.' })}
+                onClick={() => handleFeatureCardClick('rentals')}
               >
                 <div className="flex flex-col h-full justify-between pr-4">
                   <div>
@@ -830,7 +940,6 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* --- OUR NEW MODAL --- */}
       <StartModal 
         isOpen={isStartModalOpen} 
         onClose={() => setIsStartModalOpen(false)} 
