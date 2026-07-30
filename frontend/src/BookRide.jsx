@@ -30,7 +30,6 @@ const carIcon = new L.DivIcon({
   iconAnchor: [18, 18]
 });
 
-// --- HELPER COMPONENT TO RE-CENTER MAP ---
 const MapUpdater = ({ center, zoom }) => {
   const map = useMap();
   useEffect(() => {
@@ -40,7 +39,6 @@ const MapUpdater = ({ center, zoom }) => {
 };
 
 const BookRide = () => {
-  // --- ADDED NEW STATE FOR START MODAL & LANGUAGE MODAL ---
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
@@ -57,26 +55,48 @@ const BookRide = () => {
   const [driverData, setDriverData] = useState({ name: '', phone: '', city: '', carModel: '' });
   const [businessData, setBusinessData] = useState({ company: '', email: '', employees: '' });
 
-  // Ride Booking State
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
   const [showPrices, setShowPrices] = useState(false);
   const [rideConfirmed, setRideConfirmed] = useState(false);
   const [selectedCar, setSelectedCar] = useState('SmartMini');
   
-  // Tracking & Map State
   const [rideProgress, setRideProgress] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
   
-  // Default to center of India initially
   const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]); 
   const [mapZoom, setMapZoom] = useState(5);
   
-  // Dynamic coordinates based on user search
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
 
-  // Auto-driving timer effect
+  // --- GOOGLE TRANSLATE MAGIC SCRIPT ---
+  useEffect(() => {
+    if (!document.getElementById('google-translate-script')) {
+      const addScript = document.createElement('script');
+      addScript.id = 'google-translate-script';
+      addScript.setAttribute('src', 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit');
+      document.body.appendChild(addScript);
+      window.googleTranslateElementInit = () => {
+        new window.google.translate.TranslateElement({pageLanguage: 'en', autoDisplay: false}, 'google_translate_element');
+      };
+    }
+  }, []);
+
+  const handleLanguageChange = (langCode) => {
+    // This connects to Google's hidden cookie to translate the whole site
+    if (langCode === 'en') {
+      document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
+    } else {
+      document.cookie = `googtrans=/en/${langCode}; path=/;`;
+      document.cookie = `googtrans=/en/${langCode}; path=/; domain=${window.location.hostname};`;
+    }
+    setIsLangModalOpen(false);
+    window.location.reload(); // Reload to apply the translation!
+  };
+  // ------------------------------------
+
   useEffect(() => {
     if (rideConfirmed && rideProgress < 100) {
       const timer = setInterval(() => {
@@ -89,7 +109,6 @@ const BookRide = () => {
     }
   }, [rideConfirmed, rideProgress]);
 
-  // Geocoding Function (Turns text into Map Coordinates)
   const geocodeLocation = async (address) => {
     try {
       const searchQuery = encodeURIComponent(address + ", India"); 
@@ -106,13 +125,10 @@ const BookRide = () => {
     }
   };
 
-  // Handle Ride Confirmation (Searches coordinates first)
   const handleConfirmRide = async () => {
     setIsSearching(true);
-    
     const pCoords = await geocodeLocation(pickup);
     const dCoords = await geocodeLocation(dropoff);
-    
     setIsSearching(false);
 
     if (pCoords && dCoords) {
@@ -126,7 +142,6 @@ const BookRide = () => {
     }
   };
 
-  // Calculate dynamic car position along the route
   let currentCarLat = 0, currentCarLng = 0;
   if (pickupCoords && dropoffCoords) {
     currentCarLat = pickupCoords[0] + (dropoffCoords[0] - pickupCoords[0]) * (rideProgress / 100);
@@ -159,12 +174,21 @@ const BookRide = () => {
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative">
+      
+      {/* THIS CSS HIDES THE UGLY GOOGLE TRANSLATE BAR AT THE TOP */}
+      <style>{`
+        body { top: 0 !important; position: static !important; }
+        .skiptranslate { display: none !important; }
+        .goog-te-banner-frame { display: none !important; }
+      `}</style>
+
+      {/* Hidden Div required for Google Translate */}
+      <div id="google_translate_element" style={{ display: 'none' }}></div>
 
       {/* --- NEW LANGUAGE SELECTION MODAL --- */}
       {isLangModalOpen && (
         <div className="fixed inset-0 bg-white z-[200] overflow-y-auto animate-in fade-in duration-200">
           <div className="p-6 md:p-12 max-w-6xl mx-auto relative min-h-screen">
-            {/* Close Button */}
             <button 
               onClick={() => setIsLangModalOpen(false)} 
               className="absolute top-6 right-6 md:top-8 md:right-8 p-3 hover:bg-gray-100 rounded-full text-black transition"
@@ -173,23 +197,24 @@ const BookRide = () => {
             </button>
             
             <div className="mt-20 md:mt-32">
-              <h2 className="text-4xl md:text-5xl font-bold mb-16">Select your preferred language</h2>
+              <h2 className="text-4xl md:text-5xl font-bold mb-16 notranslate">Select your preferred language</h2>
               
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-8">
+                {/* NOW THESE BUTTONS HAVE CODES THAT TELL GOOGLE WHAT TO DO */}
                 {[
-                  { eng: 'Bangla', native: 'বাংলা' },
-                  { eng: 'English', native: 'English' },
-                  { eng: 'Hindi', native: 'हिन्दी' },
-                  { eng: 'Kannada', native: 'ಕನ್ನಡ' },
-                  { eng: 'Marathi', native: 'मराठी' },
-                  { eng: 'Tamil', native: 'தமிழ்' },
-                  { eng: 'Telugu', native: 'తెలుగు' },
-                  { eng: 'Urdu', native: 'اردو' }
+                  { eng: 'Bangla', native: 'বাংলা', code: 'bn' },
+                  { eng: 'English', native: 'English', code: 'en' },
+                  { eng: 'Hindi', native: 'हिन्दी', code: 'hi' },
+                  { eng: 'Kannada', native: 'ಕನ್ನಡ', code: 'kn' },
+                  { eng: 'Marathi', native: 'मराठी', code: 'mr' },
+                  { eng: 'Tamil', native: 'தமிழ்', code: 'ta' },
+                  { eng: 'Telugu', native: 'తెలుగు', code: 'te' },
+                  { eng: 'Urdu', native: 'اردو', code: 'ur' }
                 ].map((lang, idx) => (
                   <button 
                     key={idx} 
-                    onClick={() => setIsLangModalOpen(false)}
-                    className="text-left text-lg text-gray-900 font-medium hover:text-gray-500 transition"
+                    onClick={() => handleLanguageChange(lang.code)}
+                    className="text-left text-lg text-gray-900 font-medium hover:text-gray-500 transition notranslate"
                   >
                     {lang.eng}, {lang.native}
                   </button>
@@ -308,7 +333,7 @@ const BookRide = () => {
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <div className="flex items-center space-x-2 cursor-pointer" onClick={() => {setMainView('ride'); resetRide();}}>
             <ShieldCheck className="h-8 w-8 text-green-400" />
-            <span className="text-2xl font-bold tracking-tight">SmartCab</span>
+            <span className="text-2xl font-bold tracking-tight notranslate">SmartCab</span>
           </div>
           <div className="flex flex-wrap justify-center gap-2 md:gap-6 font-medium text-sm">
             <button onClick={() => {setMainView('ride'); resetRide();}} className={`px-3 py-2 rounded-full transition ${mainView === 'ride' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Ride</button>
@@ -318,7 +343,6 @@ const BookRide = () => {
           </div>
         </div>
         <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
-          {/* UPDATED: THIS BUTTON NOW OPENS THE LANGUAGE MODAL */}
           <button onClick={() => setIsLangModalOpen(true)} className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"><Globe className="h-4 w-4 mr-2" /> EN</button>
           <Link to="/help" className="hover:bg-gray-800 px-3 py-2 rounded-full">Help</Link>
           <Link to="/login" className="hover:bg-gray-800 px-3 py-2 rounded-full">Log in</Link>
@@ -398,15 +422,15 @@ const BookRide = () => {
                   <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
                     {/* Cars */}
                     <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
-                      <div className="flex items-center space-x-4"><Car className="h-8 w-8 text-gray-700" /><div><h3 className="font-bold text-lg">SmartMini</h3><p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p></div></div>
+                      <div className="flex items-center space-x-4"><Car className="h-8 w-8 text-gray-700" /><div><h3 className="font-bold text-lg notranslate">SmartMini</h3><p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p></div></div>
                       <div className="text-xl font-bold">₹240</div>
                     </div>
                     <div onClick={() => setSelectedCar('SmartSedan')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSedan' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
-                      <div className="flex items-center space-x-4"><Car className="h-10 w-10 text-gray-900" /><div><h3 className="font-bold text-lg">SmartSedan</h3><p className="text-xs text-blue-600 font-medium flex items-center mt-1"><Shield className="h-3 w-3 mr-1"/> Top Rated Driver</p></div></div>
+                      <div className="flex items-center space-x-4"><Car className="h-10 w-10 text-gray-900" /><div><h3 className="font-bold text-lg notranslate">SmartSedan</h3><p className="text-xs text-blue-600 font-medium flex items-center mt-1"><Shield className="h-3 w-3 mr-1"/> Top Rated Driver</p></div></div>
                       <div className="text-xl font-bold">₹320</div>
                     </div>
                     <div onClick={() => setSelectedCar('SmartSUV')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSUV' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
-                      <div className="flex items-center space-x-4"><Car className="h-12 w-12 text-black" /><div><h3 className="font-bold text-lg">SmartSUV</h3><p className="text-xs text-purple-600 font-medium flex items-center mt-1"><User className="h-3 w-3 mr-1"/> 6 Seats</p></div></div>
+                      <div className="flex items-center space-x-4"><Car className="h-12 w-12 text-black" /><div><h3 className="font-bold text-lg notranslate">SmartSUV</h3><p className="text-xs text-purple-600 font-medium flex items-center mt-1"><User className="h-3 w-3 mr-1"/> 6 Seats</p></div></div>
                       <div className="text-xl font-bold">₹450</div>
                     </div>
                   </div>
@@ -475,7 +499,6 @@ const BookRide = () => {
             {/* RIGHT COLUMN: The Image / Initial Map */}
             <div className="w-full md:w-1/2 mt-8 md:mt-0 h-[500px]">
               <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl bg-gray-100">
-                {/* When not riding, show a zoomed out map of India as a background instead of a static image! */}
                 <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
                    <MapContainer center={[20.5937, 78.9629]} zoom={4} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -624,7 +647,6 @@ const BookRide = () => {
 
               {/* Right Side: Benefits Card */}
               <div className="w-full lg:w-1/2 p-8 md:p-12 flex items-center justify-center lg:justify-end relative">
-                {/* Decorative background shape */}
                 <div className="absolute top-10 right-10 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
                 
                 <div className="bg-white rounded-2xl p-8 shadow-xl max-w-md w-full z-10 border border-gray-100">
