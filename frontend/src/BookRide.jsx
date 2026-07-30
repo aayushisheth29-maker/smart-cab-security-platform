@@ -45,12 +45,18 @@ const BookRide = () => {
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
   
-  // activeTab now supports 'request', 'reserve', 'prices', 'explore', 'parcel', 'rentals'
   const [activeTab, setActiveTab] = useState('request');
   const [mainView, setMainView] = useState('ride');
   
-  // NEW STATE: For the parcel Send/Receive toggle
   const [parcelMode, setParcelMode] = useState('send');
+
+  // --- NEW STATES FOR RENTAL DROPDOWNS ---
+  const [showTimeDropdown, setShowTimeDropdown] = useState(false);
+  const [pickupTime, setPickupTime] = useState('Pick up now');
+  
+  const [showForWhoDropdown, setShowForWhoDropdown] = useState(false);
+  const [forWho, setForWho] = useState('For me');
+  // ---------------------------------------
 
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [showBusinessForm, setShowBusinessForm] = useState(false);
@@ -157,7 +163,6 @@ const BookRide = () => {
     document.getElementById('explore-section')?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // --- NEW: Scroll to top and switch tab handler ---
   const handleFeatureCardClick = (feature) => {
     setActiveTab(feature);
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -359,11 +364,10 @@ const BookRide = () => {
         </div>
       </nav>
 
-      {/* 🟢 RIDE PAGE (Contains all features including Parcel and Rentals) */}
+      {/* 🟢 RIDE PAGE */}
       {mainView === 'ride' && (
         <div className="animate-in fade-in duration-500">
           
-          {/* UPDATED SUB-NAVBAR TO INCLUDE PARCEL AND RENTALS */}
           <div className="border-b flex flex-col md:flex-row items-center px-4 md:px-12 pt-3 justify-between gap-2 overflow-hidden">
             <h2 className="text-2xl font-bold pb-1 md:pb-3 shrink-0">Ride</h2>
             <div className="flex overflow-x-auto w-full space-x-6 text-sm font-medium text-gray-500 pb-2 hide-scrollbar">
@@ -380,10 +384,9 @@ const BookRide = () => {
             {/* LEFT COLUMN: THE FORMS */}
             <div className="w-full md:w-1/2 flex flex-col relative min-h-[500px]">
               
-              {/* --- 📦 PARCEL VIEW (From Screenshot 1) --- */}
+              {/* --- 📦 PARCEL VIEW --- */}
               {activeTab === 'parcel' && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
-                  {/* Banner Image */}
                   <div className="w-full h-40 bg-orange-100 rounded-t-2xl overflow-hidden mb-6 relative">
                     <img src="https://images.unsplash.com/photo-1617500585800-47b220b396b2?auto=format&fit=crop&q=80&w=800" alt="Courier" className="w-full h-full object-cover" />
                   </div>
@@ -391,7 +394,6 @@ const BookRide = () => {
                   <h1 className="text-4xl font-bold mb-3">Courier</h1>
                   <p className="text-gray-600 mb-6 text-lg">Have a courier deliver something for you. Get packages delivered in the time it takes to drive there.</p>
 
-                  {/* Send / Receive Toggle */}
                   <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
                     <button 
                       onClick={() => setParcelMode('send')}
@@ -407,7 +409,6 @@ const BookRide = () => {
                     </button>
                   </div>
 
-                  {/* Inputs */}
                   <div className="relative flex flex-col space-y-3 w-full mb-8">
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
                     
@@ -428,13 +429,12 @@ const BookRide = () => {
                 </div>
               )}
 
-              {/* --- 🚗 RENTALS VIEW (From Screenshot 2) --- */}
+              {/* --- 🚗 RENTALS VIEW --- */}
               {activeTab === 'rentals' && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   
                   <h1 className="text-4xl font-bold mb-8 mt-4">Find a trip</h1>
 
-                  {/* Inputs */}
                   <div className="relative flex flex-col space-y-3 w-full mb-6">
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
                     
@@ -449,20 +449,68 @@ const BookRide = () => {
                     </div>
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 mb-3 hover:bg-gray-200 cursor-pointer transition">
-                    <div className="flex items-center">
-                      <Clock className="h-5 w-5 text-black mr-4" />
-                      <span className="text-lg font-medium">Pick up now</span>
+                  {/* 🟢 NEW CLICKABLE DROPDOWN: Pick Up Time */}
+                  <div className="relative mb-3">
+                    <div 
+                      onClick={() => { setShowTimeDropdown(!showTimeDropdown); setShowForWhoDropdown(false); }}
+                      className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 hover:bg-gray-200 cursor-pointer transition"
+                    >
+                      <div className="flex items-center">
+                        <Clock className="h-5 w-5 text-black mr-4" />
+                        <span className="text-lg font-medium">{pickupTime}</span>
+                      </div>
+                      <ChevronDown className="h-5 w-5 text-gray-500" />
                     </div>
-                    <ChevronDown className="h-5 w-5 text-gray-500" />
+                    
+                    {/* Time Dropdown Menu */}
+                    {showTimeDropdown && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                        <button 
+                          onClick={() => { setPickupTime('Pick up now'); setShowTimeDropdown(false); }} 
+                          className="w-full text-left px-6 py-4 hover:bg-gray-50 border-b border-gray-100 text-lg font-medium transition"
+                        >
+                          Pick up now
+                        </button>
+                        <button 
+                          onClick={() => { setPickupTime('Schedule for later'); setShowTimeDropdown(false); }} 
+                          className="w-full text-left px-6 py-4 hover:bg-gray-50 text-lg font-medium transition"
+                        >
+                          Schedule for later
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  <div className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 mb-8 hover:bg-gray-200 cursor-pointer transition w-max pr-6">
-                    <div className="flex items-center">
-                      <User className="h-5 w-5 text-black mr-4" />
-                      <span className="text-lg font-medium">For me</span>
+                  {/* 🟢 NEW CLICKABLE DROPDOWN: For Me / Guest */}
+                  <div className="relative mb-8 w-max">
+                    <div 
+                      onClick={() => { setShowForWhoDropdown(!showForWhoDropdown); setShowTimeDropdown(false); }}
+                      className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 hover:bg-gray-200 cursor-pointer transition pr-6"
+                    >
+                      <div className="flex items-center">
+                        <User className="h-5 w-5 text-black mr-4" />
+                        <span className="text-lg font-medium">{forWho}</span>
+                      </div>
+                      <ChevronDown className="h-5 w-5 text-gray-500 ml-4" />
                     </div>
-                    <ChevronDown className="h-5 w-5 text-gray-500 ml-4" />
+                    
+                    {/* For Who Dropdown Menu */}
+                    {showForWhoDropdown && (
+                      <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
+                        <button 
+                          onClick={() => { setForWho('For me'); setShowForWhoDropdown(false); }} 
+                          className="w-full text-left px-6 py-4 hover:bg-gray-50 border-b border-gray-100 text-lg font-medium transition"
+                        >
+                          For me
+                        </button>
+                        <button 
+                          onClick={() => { setForWho('For a guest'); setShowForWhoDropdown(false); }} 
+                          className="w-full text-left px-6 py-4 hover:bg-gray-50 text-lg font-medium transition"
+                        >
+                          For a guest
+                        </button>
+                      </div>
+                    )}
                   </div>
 
                   <button className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto hover:bg-gray-800 transition">
@@ -471,11 +519,10 @@ const BookRide = () => {
                 </div>
               )}
 
-              {/* --- STANDARD RIDE VIEWS (Request, Reserve, Prices, etc.) --- */}
+              {/* --- STANDARD RIDE VIEWS --- */}
               {['request', 'reserve', 'prices', 'explore'].includes(activeTab) && (
                 <>
                   {rideConfirmed ? (
-                    // MAP TRACKING SCREEN
                     <div className="w-full h-[500px] bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200">
                       <div className="absolute inset-0 z-0">
                         <MapContainer 
@@ -518,7 +565,6 @@ const BookRide = () => {
                     </div>
 
                   ) : showPrices ? (
-                    // CAR PRICES LIST
                     <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md h-full flex flex-col">
                       <div className="shrink-0">
                         <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-4"><ArrowLeft className="h-4 w-4 mr-1" /> Back to locations</button>
@@ -526,7 +572,6 @@ const BookRide = () => {
                       </div>
 
                       <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
-                        {/* Cars */}
                         <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
                           <div className="flex items-center space-x-4"><Car className="h-8 w-8 text-gray-700" /><div><h3 className="font-bold text-lg notranslate">SmartMini</h3><p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p></div></div>
                           <div className="text-xl font-bold">₹240</div>
@@ -553,7 +598,6 @@ const BookRide = () => {
                     </div>
 
                   ) : (
-                    // STANDARD LOCATION INPUT FORM
                     <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                       <div className="flex items-center space-x-2 text-gray-700 mb-8 font-medium">
                         <MapPin className="h-5 w-5 text-black" />
@@ -611,7 +655,6 @@ const BookRide = () => {
                       <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                    </MapContainer>
                 </div>
-                {/* Only show the big text overlay if we aren't tracking a live ride */}
                 {!rideConfirmed && (
                   <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8">
                     <h3 className="text-white text-3xl font-bold w-3/4">Travel safely anywhere in India.</h3>
@@ -630,7 +673,6 @@ const BookRide = () => {
             <h2 className="text-3xl font-bold mb-8">Explore what you can do with SmartCab</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {/* 1. RIDE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
                 onClick={() => handleFeatureCardClick('request')}
@@ -645,7 +687,6 @@ const BookRide = () => {
                 <Car className="h-20 w-20 text-gray-700 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              {/* 2. RESERVE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
                 onClick={() => handleFeatureCardClick('reserve')}
@@ -660,7 +701,6 @@ const BookRide = () => {
                 <Calendar className="h-20 w-20 text-blue-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              {/* 3. INTERCITY */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
                 onClick={() => setSelectedCard({ title: 'Intercity Travel', description: 'Comfortable outstation cabs for long-distance travel. All intercity vehicles undergo a 24-point maintenance check before dispatch and feature physical SOS panic buttons installed in the rear passenger seats.' })}
@@ -675,7 +715,6 @@ const BookRide = () => {
                 <Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              {/* 4. PARCEL - NOW LINKS TO TOP */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
                 onClick={() => handleFeatureCardClick('parcel')}
@@ -690,7 +729,6 @@ const BookRide = () => {
                 <Package className="h-20 w-20 text-amber-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              {/* 5. RENTALS - NOW LINKS TO TOP */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
                 onClick={() => handleFeatureCardClick('rentals')}
@@ -705,7 +743,6 @@ const BookRide = () => {
                 <Clock className="h-20 w-20 text-purple-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
 
-              {/* 6. BIKE */}
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
                 onClick={() => setSelectedCard({ title: 'SmartBike', description: 'Beat the traffic with our fast and affordable motorcycle rides. We enforce a strict helmet-verification protocol—the ride cannot start until the driver uploads a selfie wearing their helmet.' })}
@@ -722,13 +759,11 @@ const BookRide = () => {
             </div>
           </section>
 
-          {/* --- NEW: PLAN FOR LATER SECTION --- */}
+          {/* --- PLAN FOR LATER SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-12">
             <h2 className="text-3xl font-bold mb-8">Plan for later</h2>
             
             <div className="flex flex-col lg:flex-row bg-[#e2f1f8] rounded-2xl overflow-hidden relative">
-              
-              {/* Left Side: Form */}
               <div className="w-full lg:w-1/2 p-8 md:p-12 z-10 flex flex-col justify-center">
                 <h3 className="text-4xl md:text-5xl font-bold mb-8 leading-tight text-gray-900">Get your ride right<br/>with SmartCab Reserve</h3>
                 
@@ -755,7 +790,6 @@ const BookRide = () => {
                 </button>
               </div>
 
-              {/* Right Side: Benefits Card */}
               <div className="w-full lg:w-1/2 p-8 md:p-12 flex items-center justify-center lg:justify-end relative">
                 <div className="absolute top-10 right-10 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
                 
@@ -782,11 +816,9 @@ const BookRide = () => {
             </div>
           </section>
 
-          {/* --- NEW: GROUP RIDES SECTION --- */}
+          {/* --- GROUP RIDES SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <div className="flex flex-col md:flex-row items-center gap-12">
-              
-              {/* Fake App Mockup */}
               <div className="w-full md:w-1/2 flex justify-center">
                 <div className="border-[8px] border-black rounded-[2.5rem] w-full max-w-[320px] bg-white overflow-hidden shadow-2xl relative">
                   <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-3xl z-20"></div> {/* Fake Notch */}
@@ -817,7 +849,6 @@ const BookRide = () => {
                 </div>
               </div>
 
-              {/* Text Side */}
               <div className="w-full md:w-1/2">
                 <h2 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">Ride with friends seamlessly</h2>
                 <p className="text-lg text-gray-600 mb-6">Riding with friends just got easier: set up a group ride in the SmartCab app, invite your friends, and arrive at your destination. Friends who ride together save together.</p>
@@ -834,12 +865,11 @@ const BookRide = () => {
             </div>
           </section>
 
-          {/* --- NEW: 3-COLUMN INFO SECTION --- */}
+          {/* --- 3-COLUMN INFO SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">Use the SmartCab app to help you travel your way</h2>
             
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              {/* Card 1 */}
               <div className="flex flex-col h-full">
                 <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
                   <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600" alt="Ride options" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
@@ -854,7 +884,6 @@ const BookRide = () => {
                 </button>
               </div>
 
-              {/* Card 2 */}
               <div className="flex flex-col h-full">
                 <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
                   <img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=600" alt="Airports" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
@@ -869,7 +898,6 @@ const BookRide = () => {
                 </button>
               </div>
 
-              {/* Card 3 */}
               <div className="flex flex-col h-full">
                 <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
                   <img src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600" alt="Cities" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
