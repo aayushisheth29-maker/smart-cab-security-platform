@@ -40,8 +40,9 @@ const MapUpdater = ({ center, zoom }) => {
 };
 
 const BookRide = () => {
-  // --- ADDED NEW STATE FOR START MODAL ---
+  // --- ADDED NEW STATE FOR START MODAL & LANGUAGE MODAL ---
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
+  const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
@@ -158,6 +159,46 @@ const BookRide = () => {
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative">
+
+      {/* --- NEW LANGUAGE SELECTION MODAL --- */}
+      {isLangModalOpen && (
+        <div className="fixed inset-0 bg-white z-[200] overflow-y-auto animate-in fade-in duration-200">
+          <div className="p-6 md:p-12 max-w-6xl mx-auto relative min-h-screen">
+            {/* Close Button */}
+            <button 
+              onClick={() => setIsLangModalOpen(false)} 
+              className="absolute top-6 right-6 md:top-8 md:right-8 p-3 hover:bg-gray-100 rounded-full text-black transition"
+            >
+              <X className="h-8 w-8" strokeWidth={2.5} />
+            </button>
+            
+            <div className="mt-20 md:mt-32">
+              <h2 className="text-4xl md:text-5xl font-bold mb-16">Select your preferred language</h2>
+              
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-8">
+                {[
+                  { eng: 'Bangla', native: 'বাংলা' },
+                  { eng: 'English', native: 'English' },
+                  { eng: 'Hindi', native: 'हिन्दी' },
+                  { eng: 'Kannada', native: 'ಕನ್ನಡ' },
+                  { eng: 'Marathi', native: 'मराठी' },
+                  { eng: 'Tamil', native: 'தமிழ்' },
+                  { eng: 'Telugu', native: 'తెలుగు' },
+                  { eng: 'Urdu', native: 'اردو' }
+                ].map((lang, idx) => (
+                  <button 
+                    key={idx} 
+                    onClick={() => setIsLangModalOpen(false)}
+                    className="text-left text-lg text-gray-900 font-medium hover:text-gray-500 transition"
+                  >
+                    {lang.eng}, {lang.native}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* INFO POP-UP */}
       {selectedCard && (
@@ -277,7 +318,8 @@ const BookRide = () => {
           </div>
         </div>
         <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
-          <button className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"><Globe className="h-4 w-4 mr-2" /> EN</button>
+          {/* UPDATED: THIS BUTTON NOW OPENS THE LANGUAGE MODAL */}
+          <button onClick={() => setIsLangModalOpen(true)} className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"><Globe className="h-4 w-4 mr-2" /> EN</button>
           <Link to="/help" className="hover:bg-gray-800 px-3 py-2 rounded-full">Help</Link>
           <Link to="/login" className="hover:bg-gray-800 px-3 py-2 rounded-full">Log in</Link>
           <Link to="/signup" className="bg-white text-black px-4 py-2 rounded-full font-bold hover:bg-gray-200">Sign up</Link>
