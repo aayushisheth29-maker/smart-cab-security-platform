@@ -36,6 +36,11 @@ const MapUpdater = ({ center, zoom }) => {
   useEffect(() => {
     map.setView(center, zoom);
   }, [center, zoom, map]);
+  useEffect(() => {
+    const t1 = setTimeout(() => map.invalidateSize(), 200);
+    const t2 = setTimeout(() => map.invalidateSize(), 600);
+    return () => { clearTimeout(t1); clearTimeout(t2); };
+  }, [map, center, zoom]);
   return null;
 };
 
@@ -47,9 +52,8 @@ const BookRide = () => {
   const [showBanner, setShowBanner] = useState(true);
   
   const [activeTab, setActiveTab] = useState('request');
-  // mainView now supports: 'ride', 'drive', 'business', 'about', 'login', 'signup', 'dashboard'
   const [mainView, setMainView] = useState('ride'); 
-  const [dashTab, setDashTab] = useState('history'); // For dashboard sub-tabs
+  const [dashTab, setDashTab] = useState('history'); 
   
   const [parcelMode, setParcelMode] = useState('send');
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
@@ -71,6 +75,9 @@ const BookRide = () => {
   const [rideConfirmed, setRideConfirmed] = useState(false);
   const [selectedCar, setSelectedCar] = useState('SmartMini');
   
+  // NEW: State for the search dropdown
+  const [focusedInput, setFocusedInput] = useState(null);
+
   const [rideProgress, setRideProgress] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
   
@@ -90,6 +97,19 @@ const BookRide = () => {
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
+
+  // NEW: Mock Suggestions for the Dropdown (Based on your screenshots!)
+  const locationSuggestions = [
+    { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
+    { title: "Ahmedabad Junction", subtitle: "Sakar Bazzar, Kalupur, Ahmedabad" },
+    { title: "Saraspur", subtitle: "Ahmedabad, Gujarat" },
+    { title: "D86", subtitle: "Uttamnagar, Thakkarbapanagar, Ahmedabad" },
+    { title: "Aai Shri Khodiyar Mata", subtitle: "Nikol Gam Road, Ahmedabad, Gujarat" },
+    { title: "Gota", subtitle: "Ahmedabad, Gujarat" },
+    { title: "Chandlodia", subtitle: "Ahmedabad, Gujarat" },
+    { title: "Delhi Airport", subtitle: "Indira Gandhi International Airport" },
+    { title: "Mumbai Central", subtitle: "Mumbai, Maharashtra" }
+  ];
 
   const handleAddContact = () => {
     if(newContactName && newContactPhone) {
@@ -204,6 +224,50 @@ const BookRide = () => {
     setShowDeviationPopup(false);
   };
 
+  // NEW: Helper function to render the Uber-style search inputs with dropdowns
+  const renderLocationInput = (type, placeholder, value, setValue) => {
+    const isPickup = type === 'pickup';
+    return (
+      <div className={`relative ${isPickup ? 'z-20' : 'z-10'} flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black`}>
+        {isPickup ? (
+          <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
+        ) : (
+          <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
+        )}
+        <input
+          type="text"
+          placeholder={placeholder}
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          onFocus={() => setFocusedInput(type)}
+          onBlur={() => setTimeout(() => setFocusedInput(null), 200)}
+          className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium"
+        />
+        {focusedInput === type && (
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.2)] z-[100] max-h-72 overflow-y-auto border border-gray-100 animate-in fade-in duration-200">
+            {locationSuggestions.filter(s => s.title.toLowerCase().includes(value.toLowerCase()) || value === '').map((loc, idx) => (
+              <div 
+                key={idx} 
+                onClick={() => {setValue(loc.title); setFocusedInput(null);}} 
+                className="flex items-center px-4 py-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 text-left transition-colors"
+              >
+                <div className="bg-gray-100 p-2.5 rounded-full mr-4 shrink-0"><MapPin className="h-5 w-5 text-gray-700" /></div>
+                <div className="truncate">
+                  <div className="font-bold text-gray-900 truncate text-base">{loc.title}</div>
+                  <div className="text-sm text-gray-500 truncate">{loc.subtitle}</div>
+                </div>
+              </div>
+            ))}
+            <div className="flex items-center px-4 py-4 hover:bg-gray-50 cursor-pointer text-black font-medium border-t border-gray-100 transition-colors">
+              <div className="bg-gray-100 p-2.5 rounded-full mr-4 shrink-0"><Map className="h-5 w-5 text-black" /></div>
+              Set location on map
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative">
       <style>{`
@@ -239,7 +303,6 @@ const BookRide = () => {
           <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
           <p className="text-red-100 text-xl text-center max-w-lg mb-12">Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?</p>
           <div className="flex flex-col w-full max-w-md gap-4">
-            {/* 🚨 TEST NUMBER UPDATED HERE 🚨 */}
             <a href="tel:112" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center"><PhoneCall className="mr-3 h-8 w-8" /> Call Police (112)</a>
             <button onClick={() => setShowSOSPopup(false)} className="w-full bg-transparent border-2 border-white/50 text-white font-bold text-xl py-5 rounded-2xl hover:bg-white/10 transition">Cancel - I am safe</button>
           </div>
@@ -300,7 +363,6 @@ const BookRide = () => {
             <button onClick={() => setMainView('drive')} className={`px-3 py-2 rounded-full transition ${mainView === 'drive' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Drive</button>
             <button onClick={() => setMainView('business')} className={`px-3 py-2 rounded-full transition ${mainView === 'business' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>Business</button>
             <button onClick={() => setMainView('about')} className={`px-3 py-2 rounded-full transition ${mainView === 'about' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}>About</button>
-            {/* NEW: DASHBOARD LINK */}
             <button onClick={() => setMainView('dashboard')} className={`px-3 py-2 rounded-full transition flex items-center ${mainView === 'dashboard' ? 'bg-gray-800 text-green-400' : 'hover:bg-gray-800 text-yellow-400'}`}>Dashboard <span className="ml-1 text-[10px] bg-red-600 px-1.5 rounded-full text-white">New</span></button>
           </div>
         </div>
@@ -344,7 +406,6 @@ const BookRide = () => {
       {/* 👤 PASSENGER DASHBOARD PAGE */}
       {mainView === 'dashboard' && (
         <main className="max-w-6xl mx-auto px-4 md:px-12 py-12 animate-in fade-in duration-500 flex flex-col md:flex-row gap-8">
-          {/* Sidebar */}
           <div className="w-full md:w-1/4">
             <div className="flex items-center space-x-4 mb-8">
               <div className="h-16 w-16 bg-gray-200 rounded-full flex items-center justify-center border-2 border-black"><User className="h-8 w-8 text-gray-500"/></div>
@@ -357,10 +418,7 @@ const BookRide = () => {
               <button onClick={() => setMainView('login')} className="w-full text-left px-4 py-3 rounded-xl font-bold flex items-center text-red-600 hover:bg-red-50 mt-4 transition"><LogOut className="h-5 w-5 mr-3"/> Log Out</button>
             </div>
           </div>
-
-          {/* Main Content Area */}
           <div className="w-full md:w-3/4">
-            {/* History Tab */}
             {dashTab === 'history' && (
               <div>
                 <h2 className="text-3xl font-bold mb-6">Recent Rides</h2>
@@ -387,8 +445,6 @@ const BookRide = () => {
                 </div>
               </div>
             )}
-
-            {/* Profile Tab */}
             {dashTab === 'profile' && (
               <div>
                 <h2 className="text-3xl font-bold mb-6">Profile Details</h2>
@@ -403,8 +459,6 @@ const BookRide = () => {
                 </div>
               </div>
             )}
-
-            {/* Settings Tab */}
             {dashTab === 'settings' && (
               <div>
                 <h2 className="text-3xl font-bold mb-6">Security & Settings</h2>
@@ -445,7 +499,7 @@ const BookRide = () => {
 
           <main className="max-w-7xl mx-auto px-4 md:px-12 py-12 flex flex-col md:flex-row gap-12 items-start">
             {/* LEFT COLUMN: THE FORMS */}
-            <div className="w-full md:w-1/2 flex flex-col relative min-h-[500px]">
+            <div className={`w-full flex flex-col relative min-h-[500px] ${rideConfirmed ? '' : 'md:w-1/2'}`}>
               
               {/* --- 📦 PARCEL VIEW --- */}
               {activeTab === 'parcel' && !showPrices && !rideConfirmed && (
@@ -461,14 +515,8 @@ const BookRide = () => {
                   </div>
                   <div className="relative flex flex-col space-y-3 w-full mb-8">
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
-                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
-                      <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
-                      <input type="text" placeholder="Choose sender's location" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
-                    </div>
-                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
-                      <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
-                      <input type="text" placeholder="Choose recipient's location" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
-                    </div>
+                    {renderLocationInput('pickup', "Choose sender's location", pickup, setPickup)}
+                    {renderLocationInput('dropoff', "Choose recipient's location", dropoff, setDropoff)}
                   </div>
                   <button onClick={() => setShowPrices(true)} disabled={!pickup || !dropoff} className={`text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto transition ${(!pickup || !dropoff) ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-800 shadow-lg'}`}>Search</button>
                 </div>
@@ -480,14 +528,8 @@ const BookRide = () => {
                   <h1 className="text-4xl font-bold mb-8 mt-4">Find a trip</h1>
                   <div className="relative flex flex-col space-y-3 w-full mb-6">
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
-                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
-                      <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
-                      <input type="text" placeholder="Pick-up location" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
-                    </div>
-                    <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
-                      <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
-                      <input type="text" placeholder="Drop-off location" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
-                    </div>
+                    {renderLocationInput('pickup', "Pick-up location", pickup, setPickup)}
+                    {renderLocationInput('dropoff', "Drop-off location", dropoff, setDropoff)}
                   </div>
                   <div className="relative mb-3">
                     <div onClick={() => { setShowTimeDropdown(!showTimeDropdown); setShowForWhoDropdown(false); }} className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 hover:bg-gray-200 cursor-pointer transition">
@@ -516,13 +558,12 @@ const BookRide = () => {
                   <button onClick={() => setShowPrices(true)} disabled={!pickup || !dropoff} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto hover:bg-gray-800 transition disabled:bg-gray-300">Search</button>
                 </div>
               )}
-
             
               {/* --- STANDARD RIDE VIEWS (Request, Prices, etc) --- */}
               {(['request', 'reserve', 'explore'].includes(activeTab) || showPrices || rideConfirmed) && (
                 <>
                   {rideConfirmed ? (
-                    // 🚨 LIVE SECURITY DASHBOARD 🚨
+                    // 🚨 LIVE SECURITY DASHBOARD - NOW FULL WIDTH 🚨
                     <div className="w-full h-[600px] flex flex-col animate-in fade-in duration-500">
                       <h2 className="text-3xl font-bold mb-4 flex items-center"><ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring</h2>
                       
@@ -539,63 +580,64 @@ const BookRide = () => {
 
                         <button 
                           onClick={() => setShowSOSPopup(true)}
-                          className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-4 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-xl animate-pulse transition transform hover:scale-105"
+                          className="absolute top-6 right-6 bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-5 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-2xl animate-pulse transition transform hover:scale-105"
                         >
-                          <Siren className="mr-2 h-6 w-6" /> SOS
+                          <Siren className="mr-3 h-8 w-8" /> SOS
                         </button>
 
-                        <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
-                          <div className="flex justify-between items-center mb-2">
-                            <h2 className="text-xl font-bold text-gray-900">Driver Rahul S. ({selectedCar})</h2>
-                            <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">On Route</span>
+                        <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-8 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10 flex flex-col md:flex-row gap-8 items-center">
+                          <div className="w-full md:w-2/3">
+                            <div className="flex justify-between items-center mb-2">
+                              <h2 className="text-2xl font-bold text-gray-900">Driver Rahul S. ({selectedCar})</h2>
+                              <span className="text-sm font-bold bg-green-100 text-green-700 px-3 py-1 rounded-full">On Route</span>
+                            </div>
+                            
+                            <div className="w-full bg-blue-100 rounded-full h-4 mb-2 overflow-hidden mt-6">
+                              <div className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${rideProgress}%` }}></div>
+                            </div>
+                            
+                            <div className="flex justify-between text-sm text-gray-500 font-medium mb-4 mt-2">
+                              <span>{pickup}</span>
+                              <span className="font-bold text-green-600 text-base">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}%`}</span>
+                              <span>{dropoff}</span>
+                            </div>
                           </div>
                           
-                          <div className="w-full bg-blue-100 rounded-full h-3 mb-2 overflow-hidden mt-4">
-                            <div className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${rideProgress}%` }}></div>
-                          </div>
-                          
-                          <div className="flex justify-between text-xs text-gray-500 font-medium mb-4">
-                            <span>{pickup}</span>
-                            <span className="font-bold text-green-600">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}%`}</span>
-                            <span>{dropoff}</span>
-                          </div>
-                          
-                          {/* 🟢 CLICKABLE AND ADDABLE EMERGENCY CONTACTS 🟢 */}
-                          <div className="border-t border-gray-200 pt-4 mt-2">
-                            <div className="flex justify-between items-center mb-3">
-                              <p className="text-sm font-bold text-gray-700">Emergency Contacts</p>
+                          <div className="w-full md:w-1/3 border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-8">
+                            <div className="flex justify-between items-center mb-4">
+                              <p className="text-base font-bold text-gray-700">Emergency Contacts</p>
                               <button 
                                 onClick={() => setShowAddContactModal(true)} 
-                                className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center transition"
+                                className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center transition"
                               >
-                                <Plus className="h-3 w-3 mr-1"/> Add New
+                                <Plus className="h-4 w-4 mr-1"/> Add
                               </button>
                             </div>
                             
-                            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
+                            <div className="flex flex-wrap gap-2 mb-6">
                               {emergencyContacts.map((contact, idx) => (
                                 <a 
                                   key={idx} 
                                   href={`tel:${contact.phone}`} 
-                                  className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max hover:bg-gray-200 hover:shadow-sm transition border border-transparent hover:border-gray-300 shrink-0"
+                                  className="bg-gray-100 px-4 py-2 rounded-lg text-sm font-bold flex items-center w-max hover:bg-gray-200 hover:shadow-sm transition border border-transparent hover:border-gray-300"
                                 >
                                   <PhoneCall className="h-4 w-4 mr-2 text-green-600"/> {contact.name}
                                 </a>
                               ))}
                             </div>
-                          </div>
 
-                          <div className="flex gap-2 mt-4">
-                            {rideProgress === 100 ? (
-                              <button onClick={resetRide} className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition">Book Again</button>
-                            ) : (
-                              <>
-                                <button onClick={() => setShowDeviationPopup(true)} className="w-1/2 bg-yellow-100 text-yellow-800 font-bold py-3 rounded-xl hover:bg-yellow-200 transition border border-yellow-300">
-                                  Test Route Warning
-                                </button>
-                                <button onClick={resetRide} className="w-1/2 bg-gray-200 text-black font-bold py-3 rounded-xl hover:bg-gray-300 transition">Cancel Ride</button>
-                              </>
-                            )}
+                            <div className="flex gap-3">
+                              {rideProgress === 100 ? (
+                                <button onClick={resetRide} className="w-full bg-black text-white font-bold py-3.5 rounded-xl hover:bg-gray-800 transition">Book Again</button>
+                              ) : (
+                                <>
+                                  <button onClick={() => setShowDeviationPopup(true)} className="w-1/2 bg-yellow-100 text-yellow-800 font-bold py-3.5 rounded-xl hover:bg-yellow-200 transition border border-yellow-300">
+                                    Test Route Warning
+                                  </button>
+                                  <button onClick={resetRide} className="w-1/2 bg-gray-200 text-black font-bold py-3.5 rounded-xl hover:bg-gray-300 transition">Cancel Ride</button>
+                                </>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -624,8 +666,8 @@ const BookRide = () => {
                       <button className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 w-max px-4 py-3 rounded-full font-medium mb-6 transition"><Clock className="h-5 w-5" /><span>{activeTab === 'reserve' ? 'Schedule for later' : 'Pickup now'}</span><ChevronDown className="h-5 w-5" /></button>
                       <div className="relative flex flex-col space-y-3 w-full">
                         <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
-                        <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black"><div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div><input type="text" placeholder="Pickup (e.g., Delhi, Bangalore)" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" /><Navigation className="h-5 w-5 text-gray-500 ml-2" /></div>
-                        <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black"><Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" /><input type="text" placeholder="Dropoff (e.g., Mumbai, Goa)" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" /></div>
+                        {renderLocationInput('pickup', "Pickup (e.g., Delhi, Bangalore)", pickup, setPickup)}
+                        {renderLocationInput('dropoff', "Dropoff (e.g., Mumbai, Goa)", dropoff, setDropoff)}
                       </div>
                       <div className="mt-auto pt-8">
                         <button onClick={() => setShowPrices(true)} disabled={!pickup || !dropoff} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform">Search route & see prices</button>
@@ -637,25 +679,26 @@ const BookRide = () => {
               )}
             </div>
 
-            {/* RIGHT COLUMN: The Map */}
-            <div className="w-full md:w-1/2 mt-8 md:mt-0 h-[500px]">
-              <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl bg-gray-100">
-                <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
-                   <MapContainer center={[20.5937, 78.9629]} zoom={4} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                   </MapContainer>
-                </div>
-                {!rideConfirmed && (
+            {/* RIGHT COLUMN: The Background Map (Hides when ride is confirmed to allow Dashboard to be full width) */}
+            {!rideConfirmed && (
+              <div className="w-full md:w-1/2 mt-8 md:mt-0 h-[500px]">
+                <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl bg-gray-100">
+                  <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
+                    <MapContainer center={[20.5937, 78.9629]} zoom={4} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    </MapContainer>
+                  </div>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8">
                     <h3 className="text-white text-3xl font-bold w-3/4">Travel safely anywhere in India.</h3>
                   </div>
-                )}
-                <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold text-green-700 shadow z-20">
-                  <ShieldCheck className="h-4 w-4" />
-                  <span>AI Security Active</span>
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold text-green-700 shadow z-20">
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>AI Security Active</span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
+
           </main>
 
           {/* EXPLORE SECTION */}
