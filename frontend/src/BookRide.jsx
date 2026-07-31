@@ -447,7 +447,7 @@ const BookRide = () => {
             {/* LEFT COLUMN: THE FORMS */}
             <div className="w-full md:w-1/2 flex flex-col relative min-h-[500px]">
               
-              {/* --- 📦 PARCEL VIEW --- */}
+                            {/* --- 📦 PARCEL VIEW --- */}
               {activeTab === 'parcel' && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   <div className="w-full h-40 bg-orange-100 rounded-t-2xl overflow-hidden mb-6 relative">
@@ -463,18 +463,17 @@ const BookRide = () => {
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
-                      <input type="text" placeholder="Choose sender's location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                      <input type="text" placeholder="Choose sender's location" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
-                      <input type="text" placeholder="Choose recipient's location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                      <input type="text" placeholder="Choose recipient's location" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
                   </div>
-                  <button className="bg-gray-200 text-gray-500 text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto cursor-not-allowed">Search</button>
+                  <button onClick={() => setShowPrices(true)} disabled={!pickup || !dropoff} className={`text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto transition ${(!pickup || !dropoff) ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-800 shadow-lg'}`}>Search</button>
                 </div>
               )}
-
-              {/* --- 🚗 RENTALS VIEW --- */}
+                                   {/* --- 🚗 RENTALS VIEW --- */}
               {activeTab === 'rentals' && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   <h1 className="text-4xl font-bold mb-8 mt-4">Find a trip</h1>
@@ -482,11 +481,11 @@ const BookRide = () => {
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
-                      <input type="text" placeholder="Pick-up location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                      <input type="text" placeholder="Pick-up location" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
-                      <input type="text" placeholder="Drop-off location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
+                      <input type="text" placeholder="Drop-off location" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
                   </div>
                   <div className="relative mb-3">
@@ -513,10 +512,11 @@ const BookRide = () => {
                       </div>
                     )}
                   </div>
-                  <button className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto hover:bg-gray-800 transition">Search</button>
+                  <button onClick={() => setShowPrices(true)} disabled={!pickup || !dropoff} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto hover:bg-gray-800 transition disabled:bg-gray-300">Search</button>
                 </div>
               )}
 
+            
               {/* --- STANDARD RIDE VIEWS (Request, Prices, etc) --- */}
               {['request', 'reserve', 'prices', 'explore'].includes(activeTab) && (
                 <>
