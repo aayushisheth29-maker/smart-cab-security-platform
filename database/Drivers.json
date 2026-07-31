@@ -1,0 +1,100 @@
+[{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd0"
+  },
+  "Driver_ID": 2,
+  "Driver_Name": "Suresh Yadav",
+  "Phone": "9898989802",
+  "License_Number": "GJDL002",
+  "Rating": 4.6
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd1"
+  },
+  "Driver_ID": 3,
+  "Driver_Name": "Mahesh Verma",
+  "Phone": "9898989803",
+  "License_Number": "GJDL003",
+  "Rating": 4.9
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd3"
+  },
+  "Driver_ID": 5,
+  "Driver_Name": "Arjun Desai",
+  "Phone": "9898989805",
+  "License_Number": "GJDL005",
+  "Rating": 4.7
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd7"
+  },
+  "Driver_ID": 9,
+  "Driver_Name": "Nitin Mehta",
+  "Phone": "9898989809",
+  "License_Number": "GJDL009",
+  "Rating": 4.8
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd2"
+  },
+  "Driver_ID": 4,
+  "Driver_Name": "Vijay Shah",
+  "Phone": "9898989804",
+  "License_Number": "GJDL004",
+  "Rating": 4.5
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd4"
+  },
+  "Driver_ID": 6,
+  "Driver_Name": "Ravi Kumar",
+  "Phone": "9898989806",
+  "License_Number": "GJDL006",
+  "Rating": 4.4
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073ccf"
+  },
+  "Driver_ID": 1,
+  "Driver_Name": "Ramesh Patel",
+  "Phone": "9898989801",
+  "License_Number": "GJDL001",
+  "Rating": 4.8
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd5"
+  },
+  "Driver_ID": 7,
+  "Driver_Name": "Deepak Singh",
+  "Phone": "9898989807",
+  "License_Number": "GJDL007",
+  "Rating": 4.9
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd8"
+  },
+  "Driver_ID": 10,
+  "Driver_Name": "Harsh Joshi",
+  "Phone": "9898989810",
+  "License_Number": "GJDL010",
+  "Rating": 4.6
+},
+{
+  "_id": {
+    "$oid": "6a65ccde09077d6d9c073cd6"
+  },
+  "Driver_ID": 8,
+  "Driver_Name": "Kishan Patel",
+  "Phone": "9898989808",
+  "License_Number": "GJDL008",
+  "Rating": 4.3
+}]

@@ -1,0 +1,90 @@
+[{
+  "_id": {
+    "$oid": "6a65cab509077d6d9c073cae"
+  },
+  "Cab_ID": 1,
+  "Vehicle_Number": "GJ01AB1234",
+  "Vehicle_Type": "Sedan",
+  "Driver_ID": 1
+},
+{
+  "_id": {
+    "$oid": "6a65cac709077d6d9c073cb0"
+  },
+  "Cab_ID": 2,
+  "Vehicle_Number": "GJ05CD5678",
+  "Vehicle_Type": "SUV",
+  "Driver_ID": 2
+},
+{
+  "_id": {
+    "$oid": "6a65cb1709077d6d9c073cb2"
+  },
+  "Cab_ID": 3,
+  "Vehicle_Number": "GJ18EF9012",
+  "Vehicle_Type": "Hatchback",
+  "Driver_ID": 3
+},
+{
+  "_id": {
+    "$oid": "6a65cb2609077d6d9c073cb4"
+  },
+  "Cab_ID": 4,
+  "Vehicle_Number": "GJ27GH3456",
+  "Vehicle_Type": "Sedan",
+  "Driver_ID": 4
+},
+{
+  "_id": {
+    "$oid": "6a65cb3409077d6d9c073cb6"
+  },
+  "Cab_ID": 5,
+  "Vehicle_Number": "GJ06IJ7890",
+  "Vehicle_Type": "SUV",
+  "Driver_ID": 5
+},
+{
+  "_id": {
+    "$oid": "6a65cd1a09077d6d9c073cdf"
+  },
+  "Cab_ID": 9,
+  "Vehicle_Number": "GJ09QR7788",
+  "Vehicle_Type": "Hatchback",
+  "Driver_ID": 9
+},
+{
+  "_id": {
+    "$oid": "6a65cd1a09077d6d9c073cdd"
+  },
+  "Cab_ID": 7,
+  "Vehicle_Number": "GJ15MN3344",
+  "Vehicle_Type": "Sedan",
+  "Driver_ID": 7
+},
+{
+  "_id": {
+    "$oid": "6a65cd1a09077d6d9c073ce0"
+  },
+  "Cab_ID": 10,
+  "Vehicle_Number": "GJ11ST9900",
+  "Vehicle_Type": "Sedan",
+  "Driver_ID": 10
+},
+{
+  "_id": {
+    "$oid": "6a65cd1a09077d6d9c073cde"
+  },
+  "Cab_ID": 8,
+  "Vehicle_Number": "GJ22OP5566",
+  "Vehicle_Type": "SUV",
+  "Driver_ID": 8
+},
+{
+  "_id": {
+    "$oid": "6a65cd1a09077d6d9c073cdc"
+  },
+  "Cab_ID": 6,
+  "Vehicle_Number": "GJ10KL1122",
+  "Vehicle_Type": "Mini",
+  "Driver_ID": 6
+}]

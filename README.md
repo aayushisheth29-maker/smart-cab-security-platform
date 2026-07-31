@@ -46,3 +46,18 @@ See: [Database.sql](docs/Database.sql)
 
 ### System_Architecture_Diagram
 See:  [System_Architecture_Diagram](docs/System_Architecture_Diagram.md)
+
+
+## Week 4 - Backend Development
+
+### API Design
+- [API Design](docs/API_Design.md)
+
+### Module Design
+- [Module Design](docs/Module_Design.md)
+
+### Backend Architecture
+- [Backend Architecture](docs/Backend_Architecture.md)
+
+### Business Logic
+- [Business Logic](docs/Business_Logic.md)

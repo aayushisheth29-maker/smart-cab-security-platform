@@ -1,0 +1,140 @@
+[{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ce8"
+  },
+  "Trip_ID": 6,
+  "User_ID": 6,
+  "Cab_ID": 6,
+  "Pickup_Location": "Hospital",
+  "Drop_Location": "Railway Station",
+  "Fare": 190,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T14:00:00",
+  "End_Time": "2026-07-21T14:35:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073cec"
+  },
+  "Trip_ID": 10,
+  "User_ID": 10,
+  "Cab_ID": 10,
+  "Pickup_Location": "Bus Depot",
+  "Drop_Location": "Hospital",
+  "Fare": 160,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T18:00:00",
+  "End_Time": "2026-07-21T18:35:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ceb"
+  },
+  "Trip_ID": 9,
+  "User_ID": 9,
+  "Cab_ID": 9,
+  "Pickup_Location": "Hotel",
+  "Drop_Location": "Airport",
+  "Fare": 340,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T17:00:00",
+  "End_Time": "2026-07-21T17:50:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ce5"
+  },
+  "Trip_ID": 3,
+  "User_ID": 3,
+  "Cab_ID": 3,
+  "Pickup_Location": "Bus Stand",
+  "Drop_Location": "Palace",
+  "Fare": 140,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T11:00:00",
+  "End_Time": "2026-07-21T11:25:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ce9"
+  },
+  "Trip_ID": 7,
+  "User_ID": 7,
+  "Cab_ID": 7,
+  "Pickup_Location": "Bus Stand",
+  "Drop_Location": "Airport",
+  "Fare": 275,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T15:00:00",
+  "End_Time": "2026-07-21T15:45:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073cea"
+  },
+  "Trip_ID": 8,
+  "User_ID": 8,
+  "Cab_ID": 8,
+  "Pickup_Location": "Market",
+  "Drop_Location": "College",
+  "Fare": 95,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T16:00:00",
+  "End_Time": "2026-07-21T16:20:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ce3"
+  },
+  "Trip_ID": 1,
+  "User_ID": 1,
+  "Cab_ID": 1,
+  "Pickup_Location": "Ahmedabad Railway Station",
+  "Drop_Location": "Airport",
+  "Fare": 320.5,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T09:00:00",
+  "End_Time": "2026-07-21T09:45:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ce4"
+  },
+  "Trip_ID": 2,
+  "User_ID": 2,
+  "Cab_ID": 2,
+  "Pickup_Location": "Surat Station",
+  "Drop_Location": "VR Mall",
+  "Fare": 180,
+  "Trip_Status": "Completed",
+  "Start_Time": "2026-07-21T10:00:00",
+  "End_Time": "2026-07-21T10:30:00"
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ce6"
+  },
+  "Trip_ID": 4,
+  "User_ID": 4,
+  "Cab_ID": 4,
+  "Pickup_Location": "University",
+  "Drop_Location": "Mall",
+  "Fare": 210,
+  "Trip_Status": "Cancelled",
+  "Start_Time": "2026-07-21T12:00:00",
+  "End_Time": null
+},
+{
+  "_id": {
+    "$oid": "6a65cd2c09077d6d9c073ce7"
+  },
+  "Trip_ID": 5,
+  "User_ID": 5,
+  "Cab_ID": 5,
+  "Pickup_Location": "Sector 21",
+  "Drop_Location": "Temple",
+  "Fare": 125,
+  "Trip_Status": "Ongoing",
+  "Start_Time": "2026-07-21T13:30:00",
+  "End_Time": null
+}]
