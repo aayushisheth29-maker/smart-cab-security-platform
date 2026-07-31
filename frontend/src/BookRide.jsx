@@ -5,7 +5,7 @@ import {
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
-  CreditCard, Users, Plane, Box
+  CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
@@ -50,13 +50,11 @@ const BookRide = () => {
   
   const [parcelMode, setParcelMode] = useState('send');
 
-  // --- NEW STATES FOR RENTAL DROPDOWNS ---
   const [showTimeDropdown, setShowTimeDropdown] = useState(false);
   const [pickupTime, setPickupTime] = useState('Pick up now');
   
   const [showForWhoDropdown, setShowForWhoDropdown] = useState(false);
   const [forWho, setForWho] = useState('For me');
-  // ---------------------------------------
 
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [showBusinessForm, setShowBusinessForm] = useState(false);
@@ -81,7 +79,11 @@ const BookRide = () => {
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
 
-  // --- GOOGLE TRANSLATE MAGIC SCRIPT ---
+  // --- NEW STATES FOR EMERGENCY FEATURES ---
+  const [showSOSPopup, setShowSOSPopup] = useState(false);
+  const [showDeviationPopup, setShowDeviationPopup] = useState(false);
+
+  // Google Translate Magic Script
   useEffect(() => {
     if (!document.getElementById('google-translate-script')) {
       const addScript = document.createElement('script');
@@ -105,10 +107,10 @@ const BookRide = () => {
     setIsLangModalOpen(false);
     window.location.reload(); 
   };
-  // ------------------------------------
 
   useEffect(() => {
-    if (rideConfirmed && rideProgress < 100) {
+    // Only progress ride if we aren't showing the deviation pause
+    if (rideConfirmed && rideProgress < 100 && !showDeviationPopup) {
       const timer = setInterval(() => {
         setRideProgress((prev) => {
           const next = prev + 1;
@@ -117,20 +119,18 @@ const BookRide = () => {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [rideConfirmed, rideProgress]);
+  }, [rideConfirmed, rideProgress, showDeviationPopup]);
 
   const geocodeLocation = async (address) => {
     try {
       const searchQuery = encodeURIComponent(address + ", India"); 
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${searchQuery}&limit=1`);
       const data = await response.json();
-      
       if (data && data.length > 0) {
         return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
       }
       return null;
     } catch (error) {
-      console.error("Error finding location:", error);
       return null;
     }
   };
@@ -185,35 +185,71 @@ const BookRide = () => {
     setDropoffCoords(null);
     setMapCenter([20.5937, 78.9629]); 
     setMapZoom(5);
+    setShowSOSPopup(false);
+    setShowDeviationPopup(false);
   };
 
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative">
-      
-      {/* CSS HIDES THE UGLY GOOGLE TRANSLATE BAR */}
       <style>{`
         body { top: 0 !important; position: static !important; }
         .skiptranslate { display: none !important; }
         .goog-te-banner-frame { display: none !important; }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
-      {/* Hidden Div required for Google Translate */}
       <div id="google_translate_element" style={{ display: 'none' }}></div>
 
-      {/* LANGUAGE SELECTION MODAL */}
+      {/* --- SOS EMERGENCY POPUP --- */}
+      {showSOSPopup && (
+        <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[300] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
+          <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
+          <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
+          <p className="text-red-100 text-xl text-center max-w-lg mb-12">
+            Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?
+          </p>
+          <div className="flex flex-col w-full max-w-md gap-4">
+            <button className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center">
+              <PhoneCall className="mr-3 h-8 w-8" /> Call Police (100)
+            </button>
+            <button onClick={() => setShowSOSPopup(false)} className="w-full bg-transparent border-2 border-white/50 text-white font-bold text-xl py-5 rounded-2xl hover:bg-white/10 transition">
+              Cancel - I am safe
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* --- ROUTE DEVIATION POPUP --- */}
+      {showDeviationPopup && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-yellow-400 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 bg-yellow-400 h-2 animate-pulse"></div>
+            <AlertCircle className="h-20 w-20 text-yellow-500 mb-6 mx-auto" />
+            <h2 className="text-3xl font-bold text-center mb-4">Route Deviation Detected</h2>
+            <p className="text-gray-600 text-center text-lg mb-8">
+              Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in 60 seconds, we will alert your emergency contacts.
+            </p>
+            <div className="flex flex-col gap-3">
+              <button onClick={() => setShowDeviationPopup(false)} className="w-full bg-green-500 text-white font-bold text-xl py-4 rounded-xl hover:bg-green-600 shadow-lg">
+                Yes, I am fine
+              </button>
+              <button onClick={() => { setShowDeviationPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center">
+                <Siren className="h-6 w-6 mr-2" /> No, trigger SOS
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* LANGUAGE MODAL */}
       {isLangModalOpen && (
         <div className="fixed inset-0 bg-white z-[200] overflow-y-auto animate-in fade-in duration-200">
           <div className="p-6 md:p-12 max-w-6xl mx-auto relative min-h-screen">
-            <button 
-              onClick={() => setIsLangModalOpen(false)} 
-              className="absolute top-6 right-6 md:top-8 md:right-8 p-3 hover:bg-gray-100 rounded-full text-black transition"
-            >
+            <button onClick={() => setIsLangModalOpen(false)} className="absolute top-6 right-6 md:top-8 md:right-8 p-3 hover:bg-gray-100 rounded-full text-black transition">
               <X className="h-8 w-8" strokeWidth={2.5} />
             </button>
-            
             <div className="mt-20 md:mt-32">
               <h2 className="text-4xl md:text-5xl font-bold mb-16 notranslate">Select your preferred language</h2>
-              
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-8">
                 {[
                   { eng: 'Bangla', native: 'বাংলা', code: 'bn' },
@@ -225,11 +261,7 @@ const BookRide = () => {
                   { eng: 'Telugu', native: 'తెలుగు', code: 'te' },
                   { eng: 'Urdu', native: 'اردو', code: 'ur' }
                 ].map((lang, idx) => (
-                  <button 
-                    key={idx} 
-                    onClick={() => handleLanguageChange(lang.code)}
-                    className="text-left text-lg text-gray-900 font-medium hover:text-gray-500 transition notranslate"
-                  >
+                  <button key={idx} onClick={() => handleLanguageChange(lang.code)} className="text-left text-lg text-gray-900 font-medium hover:text-gray-500 transition notranslate">
                     {lang.eng}, {lang.native}
                   </button>
                 ))}
@@ -238,14 +270,12 @@ const BookRide = () => {
           </div>
         </div>
       )}
-      
+
       {/* INFO POP-UP */}
       {selectedCard && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-[100] px-4">
           <div className="bg-white rounded-2xl p-8 max-w-md w-full relative shadow-2xl">
-            <button onClick={() => setSelectedCard(null)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full text-gray-500">
-              <X className="h-6 w-6" />
-            </button>
+            <button onClick={() => setSelectedCard(null)} className="absolute top-4 right-4 p-2 hover:bg-gray-100 rounded-full text-gray-500"><X className="h-6 w-6" /></button>
             <h3 className="text-3xl font-bold mb-4">{selectedCard.title}</h3>
             <p className="text-gray-600 mb-6 text-lg">{selectedCard.description}</p>
             <button onClick={() => setSelectedCard(null)} className="w-full bg-black text-white font-bold py-4 rounded-xl text-lg hover:bg-gray-800 transition">Close</button>
@@ -390,177 +420,141 @@ const BookRide = () => {
                   <div className="w-full h-40 bg-orange-100 rounded-t-2xl overflow-hidden mb-6 relative">
                     <img src="https://images.unsplash.com/photo-1617500585800-47b220b396b2?auto=format&fit=crop&q=80&w=800" alt="Courier" className="w-full h-full object-cover" />
                   </div>
-                  
                   <h1 className="text-4xl font-bold mb-3">Courier</h1>
                   <p className="text-gray-600 mb-6 text-lg">Have a courier deliver something for you. Get packages delivered in the time it takes to drive there.</p>
 
                   <div className="flex bg-gray-100 rounded-xl p-1 mb-6">
-                    <button 
-                      onClick={() => setParcelMode('send')}
-                      className={`flex-1 py-3 text-lg font-bold rounded-lg transition-all ${parcelMode === 'send' ? 'bg-white shadow-sm border border-gray-200 text-black' : 'text-gray-500 hover:text-black'}`}
-                    >
-                      Send
-                    </button>
-                    <button 
-                      onClick={() => setParcelMode('receive')}
-                      className={`flex-1 py-3 text-lg font-bold rounded-lg transition-all ${parcelMode === 'receive' ? 'bg-white shadow-sm border border-gray-200 text-black' : 'text-gray-500 hover:text-black'}`}
-                    >
-                      Receive
-                    </button>
+                    <button onClick={() => setParcelMode('send')} className={`flex-1 py-3 text-lg font-bold rounded-lg transition-all ${parcelMode === 'send' ? 'bg-white shadow-sm border border-gray-200 text-black' : 'text-gray-500 hover:text-black'}`}>Send</button>
+                    <button onClick={() => setParcelMode('receive')} className={`flex-1 py-3 text-lg font-bold rounded-lg transition-all ${parcelMode === 'receive' ? 'bg-white shadow-sm border border-gray-200 text-black' : 'text-gray-500 hover:text-black'}`}>Receive</button>
                   </div>
 
                   <div className="relative flex flex-col space-y-3 w-full mb-8">
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
-                    
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
                       <input type="text" placeholder="Choose sender's location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
-
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
                       <input type="text" placeholder="Choose recipient's location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
                   </div>
-
-                  <button className="bg-gray-200 text-gray-500 text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto cursor-not-allowed">
-                    Search
-                  </button>
+                  <button className="bg-gray-200 text-gray-500 text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto cursor-not-allowed">Search</button>
                 </div>
               )}
 
               {/* --- 🚗 RENTALS VIEW --- */}
               {activeTab === 'rentals' && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
-                  
                   <h1 className="text-4xl font-bold mb-8 mt-4">Find a trip</h1>
-
                   <div className="relative flex flex-col space-y-3 w-full mb-6">
                     <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
-                    
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
                       <input type="text" placeholder="Pick-up location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
-
                     <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-4 focus-within:ring-2 focus-within:ring-black">
                       <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
                       <input type="text" placeholder="Drop-off location" className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                     </div>
                   </div>
 
-                  {/* 🟢 NEW CLICKABLE DROPDOWN: Pick Up Time */}
                   <div className="relative mb-3">
-                    <div 
-                      onClick={() => { setShowTimeDropdown(!showTimeDropdown); setShowForWhoDropdown(false); }}
-                      className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 hover:bg-gray-200 cursor-pointer transition"
-                    >
-                      <div className="flex items-center">
-                        <Clock className="h-5 w-5 text-black mr-4" />
-                        <span className="text-lg font-medium">{pickupTime}</span>
-                      </div>
+                    <div onClick={() => { setShowTimeDropdown(!showTimeDropdown); setShowForWhoDropdown(false); }} className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 hover:bg-gray-200 cursor-pointer transition">
+                      <div className="flex items-center"><Clock className="h-5 w-5 text-black mr-4" /><span className="text-lg font-medium">{pickupTime}</span></div>
                       <ChevronDown className="h-5 w-5 text-gray-500" />
                     </div>
-                    
-                    {/* Time Dropdown Menu */}
                     {showTimeDropdown && (
                       <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
-                        <button 
-                          onClick={() => { setPickupTime('Pick up now'); setShowTimeDropdown(false); }} 
-                          className="w-full text-left px-6 py-4 hover:bg-gray-50 border-b border-gray-100 text-lg font-medium transition"
-                        >
-                          Pick up now
-                        </button>
-                        <button 
-                          onClick={() => { setPickupTime('Schedule for later'); setShowTimeDropdown(false); }} 
-                          className="w-full text-left px-6 py-4 hover:bg-gray-50 text-lg font-medium transition"
-                        >
-                          Schedule for later
-                        </button>
+                        <button onClick={() => { setPickupTime('Pick up now'); setShowTimeDropdown(false); }} className="w-full text-left px-6 py-4 hover:bg-gray-50 border-b border-gray-100 text-lg font-medium transition">Pick up now</button>
+                        <button onClick={() => { setPickupTime('Schedule for later'); setShowTimeDropdown(false); }} className="w-full text-left px-6 py-4 hover:bg-gray-50 text-lg font-medium transition">Schedule for later</button>
                       </div>
                     )}
                   </div>
 
-                  {/* 🟢 NEW CLICKABLE DROPDOWN: For Me / Guest */}
                   <div className="relative mb-8 w-max">
-                    <div 
-                      onClick={() => { setShowForWhoDropdown(!showForWhoDropdown); setShowTimeDropdown(false); }}
-                      className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 hover:bg-gray-200 cursor-pointer transition pr-6"
-                    >
-                      <div className="flex items-center">
-                        <User className="h-5 w-5 text-black mr-4" />
-                        <span className="text-lg font-medium">{forWho}</span>
-                      </div>
+                    <div onClick={() => { setShowForWhoDropdown(!showForWhoDropdown); setShowTimeDropdown(false); }} className="flex items-center justify-between bg-gray-100 rounded-lg px-4 py-4 hover:bg-gray-200 cursor-pointer transition pr-6">
+                      <div className="flex items-center"><User className="h-5 w-5 text-black mr-4" /><span className="text-lg font-medium">{forWho}</span></div>
                       <ChevronDown className="h-5 w-5 text-gray-500 ml-4" />
                     </div>
-                    
-                    {/* For Who Dropdown Menu */}
                     {showForWhoDropdown && (
                       <div className="absolute top-full left-0 mt-2 w-56 bg-white border border-gray-200 rounded-xl shadow-xl z-50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
-                        <button 
-                          onClick={() => { setForWho('For me'); setShowForWhoDropdown(false); }} 
-                          className="w-full text-left px-6 py-4 hover:bg-gray-50 border-b border-gray-100 text-lg font-medium transition"
-                        >
-                          For me
-                        </button>
-                        <button 
-                          onClick={() => { setForWho('For a guest'); setShowForWhoDropdown(false); }} 
-                          className="w-full text-left px-6 py-4 hover:bg-gray-50 text-lg font-medium transition"
-                        >
-                          For a guest
-                        </button>
+                        <button onClick={() => { setForWho('For me'); setShowForWhoDropdown(false); }} className="w-full text-left px-6 py-4 hover:bg-gray-50 border-b border-gray-100 text-lg font-medium transition">For me</button>
+                        <button onClick={() => { setForWho('For a guest'); setShowForWhoDropdown(false); }} className="w-full text-left px-6 py-4 hover:bg-gray-50 text-lg font-medium transition">For a guest</button>
                       </div>
                     )}
                   </div>
 
-                  <button className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto hover:bg-gray-800 transition">
-                    Search
-                  </button>
+                  <button className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto hover:bg-gray-800 transition">Search</button>
                 </div>
               )}
 
-              {/* --- STANDARD RIDE VIEWS --- */}
+              {/* --- STANDARD RIDE VIEWS (Request, Prices) --- */}
               {['request', 'reserve', 'prices', 'explore'].includes(activeTab) && (
                 <>
                   {rideConfirmed ? (
-                    <div className="w-full h-[500px] bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200">
-                      <div className="absolute inset-0 z-0">
-                        <MapContainer 
-                          center={mapCenter} 
-                          zoom={mapZoom} 
-                          scrollWheelZoom={false} 
-                          style={{ height: '100%', width: '100%', zIndex: 0 }}
-                          zoomControl={false}
-                        >
-                          <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" attribution='&copy; OpenStreetMap' />
-                          <MapUpdater center={mapCenter} zoom={mapZoom} />
-                          
-                          {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
-                          {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
-                          {pickupCoords && dropoffCoords && <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />}
-                        </MapContainer>
-                      </div>
+                    // 🚨 NEW LIVE SECURITY DASHBOARD 🚨
+                    <div className="w-full h-[600px] flex flex-col animate-in fade-in duration-500">
+                      <h2 className="text-3xl font-bold mb-4 flex items-center"><ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring</h2>
+                      
+                      <div className="w-full flex-1 bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200 mb-4">
+                        <div className="absolute inset-0 z-0">
+                          <MapContainer center={mapCenter} zoom={mapZoom} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }} zoomControl={false}>
+                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <MapUpdater center={mapCenter} zoom={mapZoom} />
+                            {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
+                            {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
+                            {pickupCoords && dropoffCoords && <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />}
+                          </MapContainer>
+                        </div>
 
-                      <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
-                        <div className="flex justify-between items-center mb-2">
-                          <h2 className="text-xl font-bold text-gray-900">Ride in Progress</h2>
-                          <span className="text-xs font-bold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{rideProgress < 50 ? 'Approaching' : rideProgress < 90 ? 'Nearby' : 'Arrived'}</span>
+                        {/* BIG RED SOS BUTTON ON MAP */}
+                        <button 
+                          onClick={() => setShowSOSPopup(true)}
+                          className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-4 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-xl animate-pulse transition transform hover:scale-105"
+                        >
+                          <Siren className="mr-2 h-6 w-6" /> SOS
+                        </button>
+
+                        {/* TRIP PROGRESS OVERLAY */}
+                        <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
+                          <div className="flex justify-between items-center mb-2">
+                            <h2 className="text-xl font-bold text-gray-900">Driver Rahul S. ({selectedCar})</h2>
+                            <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">On Route</span>
+                          </div>
+                          
+                          <div className="w-full bg-blue-100 rounded-full h-3 mb-2 overflow-hidden mt-4">
+                            <div className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${rideProgress}%` }}></div>
+                          </div>
+                          
+                          <div className="flex justify-between text-xs text-gray-500 font-medium mb-4">
+                            <span>{pickup}</span>
+                            <span className="font-bold text-green-600">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}%`}</span>
+                            <span>{dropoff}</span>
+                          </div>
+                          
+                          {/* EMERGENCY CONTACTS LIST */}
+                          <div className="border-t border-gray-200 pt-4 mt-2">
+                            <p className="text-sm font-bold text-gray-700 mb-2">Emergency Contacts</p>
+                            <div className="flex gap-2">
+                              <div className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max"><User className="h-4 w-4 mr-2 text-gray-500"/> Mom</div>
+                              <div className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max"><User className="h-4 w-4 mr-2 text-gray-500"/> Brother</div>
+                            </div>
+                          </div>
+
+                          <div className="flex gap-2 mt-4">
+                            {rideProgress === 100 ? (
+                              <button onClick={resetRide} className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition">Book Again</button>
+                            ) : (
+                              <>
+                                <button onClick={() => setShowDeviationPopup(true)} className="w-1/2 bg-yellow-100 text-yellow-800 font-bold py-3 rounded-xl hover:bg-yellow-200 transition border border-yellow-300">
+                                  Test Route Warning
+                                </button>
+                                <button onClick={resetRide} className="w-1/2 bg-gray-200 text-black font-bold py-3 rounded-xl hover:bg-gray-300 transition">Cancel Ride</button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-gray-600 mb-3 text-sm">Driver Rahul S. ({selectedCar}) • Route: {pickup} to {dropoff}</p>
-                        
-                        <div className="w-full bg-blue-100 rounded-full h-3 mb-2 overflow-hidden">
-                          <div className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${rideProgress}%` }}></div>
-                        </div>
-                        
-                        <div className="flex justify-between text-xs text-gray-500 font-medium">
-                          <span>Pickup</span>
-                          <span className="font-bold text-green-600">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}% Complete`}</span>
-                          <span>Dropoff</span>
-                        </div>
-                        
-                        {rideProgress === 100 && (
-                          <button onClick={resetRide} className="w-full mt-4 bg-green-600 text-white font-bold py-3 rounded-xl hover:bg-green-700 transition shadow-lg">Ride Completed • Book Again</button>
-                        )}
                       </div>
                     </div>
 
@@ -570,7 +564,6 @@ const BookRide = () => {
                         <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-4"><ArrowLeft className="h-4 w-4 mr-1" /> Back to locations</button>
                         <h2 className="text-3xl font-bold mb-4">Choose your ride</h2>
                       </div>
-
                       <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
                         <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}>
                           <div className="flex items-center space-x-4"><Car className="h-8 w-8 text-gray-700" /><div><h3 className="font-bold text-lg notranslate">SmartMini</h3><p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p></div></div>
@@ -585,13 +578,8 @@ const BookRide = () => {
                           <div className="text-xl font-bold">₹450</div>
                         </div>
                       </div>
-
                       <div className="shrink-0 pt-2 border-t border-gray-100">
-                        <button 
-                          onClick={handleConfirmRide} 
-                          disabled={isSearching}
-                          className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg flex justify-center items-center disabled:bg-gray-400"
-                        >
+                        <button onClick={handleConfirmRide} disabled={isSearching} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg flex justify-center items-center disabled:bg-gray-400">
                           {isSearching ? <><Loader2 className="animate-spin mr-2 h-5 w-5"/> Locating...</> : `Confirm ${selectedCar}`}
                         </button>
                       </div>
@@ -603,40 +591,28 @@ const BookRide = () => {
                         <MapPin className="h-5 w-5 text-black" />
                         <span>Current Location (GPS Active)</span>
                       </div>
-
                       <h1 className="text-5xl font-bold mb-8 transition-all">
                         {activeTab === 'request' && "Request a secure ride"}
                         {activeTab === 'reserve' && "Reserve a ride in advance"}
                         {activeTab === 'explore' && "Explore your options"}
                       </h1>
-
                       <button className="flex items-center space-x-2 bg-gray-100 hover:bg-gray-200 w-max px-4 py-3 rounded-full font-medium mb-6 transition">
-                        <Clock className="h-5 w-5" />
-                        <span>{activeTab === 'reserve' ? 'Schedule for later' : 'Pickup now'}</span>
-                        <ChevronDown className="h-5 w-5" />
+                        <Clock className="h-5 w-5" /><span>{activeTab === 'reserve' ? 'Schedule for later' : 'Pickup now'}</span><ChevronDown className="h-5 w-5" />
                       </button>
-
                       <div className="relative flex flex-col space-y-3 w-full">
                         <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
-                        
                         <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black">
                           <div className="w-2.5 h-2.5 bg-black rounded-full mr-4 flex-shrink-0"></div>
                           <input type="text" placeholder="Pickup (e.g., Delhi, Bangalore)" value={pickup} onChange={(e)=>setPickup(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                           <Navigation className="h-5 w-5 text-gray-500 ml-2" />
                         </div>
-
                         <div className="relative z-10 flex items-center bg-gray-100 rounded-lg px-4 py-3 focus-within:ring-2 focus-within:ring-black">
                           <Square className="h-3 w-3 text-black fill-current mr-4 flex-shrink-0" />
                           <input type="text" placeholder="Dropoff (e.g., Mumbai, Goa)" value={dropoff} onChange={(e)=>setDropoff(e.target.value)} className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium" />
                         </div>
                       </div>
-
                       <div className="mt-auto pt-8">
-                        <button 
-                          onClick={() => setShowPrices(true)}
-                          disabled={!pickup || !dropoff}
-                          className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform"
-                        >
+                        <button onClick={() => setShowPrices(true)} disabled={!pickup || !dropoff} className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform">
                           Search route & see prices
                         </button>
                         {(!pickup || !dropoff) && <p className="text-xs text-gray-400 mt-2 text-center">Please enter pickup and dropoff to search</p>}
@@ -671,87 +647,45 @@ const BookRide = () => {
           {/* EXPLORE SECTION */}
           <section id="explore-section" className="max-w-7xl mx-auto px-4 md:px-12 py-16">
             <h2 className="text-3xl font-bold mb-8">Explore what you can do with SmartCab</h2>
-            
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              <div 
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => handleFeatureCardClick('request')}
-              >
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('request')}>
                 <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Ride</h3>
-                    <p className="text-sm text-gray-600 mb-6">Go anywhere with full GPS tracking. Request a ride, hop in, and go safely.</p>
-                  </div>
+                  <div><h3 className="text-xl font-bold mb-2">Ride</h3><p className="text-sm text-gray-600 mb-6">Go anywhere with full GPS tracking. Request a ride, hop in, and go safely.</p></div>
                   <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
                 </div>
                 <Car className="h-20 w-20 text-gray-700 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
-
-              <div 
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => handleFeatureCardClick('reserve')}
-              >
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('reserve')}>
                 <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Reserve</h3>
-                    <p className="text-sm text-gray-600 mb-6">Reserve your secure ride in advance. Pre-vetted drivers assigned for safety.</p>
-                  </div>
+                  <div><h3 className="text-xl font-bold mb-2">Reserve</h3><p className="text-sm text-gray-600 mb-6">Reserve your secure ride in advance. Pre-vetted drivers assigned for safety.</p></div>
                   <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
                 </div>
                 <Calendar className="h-20 w-20 text-blue-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
-
-              <div 
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({ title: 'Intercity Travel', description: 'Comfortable outstation cabs for long-distance travel. All intercity vehicles undergo a 24-point maintenance check before dispatch and feature physical SOS panic buttons installed in the rear passenger seats.' })}
-              >
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => setSelectedCard({ title: 'Intercity Travel', description: 'Comfortable outstation cabs for long-distance travel. All intercity vehicles undergo a 24-point maintenance check before dispatch and feature physical SOS panic buttons installed in the rear passenger seats.' })}>
                 <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Intercity</h3>
-                    <p className="text-sm text-gray-600 mb-6">Get convenient, affordable outstation cabs with real-time route alerts.</p>
-                  </div>
+                  <div><h3 className="text-xl font-bold mb-2">Intercity</h3><p className="text-sm text-gray-600 mb-6">Get convenient, affordable outstation cabs with real-time route alerts.</p></div>
                   <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
                 </div>
                 <Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
-
-              <div 
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => handleFeatureCardClick('parcel')}
-              >
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('parcel')}>
                 <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Parcel</h3>
-                    <p className="text-sm text-gray-600 mb-6">SmartCab makes same-day item delivery easier and safer than ever.</p>
-                  </div>
+                  <div><h3 className="text-xl font-bold mb-2">Parcel</h3><p className="text-sm text-gray-600 mb-6">SmartCab makes same-day item delivery easier and safer than ever.</p></div>
                   <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
                 </div>
                 <Package className="h-20 w-20 text-amber-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
-
-              <div 
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => handleFeatureCardClick('rentals')}
-              >
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('rentals')}>
                 <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Rentals</h3>
-                    <p className="text-sm text-gray-600 mb-6">Request a trip for a block of time and make multiple stops easily.</p>
-                  </div>
+                  <div><h3 className="text-xl font-bold mb-2">Rentals</h3><p className="text-sm text-gray-600 mb-6">Request a trip for a block of time and make multiple stops easily.</p></div>
                   <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
                 </div>
                 <Clock className="h-20 w-20 text-purple-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
               </div>
-
-              <div 
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
-                onClick={() => setSelectedCard({ title: 'SmartBike', description: 'Beat the traffic with our fast and affordable motorcycle rides. We enforce a strict helmet-verification protocol—the ride cannot start until the driver uploads a selfie wearing their helmet.' })}
-              >
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => setSelectedCard({ title: 'SmartBike', description: 'Beat the traffic with our fast and affordable motorcycle rides. We enforce a strict helmet-verification protocol—the ride cannot start until the driver uploads a selfie wearing their helmet.' })}>
                 <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Bike</h3>
-                    <p className="text-sm text-gray-600 mb-6">Get affordable, quick motorbike rides in minutes at your doorstep.</p>
-                  </div>
+                  <div><h3 className="text-xl font-bold mb-2">Bike</h3><p className="text-sm text-gray-600 mb-6">Get affordable, quick motorbike rides in minutes at your doorstep.</p></div>
                   <button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button>
                 </div>
                 <Bike className="h-20 w-20 text-red-500 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
@@ -762,53 +696,24 @@ const BookRide = () => {
           {/* --- PLAN FOR LATER SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-12">
             <h2 className="text-3xl font-bold mb-8">Plan for later</h2>
-            
             <div className="flex flex-col lg:flex-row bg-[#e2f1f8] rounded-2xl overflow-hidden relative">
               <div className="w-full lg:w-1/2 p-8 md:p-12 z-10 flex flex-col justify-center">
                 <h3 className="text-4xl md:text-5xl font-bold mb-8 leading-tight text-gray-900">Get your ride right<br/>with SmartCab Reserve</h3>
-                
                 <p className="font-bold mb-2">Choose date and time</p>
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
-                  <div className="flex-1 bg-white rounded-xl flex items-center px-4 py-3 shadow-sm border border-gray-200 focus-within:ring-2 ring-black">
-                    <Calendar className="h-5 w-5 mr-3 text-gray-600" />
-                    <input type="date" className="outline-none w-full bg-transparent text-gray-800" />
-                  </div>
-                  <div className="flex-1 bg-white rounded-xl flex items-center px-4 py-3 shadow-sm border border-gray-200 focus-within:ring-2 ring-black">
-                    <Clock className="h-5 w-5 mr-3 text-gray-600" />
-                    <input type="time" className="outline-none w-full bg-transparent text-gray-800" />
-                  </div>
+                  <div className="flex-1 bg-white rounded-xl flex items-center px-4 py-3 shadow-sm border border-gray-200 focus-within:ring-2 ring-black"><Calendar className="h-5 w-5 mr-3 text-gray-600" /><input type="date" className="outline-none w-full bg-transparent text-gray-800" /></div>
+                  <div className="flex-1 bg-white rounded-xl flex items-center px-4 py-3 shadow-sm border border-gray-200 focus-within:ring-2 ring-black"><Clock className="h-5 w-5 mr-3 text-gray-600" /><input type="time" className="outline-none w-full bg-transparent text-gray-800" /></div>
                 </div>
-                
-                <button 
-                  onClick={() => setSelectedCard({
-                    title: 'Reservation Confirmed', 
-                    description: 'Your ride has been scheduled! We will assign a top-rated driver 24 hours before your pickup time and notify you via SMS.'
-                  })}
-                  className="bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition shadow-lg w-full md:w-max px-12"
-                >
-                  Next
-                </button>
+                <button onClick={() => setSelectedCard({ title: 'Reservation Confirmed', description: 'Your ride has been scheduled! We will assign a top-rated driver 24 hours before your pickup time and notify you via SMS.' })} className="bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition shadow-lg w-full md:w-max px-12">Next</button>
               </div>
-
               <div className="w-full lg:w-1/2 p-8 md:p-12 flex items-center justify-center lg:justify-end relative">
                 <div className="absolute top-10 right-10 w-64 h-64 bg-blue-200 rounded-full mix-blend-multiply filter blur-3xl opacity-70 animate-blob"></div>
-                
                 <div className="bg-white rounded-2xl p-8 shadow-xl max-w-md w-full z-10 border border-gray-100">
                   <h4 className="text-2xl font-bold mb-6">Benefits</h4>
-                  
                   <div className="space-y-6">
-                    <div className="flex items-start">
-                      <CalendarDays className="h-6 w-6 mr-4 text-black shrink-0 mt-1" />
-                      <p className="text-gray-700">Choose your exact pickup time up to 90 days in advance.</p>
-                    </div>
-                    <div className="flex items-start">
-                      <Clock className="h-6 w-6 mr-4 text-black shrink-0 mt-1" />
-                      <p className="text-gray-700">Extra wait time included to meet your ride.</p>
-                    </div>
-                    <div className="flex items-start">
-                      <CreditCard className="h-6 w-6 mr-4 text-black shrink-0 mt-1" />
-                      <p className="text-gray-700">Cancel at no charge up to 60 minutes in advance.</p>
-                    </div>
+                    <div className="flex items-start"><CalendarDays className="h-6 w-6 mr-4 text-black shrink-0 mt-1" /><p className="text-gray-700">Choose your exact pickup time up to 90 days in advance.</p></div>
+                    <div className="flex items-start"><Clock className="h-6 w-6 mr-4 text-black shrink-0 mt-1" /><p className="text-gray-700">Extra wait time included to meet your ride.</p></div>
+                    <div className="flex items-start"><CreditCard className="h-6 w-6 mr-4 text-black shrink-0 mt-1" /><p className="text-gray-700">Cancel at no charge up to 60 minutes in advance.</p></div>
                   </div>
                   <button className="mt-8 text-gray-500 underline text-sm hover:text-black transition">See terms</button>
                 </div>
@@ -821,46 +726,23 @@ const BookRide = () => {
             <div className="flex flex-col md:flex-row items-center gap-12">
               <div className="w-full md:w-1/2 flex justify-center">
                 <div className="border-[8px] border-black rounded-[2.5rem] w-full max-w-[320px] bg-white overflow-hidden shadow-2xl relative">
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-3xl z-20"></div> {/* Fake Notch */}
-                  
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-3xl z-20"></div>
                   <div className="p-6 pt-12 pb-24">
                     <h4 className="text-2xl font-bold mb-6">Rahul's group ride</h4>
                     <div className="bg-white rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.1)] p-4 border border-gray-100">
                       <p className="font-bold mb-4">Set pickup order</p>
-                      
                       <div className="relative border-l-2 border-black ml-3 space-y-6 pb-2">
-                        <div className="relative pl-6">
-                          <div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">1</div>
-                          <div className="flex justify-between items-center">
-                            <div><p className="font-bold">Rahul</p><div className="h-2 w-16 bg-gray-200 rounded mt-1"></div></div>
-                            <div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div>
-                          </div>
-                        </div>
-                        <div className="relative pl-6">
-                          <div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">2</div>
-                          <div className="flex justify-between items-center">
-                            <div><p className="font-bold">Priya</p><div className="h-2 w-24 bg-gray-200 rounded mt-1"></div></div>
-                            <div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div>
-                          </div>
-                        </div>
+                        <div className="relative pl-6"><div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">1</div><div className="flex justify-between items-center"><div><p className="font-bold">Rahul</p><div className="h-2 w-16 bg-gray-200 rounded mt-1"></div></div><div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div></div></div>
+                        <div className="relative pl-6"><div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">2</div><div className="flex justify-between items-center"><div><p className="font-bold">Priya</p><div className="h-2 w-24 bg-gray-200 rounded mt-1"></div></div><div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div></div></div>
                       </div>
                     </div>
                   </div>
                 </div>
               </div>
-
               <div className="w-full md:w-1/2">
                 <h2 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">Ride with friends seamlessly</h2>
                 <p className="text-lg text-gray-600 mb-6">Riding with friends just got easier: set up a group ride in the SmartCab app, invite your friends, and arrive at your destination. Friends who ride together save together.</p>
-                <button 
-                  onClick={() => setSelectedCard({
-                    title: 'Group Rides', 
-                    description: 'Share a link with up to 3 friends. The app will automatically calculate the most efficient route to pick everyone up and split the fare evenly among all passengers!'
-                  })}
-                  className="font-medium border-b border-black pb-1 hover:text-gray-600 transition"
-                >
-                  Learn more
-                </button>
+                <button onClick={() => setSelectedCard({ title: 'Group Rides', description: 'Share a link with up to 3 friends. The app will automatically calculate the most efficient route to pick everyone up and split the fare evenly among all passengers!' })} className="font-medium border-b border-black pb-1 hover:text-gray-600 transition">Learn more</button>
               </div>
             </div>
           </section>
@@ -868,49 +750,10 @@ const BookRide = () => {
           {/* --- 3-COLUMN INFO SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">Use the SmartCab app to help you travel your way</h2>
-            
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="flex flex-col h-full">
-                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
-                  <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600" alt="Ride options" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
-                </div>
-                <h3 className="text-xl font-bold mb-3">Ride options</h3>
-                <p className="text-gray-600 mb-6 flex-grow">There’s more than one way to move with SmartCab, no matter where you are or where you’re headed next.</p>
-                <button 
-                  onClick={() => setIsStartModalOpen(true)}
-                  className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max"
-                >
-                  Search ride options
-                </button>
-              </div>
-
-              <div className="flex flex-col h-full">
-                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
-                  <img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=600" alt="Airports" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
-                </div>
-                <h3 className="text-xl font-bold mb-3">700+ airports</h3>
-                <p className="text-gray-600 mb-6 flex-grow">You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.</p>
-                <button 
-                  onClick={() => setIsStartModalOpen(true)}
-                  className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"
-                >
-                  <Plane className="h-4 w-4 mr-2" /> Search airports
-                </button>
-              </div>
-
-              <div className="flex flex-col h-full">
-                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
-                  <img src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600" alt="Cities" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
-                </div>
-                <h3 className="text-xl font-bold mb-3">15,000+ cities</h3>
-                <p className="text-gray-600 mb-6 flex-grow">The app is available in thousands of cities worldwide, so you can request a ride even when you’re far from home.</p>
-                <button 
-                  onClick={() => setIsStartModalOpen(true)}
-                  className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"
-                >
-                  <Globe className="h-4 w-4 mr-2" /> Search cities
-                </button>
-              </div>
+              <div className="flex flex-col h-full"><div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100"><img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600" alt="Ride options" className="w-full h-full object-cover hover:scale-105 transition duration-500" /></div><h3 className="text-xl font-bold mb-3">Ride options</h3><p className="text-gray-600 mb-6 flex-grow">There’s more than one way to move with SmartCab, no matter where you are or where you’re headed next.</p><button onClick={() => setIsStartModalOpen(true)} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max">Search ride options</button></div>
+              <div className="flex flex-col h-full"><div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100"><img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=600" alt="Airports" className="w-full h-full object-cover hover:scale-105 transition duration-500" /></div><h3 className="text-xl font-bold mb-3">700+ airports</h3><p className="text-gray-600 mb-6 flex-grow">You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.</p><button onClick={() => setIsStartModalOpen(true)} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"><Plane className="h-4 w-4 mr-2" /> Search airports</button></div>
+              <div className="flex flex-col h-full"><div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100"><img src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600" alt="Cities" className="w-full h-full object-cover hover:scale-105 transition duration-500" /></div><h3 className="text-xl font-bold mb-3">15,000+ cities</h3><p className="text-gray-600 mb-6 flex-grow">The app is available in thousands of cities worldwide, so you can request a ride even when you’re far from home.</p><button onClick={() => setIsStartModalOpen(true)} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"><Globe className="h-4 w-4 mr-2" /> Search cities</button></div>
             </div>
           </section>
         </div>
@@ -968,11 +811,7 @@ const BookRide = () => {
         </div>
       )}
 
-      <StartModal 
-        isOpen={isStartModalOpen} 
-        onClose={() => setIsStartModalOpen(false)} 
-      />
-
+      <StartModal isOpen={isStartModalOpen} onClose={() => setIsStartModalOpen(false)} />
     </div>
   );
 };
