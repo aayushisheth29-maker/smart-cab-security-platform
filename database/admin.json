@@ -1,0 +1,18 @@
+[{
+  "_id": {
+    "$oid": "6a65cdf109077d6d9c073d00"
+  },
+  "Admin_ID": 1,
+  "Admin_Name": "Admin One",
+  "Email": "admin1@smartcab.com",
+  "Password": "Admin@123"
+},
+{
+  "_id": {
+    "$oid": "6a65cdf109077d6d9c073d01"
+  },
+  "Admin_ID": 2,
+  "Admin_Name": "Admin Two",
+  "Email": "admin2@smartcab.com",
+  "Password": "Admin@456"
+}]
