@@ -5,7 +5,7 @@ import {
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
-  CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren
+  CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
@@ -79,9 +79,27 @@ const BookRide = () => {
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
 
-  // --- NEW STATES FOR EMERGENCY FEATURES ---
+  // --- EMERGENCY FEATURES STATES ---
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
+
+  // --- NEW: DYNAMIC EMERGENCY CONTACTS SYSTEM ---
+  const [emergencyContacts, setEmergencyContacts] = useState([
+    { name: 'Mom', phone: '+919876543210' },
+    { name: 'Dad', phone: '+919876543211' }
+  ]);
+  const [showAddContactModal, setShowAddContactModal] = useState(false);
+  const [newContactName, setNewContactName] = useState('');
+  const [newContactPhone, setNewContactPhone] = useState('');
+
+  const handleAddContact = () => {
+    if(newContactName && newContactPhone) {
+      setEmergencyContacts([...emergencyContacts, { name: newContactName, phone: newContactPhone }]);
+      setNewContactName('');
+      setNewContactPhone('');
+      setShowAddContactModal(false);
+    }
+  };
 
   // Google Translate Magic Script
   useEffect(() => {
@@ -200,6 +218,41 @@ const BookRide = () => {
 
       <div id="google_translate_element" style={{ display: 'none' }}></div>
 
+      {/* --- ADD NEW CONTACT MODAL --- */}
+      {showAddContactModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl relative">
+            <button onClick={() => setShowAddContactModal(false)} className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-600 transition">
+              <X className="h-5 w-5" />
+            </button>
+            <h3 className="text-2xl font-bold mb-6">Add Contact</h3>
+            <div className="space-y-4 mb-6">
+              <input 
+                type="text" 
+                placeholder="Name (e.g., Friend, Roommate)" 
+                value={newContactName} 
+                onChange={e => setNewContactName(e.target.value)} 
+                className="w-full bg-gray-100 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-black font-medium" 
+              />
+              <input 
+                type="tel" 
+                placeholder="Phone Number" 
+                value={newContactPhone} 
+                onChange={e => setNewContactPhone(e.target.value)} 
+                className="w-full bg-gray-100 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-black font-medium" 
+              />
+            </div>
+            <button 
+              onClick={handleAddContact} 
+              disabled={!newContactName || !newContactPhone} 
+              className="w-full bg-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 disabled:bg-gray-300 transition"
+            >
+              Save Contact
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* --- SOS EMERGENCY POPUP --- */}
       {showSOSPopup && (
         <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[300] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
@@ -209,9 +262,9 @@ const BookRide = () => {
             Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?
           </p>
           <div className="flex flex-col w-full max-w-md gap-4">
-            <button className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center">
+            <a href="tel:100" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center">
               <PhoneCall className="mr-3 h-8 w-8" /> Call Police (100)
-            </button>
+            </a>
             <button onClick={() => setShowSOSPopup(false)} className="w-full bg-transparent border-2 border-white/50 text-white font-bold text-xl py-5 rounded-2xl hover:bg-white/10 transition">
               Cancel - I am safe
             </button>
@@ -489,11 +542,11 @@ const BookRide = () => {
                 </div>
               )}
 
-              {/* --- STANDARD RIDE VIEWS (Request, Prices) --- */}
+              {/* --- STANDARD RIDE VIEWS (Request, Prices, etc) --- */}
               {['request', 'reserve', 'prices', 'explore'].includes(activeTab) && (
                 <>
                   {rideConfirmed ? (
-                    // 🚨 NEW LIVE SECURITY DASHBOARD 🚨
+                    // 🚨 LIVE SECURITY DASHBOARD 🚨
                     <div className="w-full h-[600px] flex flex-col animate-in fade-in duration-500">
                       <h2 className="text-3xl font-bold mb-4 flex items-center"><ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring</h2>
                       
@@ -508,7 +561,6 @@ const BookRide = () => {
                           </MapContainer>
                         </div>
 
-                        {/* BIG RED SOS BUTTON ON MAP */}
                         <button 
                           onClick={() => setShowSOSPopup(true)}
                           className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-4 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-xl animate-pulse transition transform hover:scale-105"
@@ -516,7 +568,6 @@ const BookRide = () => {
                           <Siren className="mr-2 h-6 w-6" /> SOS
                         </button>
 
-                        {/* TRIP PROGRESS OVERLAY */}
                         <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
                           <div className="flex justify-between items-center mb-2">
                             <h2 className="text-xl font-bold text-gray-900">Driver Rahul S. ({selectedCar})</h2>
@@ -533,12 +584,28 @@ const BookRide = () => {
                             <span>{dropoff}</span>
                           </div>
                           
-                          {/* EMERGENCY CONTACTS LIST */}
+                          {/* 🟢 NEW: CLICKABLE AND ADDABLE EMERGENCY CONTACTS 🟢 */}
                           <div className="border-t border-gray-200 pt-4 mt-2">
-                            <p className="text-sm font-bold text-gray-700 mb-2">Emergency Contacts</p>
-                            <div className="flex gap-2">
-                              <div className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max"><User className="h-4 w-4 mr-2 text-gray-500"/> Mom</div>
-                              <div className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max"><User className="h-4 w-4 mr-2 text-gray-500"/> Brother</div>
+                            <div className="flex justify-between items-center mb-3">
+                              <p className="text-sm font-bold text-gray-700">Emergency Contacts</p>
+                              <button 
+                                onClick={() => setShowAddContactModal(true)} 
+                                className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center transition"
+                              >
+                                <Plus className="h-3 w-3 mr-1"/> Add New
+                              </button>
+                            </div>
+                            
+                            <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
+                              {emergencyContacts.map((contact, idx) => (
+                                <a 
+                                  key={idx} 
+                                  href={`tel:${contact.phone}`} 
+                                  className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max hover:bg-gray-200 hover:shadow-sm transition border border-transparent hover:border-gray-300 shrink-0"
+                                >
+                                  <PhoneCall className="h-4 w-4 mr-2 text-green-600"/> {contact.name}
+                                </a>
+                              ))}
                             </div>
                           </div>
 
