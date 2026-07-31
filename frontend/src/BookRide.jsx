@@ -239,7 +239,7 @@ const BookRide = () => {
           <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
           <p className="text-red-100 text-xl text-center max-w-lg mb-12">Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?</p>
           <div className="flex flex-col w-full max-w-md gap-4">
-            <a href="tel:100" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center"><PhoneCall className="mr-3 h-8 w-8" /> Call Police (100)</a>
+            <a href="tel:9751242110" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center"><PhoneCall className="mr-3 h-8 w-8" /> Call Police (9751242110)</a>
             <button onClick={() => setShowSOSPopup(false)} className="w-full bg-transparent border-2 border-white/50 text-white font-bold text-xl py-5 rounded-2xl hover:bg-white/10 transition">Cancel - I am safe</button>
           </div>
         </div>
