@@ -239,7 +239,8 @@ const BookRide = () => {
           <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
           <p className="text-red-100 text-xl text-center max-w-lg mb-12">Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?</p>
           <div className="flex flex-col w-full max-w-md gap-4">
-            <a href="tel:9751242110" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center"><PhoneCall className="mr-3 h-8 w-8" /> Call Police (9751242110)</a>
+            {/* 🚨 TEST NUMBER UPDATED HERE 🚨 */}
+            <a href="tel:112" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center"><PhoneCall className="mr-3 h-8 w-8" /> Call Police (112)</a>
             <button onClick={() => setShowSOSPopup(false)} className="w-full bg-transparent border-2 border-white/50 text-white font-bold text-xl py-5 rounded-2xl hover:bg-white/10 transition">Cancel - I am safe</button>
           </div>
         </div>
@@ -306,7 +307,6 @@ const BookRide = () => {
         <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
           <button onClick={() => setIsLangModalOpen(true)} className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"><Globe className="h-4 w-4 mr-2" /> EN</button>
           
-          {/* UPDATED TO USE MAINVIEW STATES */}
           <button onClick={() => setMainView('login')} className="hover:bg-gray-800 px-3 py-2 rounded-full">Log in</button>
           <button onClick={() => setMainView('signup')} className="bg-white text-black px-4 py-2 rounded-full font-bold hover:bg-gray-200">Sign up</button>
         </div>
@@ -517,13 +517,14 @@ const BookRide = () => {
                 </div>
               )}
 
-              {/* --- STANDARD RIDE VIEWS (Request, Prices) --- */}
+              {/* --- STANDARD RIDE VIEWS (Request, Prices, etc) --- */}
               {['request', 'reserve', 'prices', 'explore'].includes(activeTab) && (
                 <>
                   {rideConfirmed ? (
                     // 🚨 LIVE SECURITY DASHBOARD 🚨
                     <div className="w-full h-[600px] flex flex-col animate-in fade-in duration-500">
                       <h2 className="text-3xl font-bold mb-4 flex items-center"><ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring</h2>
+                      
                       <div className="w-full flex-1 bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200 mb-4">
                         <div className="absolute inset-0 z-0">
                           <MapContainer center={mapCenter} zoom={mapZoom} scrollWheelZoom={false} style={{ height: '100%', width: '100%', zIndex: 0 }} zoomControl={false}>
@@ -534,45 +535,63 @@ const BookRide = () => {
                             {pickupCoords && dropoffCoords && <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />}
                           </MapContainer>
                         </div>
-                        <button onClick={() => setShowSOSPopup(true)} className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-4 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-xl animate-pulse transition transform hover:scale-105">
+
+                        <button 
+                          onClick={() => setShowSOSPopup(true)}
+                          className="absolute top-4 right-4 bg-red-600 hover:bg-red-700 text-white font-bold px-6 py-4 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-xl animate-pulse transition transform hover:scale-105"
+                        >
                           <Siren className="mr-2 h-6 w-6" /> SOS
                         </button>
+
                         <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-6 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10">
                           <div className="flex justify-between items-center mb-2">
                             <h2 className="text-xl font-bold text-gray-900">Driver Rahul S. ({selectedCar})</h2>
                             <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-1 rounded-full">On Route</span>
                           </div>
+                          
                           <div className="w-full bg-blue-100 rounded-full h-3 mb-2 overflow-hidden mt-4">
                             <div className="bg-gradient-to-r from-blue-500 to-green-500 h-full rounded-full transition-all duration-1000 ease-out shadow-sm" style={{ width: `${rideProgress}%` }}></div>
                           </div>
+                          
                           <div className="flex justify-between text-xs text-gray-500 font-medium mb-4">
                             <span>{pickup}</span>
                             <span className="font-bold text-green-600">{rideProgress === 100 ? 'Arrived!' : `${Math.round(rideProgress)}%`}</span>
                             <span>{dropoff}</span>
                           </div>
                           
-                          {/* EMERGENCY CONTACTS LIST */}
+                          {/* 🟢 CLICKABLE AND ADDABLE EMERGENCY CONTACTS 🟢 */}
                           <div className="border-t border-gray-200 pt-4 mt-2">
                             <div className="flex justify-between items-center mb-3">
                               <p className="text-sm font-bold text-gray-700">Emergency Contacts</p>
-                              <button onClick={() => setShowAddContactModal(true)} className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center transition">
+                              <button 
+                                onClick={() => setShowAddContactModal(true)} 
+                                className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center transition"
+                              >
                                 <Plus className="h-3 w-3 mr-1"/> Add New
                               </button>
                             </div>
+                            
                             <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-2">
                               {emergencyContacts.map((contact, idx) => (
-                                <a key={idx} href={`tel:${contact.phone}`} className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max hover:bg-gray-200 hover:shadow-sm transition border border-transparent hover:border-gray-300 shrink-0">
+                                <a 
+                                  key={idx} 
+                                  href={`tel:${contact.phone}`} 
+                                  className="bg-gray-100 px-3 py-2 rounded-lg text-sm font-medium flex items-center w-max hover:bg-gray-200 hover:shadow-sm transition border border-transparent hover:border-gray-300 shrink-0"
+                                >
                                   <PhoneCall className="h-4 w-4 mr-2 text-green-600"/> {contact.name}
                                 </a>
                               ))}
                             </div>
                           </div>
+
                           <div className="flex gap-2 mt-4">
                             {rideProgress === 100 ? (
                               <button onClick={resetRide} className="w-full bg-black text-white font-bold py-3 rounded-xl hover:bg-gray-800 transition">Book Again</button>
                             ) : (
                               <>
-                                <button onClick={() => setShowDeviationPopup(true)} className="w-1/2 bg-yellow-100 text-yellow-800 font-bold py-3 rounded-xl hover:bg-yellow-200 transition border border-yellow-300">Test Route Warning</button>
+                                <button onClick={() => setShowDeviationPopup(true)} className="w-1/2 bg-yellow-100 text-yellow-800 font-bold py-3 rounded-xl hover:bg-yellow-200 transition border border-yellow-300">
+                                  Test Route Warning
+                                </button>
                                 <button onClick={resetRide} className="w-1/2 bg-gray-200 text-black font-bold py-3 rounded-xl hover:bg-gray-300 transition">Cancel Ride</button>
                               </>
                             )}
@@ -678,6 +697,32 @@ const BookRide = () => {
             </div>
           </section>
 
+          {/* --- GROUP RIDES SECTION --- */}
+          <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
+            <div className="flex flex-col md:flex-row items-center gap-12">
+              <div className="w-full md:w-1/2 flex justify-center">
+                <div className="border-[8px] border-black rounded-[2.5rem] w-full max-w-[320px] bg-white overflow-hidden shadow-2xl relative">
+                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-32 h-6 bg-black rounded-b-3xl z-20"></div>
+                  <div className="p-6 pt-12 pb-24">
+                    <h4 className="text-2xl font-bold mb-6">Rahul's group ride</h4>
+                    <div className="bg-white rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.1)] p-4 border border-gray-100">
+                      <p className="font-bold mb-4">Set pickup order</p>
+                      <div className="relative border-l-2 border-black ml-3 space-y-6 pb-2">
+                        <div className="relative pl-6"><div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">1</div><div className="flex justify-between items-center"><div><p className="font-bold">Rahul</p><div className="h-2 w-16 bg-gray-200 rounded mt-1"></div></div><div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div></div></div>
+                        <div className="relative pl-6"><div className="absolute -left-[11px] top-1 w-5 h-5 bg-black text-white rounded-full flex items-center justify-center text-[10px] font-bold">2</div><div className="flex justify-between items-center"><div><p className="font-bold">Priya</p><div className="h-2 w-24 bg-gray-200 rounded mt-1"></div></div><div className="w-4 flex flex-col space-y-1"><div className="h-0.5 w-full bg-gray-400"></div><div className="h-0.5 w-full bg-gray-400"></div></div></div></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="w-full md:w-1/2">
+                <h2 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">Ride with friends seamlessly</h2>
+                <p className="text-lg text-gray-600 mb-6">Riding with friends just got easier: set up a group ride in the SmartCab app, invite your friends, and arrive at your destination. Friends who ride together save together.</p>
+                <button onClick={() => setSelectedCard({ title: 'Group Rides', description: 'Share a link with up to 3 friends. The app will automatically calculate the most efficient route to pick everyone up and split the fare evenly among all passengers!' })} className="font-medium border-b border-black pb-1 hover:text-gray-600 transition">Learn more</button>
+              </div>
+            </div>
+          </section>
+
           {/* --- 3-COLUMN INFO SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">Use the SmartCab app to help you travel your way</h2>
@@ -689,7 +734,51 @@ const BookRide = () => {
           </section>
         </div>
       )}
-      
+
+      {/* 🟡 DRIVE PAGE  */}
+      {mainView === 'drive' && (
+        <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
+          <div className="w-full md:w-1/2 flex flex-col">
+            <h1 className="text-5xl md:text-7xl font-bold mb-6">Drive when you want, make what you need</h1>
+            <p className="text-xl text-gray-600 mb-8">Make money on your schedule. SmartCab's AI-driven security protects our drivers just as much as our riders.</p>
+            <button onClick={() => { closeAllForms(); setShowDriverForm(true); }} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Apply to drive →</button>
+          </div>
+          <div className="w-full md:w-1/2">
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
+              <img src="https://images.unsplash.com/photo-1449965408869-eaa3f722e40d?auto=format&fit=crop&q=80&w=1200" alt="Driver" className="w-full h-full object-cover" />
+              <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold shadow"><ShieldCheck className="h-4 w-4 text-green-600" /><span>Driver Protection Active</span></div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* 🔵 BUSINESS PAGE  */}
+      {mainView === 'business' && (
+        <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
+          <div className="w-full md:w-1/2 flex flex-col">
+            <h1 className="text-5xl md:text-7xl font-bold mb-6">SmartCab for Business</h1>
+            <p className="text-xl text-gray-600 mb-8">A premium, secure travel solution for your employees. Corporate billing and a real-time safety dashboard.</p>
+            <button onClick={() => { closeAllForms(); setShowBusinessForm(true); }} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Set up your company →</button>
+          </div>
+          <div className="w-full md:w-1/2">
+            <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
+              <img src="https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&q=80&w=1200" alt="Business" className="w-full h-full object-cover" />
+              <div className="absolute bottom-4 left-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold shadow"><ShieldCheck className="h-4 w-4 text-blue-600" /><span>Enterprise Security</span></div>
+            </div>
+          </div>
+        </main>
+      )}
+
+      {/* 🟣 ABOUT PAGE */}
+      {mainView === 'about' && (
+        <main className="max-w-4xl mx-auto px-4 md:px-12 py-24 text-center animate-in fade-in duration-500">
+          <ShieldCheck className="h-24 w-24 text-green-500 mx-auto mb-8" />
+          <h1 className="text-5xl font-bold mb-6">Built for Safety. Built for You.</h1>
+          <p className="text-2xl text-gray-600 mb-8 leading-relaxed">SmartCab was founded on a simple principle: everyone deserves to feel perfectly safe when they travel. We are changing the way India moves.</p>
+          <button onClick={() => setMainView('ride')} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Take a Ride →</button>
+        </main>
+      )}
+
       {showBanner && (
         <div className="fixed bottom-0 left-0 right-0 bg-blue-50 border-t border-blue-100 px-4 py-3 flex justify-between items-center z-50">
           <div className="flex items-center space-x-4 max-w-7xl mx-auto w-full justify-center text-sm md:text-base font-medium text-blue-900"><ShieldCheck className="h-5 w-5 text-blue-600 hidden md:block" /><p><strong>Welcome to SmartCab:</strong> All rides are monitored via GPS with real-time route deviation detection and SOS features.</p></div>
