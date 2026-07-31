@@ -447,8 +447,8 @@ const BookRide = () => {
             {/* LEFT COLUMN: THE FORMS */}
             <div className="w-full md:w-1/2 flex flex-col relative min-h-[500px]">
               
-                            {/* --- 📦 PARCEL VIEW --- */}
-              {activeTab === 'parcel' && (
+              {/* --- 📦 PARCEL VIEW --- */}
+              {activeTab === 'parcel' && !showPrices && !rideConfirmed && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   <div className="w-full h-40 bg-orange-100 rounded-t-2xl overflow-hidden mb-6 relative">
                     <img src="https://images.unsplash.com/photo-1617500585800-47b220b396b2?auto=format&fit=crop&q=80&w=800" alt="Courier" className="w-full h-full object-cover" />
@@ -473,8 +473,9 @@ const BookRide = () => {
                   <button onClick={() => setShowPrices(true)} disabled={!pickup || !dropoff} className={`text-white text-lg font-bold py-4 px-6 rounded-lg w-full mt-auto transition ${(!pickup || !dropoff) ? 'bg-gray-300 cursor-not-allowed' : 'bg-black hover:bg-gray-800 shadow-lg'}`}>Search</button>
                 </div>
               )}
-                                   {/* --- 🚗 RENTALS VIEW --- */}
-              {activeTab === 'rentals' && (
+              
+              {/* --- 🚗 RENTALS VIEW --- */}
+              {activeTab === 'rentals' && !showPrices && !rideConfirmed && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   <h1 className="text-4xl font-bold mb-8 mt-4">Find a trip</h1>
                   <div className="relative flex flex-col space-y-3 w-full mb-6">
@@ -518,7 +519,7 @@ const BookRide = () => {
 
             
               {/* --- STANDARD RIDE VIEWS (Request, Prices, etc) --- */}
-              {['request', 'reserve', 'prices', 'explore'].includes(activeTab) && (
+              {(['request', 'reserve', 'explore'].includes(activeTab) || showPrices || rideConfirmed) && (
                 <>
                   {rideConfirmed ? (
                     // 🚨 LIVE SECURITY DASHBOARD 🚨
