@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 # This creates our AI Backend app!
 app = FastAPI(
@@ -7,7 +8,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# This is our first API Route
+# NEW: Security Pass so React can talk to Python
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allows your React app to connect
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 @app.get("/")
 def home():
     return {"message": "Welcome to the SmartCab Python AI Backend! 🚀"}
@@ -15,9 +24,8 @@ def home():
 # This is a mock API for our Route Deviation feature
 @app.get("/api/ai/check-route")
 def check_route(driver_id: str, current_lat: float, current_lng: float):
-    # Later, we will add real AI math here. For now, it just replies!
     return {
         "status": "Safe",
         "deviation_meters": 0,
-        "message": f"Driver {driver_id} is perfectly on route."
+        "message": f"Driver {driver_id} is perfectly on route!"
     }

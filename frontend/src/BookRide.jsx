@@ -174,13 +174,25 @@ const BookRide = () => {
     }
   };
 
-  const handleConfirmRide = async () => {
+    const handleConfirmRide = async () => {
     setIsSearching(true);
     const pCoords = await geocodeLocation(pickup);
     const dCoords = await geocodeLocation(dropoff);
     setIsSearching(false);
 
     if (pCoords && dCoords) {
+      // --- 🚀 NEW: CALLING OUR PYTHON BACKEND 🚀 ---
+      try {
+        const response = await fetch(`http://localhost:8000/api/ai/check-route?driver_id=Rahul_S&current_lat=${pCoords[0]}&current_lng=${pCoords[1]}`);
+        const aiData = await response.json();
+        
+        // This will pop up a message from Python on your screen!
+        alert(`🔒 PYTHON AI SECURITY CHECK:\nStatus: ${aiData.status}\nMessage: ${aiData.message}`);
+      } catch (error) {
+        console.error("Could not reach Python. Is the server running?");
+      }
+      // ----------------------------------------------
+
       setPickupCoords(pCoords);
       setDropoffCoords(dCoords);
       setMapCenter(pCoords); 
