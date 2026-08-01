@@ -47,6 +47,10 @@ const MapUpdater = ({ center, zoom }) => {
 const BookRide = () => {
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+  const [alertsEnabled, setAlertsEnabled] = useState(true);
+  const [shareTripEnabled, setShareTripEnabled] = useState(true);
+  const [marketingEnabled, setMarketingEnabled] = useState(false);
+
 
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
@@ -459,26 +463,38 @@ const BookRide = () => {
                 </div>
               </div>
             )}
-            {dashTab === 'settings' && (
+                        {dashTab === 'settings' && (
               <div>
                 <h2 className="text-3xl font-bold mb-6">Security & Settings</h2>
                 <div className="space-y-4">
+                  
                   <div className="flex justify-between items-center p-6 border border-gray-200 rounded-2xl">
                     <div><h3 className="font-bold text-lg">AI Deviation Alerts</h3><p className="text-sm text-gray-500">Get notified if your driver goes off route</p></div>
-                    <div className="w-12 h-6 bg-green-500 rounded-full relative cursor-pointer"><div className="w-4 h-4 bg-white rounded-full absolute right-1 top-1"></div></div>
+                    <div onClick={() => setAlertsEnabled(!alertsEnabled)} className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors duration-200 ${alertsEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-200 ${alertsEnabled ? 'right-1' : 'left-1'}`}></div>
+                    </div>
                   </div>
+
                   <div className="flex justify-between items-center p-6 border border-gray-200 rounded-2xl">
                     <div><h3 className="font-bold text-lg">Share Trip with Contacts</h3><p className="text-sm text-gray-500">Automatically share live link when trip starts</p></div>
-                    <div className="w-12 h-6 bg-green-500 rounded-full relative cursor-pointer"><div className="w-4 h-4 bg-white rounded-full absolute right-1 top-1"></div></div>
+                    <div onClick={() => setShareTripEnabled(!shareTripEnabled)} className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors duration-200 ${shareTripEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-200 ${shareTripEnabled ? 'right-1' : 'left-1'}`}></div>
+                    </div>
                   </div>
+
                   <div className="flex justify-between items-center p-6 border border-gray-200 rounded-2xl">
                     <div><h3 className="font-bold text-lg">Marketing Emails</h3><p className="text-sm text-gray-500">Receive offers and discounts</p></div>
-                    <div className="w-12 h-6 bg-gray-300 rounded-full relative cursor-pointer"><div className="w-4 h-4 bg-white rounded-full absolute left-1 top-1"></div></div>
+                    <div onClick={() => setMarketingEnabled(!marketingEnabled)} className={`w-12 h-6 rounded-full relative cursor-pointer transition-colors duration-200 ${marketingEnabled ? 'bg-green-500' : 'bg-gray-300'}`}>
+                      <div className={`w-4 h-4 bg-white rounded-full absolute top-1 transition-all duration-200 ${marketingEnabled ? 'right-1' : 'left-1'}`}></div>
+                    </div>
                   </div>
+
                 </div>
               </div>
             )}
-          </div>
+              
+              
+            </div>
         </main>
       )}
 
