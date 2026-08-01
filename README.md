@@ -60,7 +60,7 @@ See:  [System_Architecture_Diagram](docs/System_Architecture_Diagram.md)
 - [Backend Architecture](docs/Backend_Architecture.md)
 
 ### Business Logic
-- [Business Logic](docs/Business_Logic.md
+- [Business Logic](docs/Business_Logic.md)
 
 ## Login Page
 See: [Login Page](docs/Login_Page.md)  
