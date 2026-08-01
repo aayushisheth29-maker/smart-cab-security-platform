@@ -838,7 +838,164 @@ const BookRide = () => {
           <button onClick={() => setMainView('ride')} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Take a Ride →</button>
         </main>
       )}
+      {/* ✅ PROFESSIONAL DETAILS POPUP FOR INTERCITY / BIKE / OTHER DETAILS */}
+      {selectedCard && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden relative animate-in zoom-in duration-200">
+            
+            <button
+              onClick={() => setSelectedCard(null)}
+              className="absolute top-4 right-4 p-2 bg-white/80 hover:bg-gray-100 rounded-full text-gray-700 transition z-10 shadow"
+            >
+              <X className="h-6 w-6" />
+            </button>
 
+            <div className={`p-8 ${
+              selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike')
+                ? 'bg-red-50'
+                : selectedCard.title.includes('Intercity')
+                ? 'bg-green-50'
+                : 'bg-blue-50'
+            }`}>
+              <div className="flex items-center gap-4 mb-4">
+                <div className={`p-4 rounded-2xl shadow-sm bg-white ${
+                  selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike')
+                    ? 'text-red-500'
+                    : selectedCard.title.includes('Intercity')
+                    ? 'text-green-600'
+                    : 'text-blue-600'
+                }`}>
+                  {selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike') ? (
+                    <Bike className="h-10 w-10" />
+                  ) : selectedCard.title.includes('Intercity') ? (
+                    <Map className="h-10 w-10" />
+                  ) : (
+                    <ShieldCheck className="h-10 w-10" />
+                  )}
+                </div>
+
+                <div>
+                  <h2 className="text-3xl font-bold text-gray-900">{selectedCard.title}</h2>
+                  <p className="text-gray-600 font-medium mt-1">SmartCab secure travel service</p>
+                </div>
+              </div>
+
+              <p className="text-lg text-gray-700 leading-relaxed">
+                {selectedCard.description}
+              </p>
+            </div>
+
+            <div className="p-8">
+              <h3 className="text-xl font-bold mb-5">What’s included</h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
+                {(selectedCard.title.includes('Intercity')
+                  ? [
+                      {
+                        title: 'Verified outstation drivers',
+                        text: 'Drivers are checked for long-route safety and reliability.'
+                      },
+                      {
+                        title: 'Live route monitoring',
+                        text: 'Your trip is tracked with GPS and route-deviation alerts.'
+                      },
+                      {
+                        title: 'Transparent pricing',
+                        text: 'Know your estimated fare before your journey begins.'
+                      },
+                      {
+                        title: 'Comfort for long trips',
+                        text: 'Clean cars suitable for city-to-city travel.'
+                      }
+                    ]
+                  : selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike')
+                  ? [
+                      {
+                        title: 'Fast city travel',
+                        text: 'Beat traffic with quick and affordable motorbike rides.'
+                      },
+                      {
+                        title: 'Helmet safety check',
+                        text: 'SmartCab requires helmet safety before starting the ride.'
+                      },
+                      {
+                        title: 'Live GPS tracking',
+                        text: 'Your ride remains visible and monitored during the trip.'
+                      },
+                      {
+                        title: 'Low-cost rides',
+                        text: 'Perfect for short-distance daily travel.'
+                      }
+                    ]
+                  : [
+                      {
+                        title: 'SmartCab safety',
+                        text: 'Every ride includes GPS tracking and security tools.'
+                      },
+                      {
+                        title: 'Easy booking',
+                        text: 'Book your ride quickly from the SmartCab platform.'
+                      },
+                      {
+                        title: 'Reliable service',
+                        text: 'Designed for safe and comfortable travel.'
+                      },
+                      {
+                        title: 'Support included',
+                        text: 'Safety support is available during your trip.'
+                      }
+                    ]
+                ).map((item, index) => (
+                  <div key={index} className="border border-gray-200 rounded-2xl p-4 bg-gray-50">
+                    <div className="flex items-start gap-3">
+                      <CheckCircle className="h-5 w-5 text-green-600 mt-1 shrink-0" />
+                      <div>
+                        <h4 className="font-bold text-gray-900">{item.title}</h4>
+                        <p className="text-sm text-gray-600 mt-1">{item.text}</p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {(selectedCard.title.includes('Intercity') ||
+                selectedCard.title.includes('Bike') ||
+                selectedCard.title.includes('SmartBike')) && (
+                <div className="bg-black text-white rounded-2xl p-5 mb-6">
+                  <div className="flex items-center gap-3 mb-2">
+                    <ShieldCheck className="h-6 w-6 text-green-400" />
+                    <h4 className="font-bold text-lg">SmartCab Safety Promise</h4>
+                  </div>
+                  <p className="text-sm text-gray-300">
+                    SOS access, emergency contact support, GPS monitoring, and route-deviation alerts are included for safer travel.
+                  </p>
+                </div>
+              )}
+
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => setSelectedCard(null)}
+                  className="flex-1 bg-gray-100 text-black font-bold py-4 rounded-xl hover:bg-gray-200 transition"
+                >
+                  Close
+                </button>
+
+                <button
+                  onClick={() => {
+                    setSelectedCard(null);
+                    setActiveTab('request');
+                    setMainView('ride');
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }}
+                  className="flex-1 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition shadow-lg"
+                >
+                  Start booking
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       {showBanner && (
         <div className="fixed bottom-0 left-0 right-0 bg-blue-50 border-t border-blue-100 px-4 py-3 flex justify-between items-center z-50">
           <div className="flex items-center space-x-4 max-w-7xl mx-auto w-full justify-center text-sm md:text-base font-medium text-blue-900"><ShieldCheck className="h-5 w-5 text-blue-600 hidden md:block" /><p><strong>Welcome to SmartCab:</strong> All rides are monitored via GPS with real-time route deviation detection and SOS features.</p></div>
