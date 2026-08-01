@@ -63,3 +63,23 @@ See:  [System_Architecture_Diagram](docs/System_Architecture_Diagram.md)
 - [Business Logic](docs/Business_Logic.md
 
 
+## 📅 Phase 5: Frontend Development
+
+### 🎨 Design User Interface
+- [UI Design](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/UI_Design.md)
+- [Home Page](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Home_Page.md)
+- [User Registration](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/User_Registration.md)
+- [Login Page](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Login_Page.md)
+- [Driver Dashboard](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Driver_Dashboard.md)
+- [Passenger Dashboard](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Passenger_Dashboard.md)
+- [Ride Booking Interface](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Ride_Booking.md)
+- [Live Tracking Interface](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Live_Tracking.md)
+- [SOS Emergency Interface](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/SOS_Emergency.md)
+- [Responsive Design](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Responsive_Design.md)
+
+### 🔗 Connect Frontend with Backend
+- [Frontend-Backend Integration](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Frontend_Backend_Integration.md)
+- [API Integration](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/API_Integration.md)
+- [Frontend API Testing](https://github.com/aayushisheth29-maker/smart-cab-security-platform/blob/main/docs/Frontend_API_Testing.md)
+
+
