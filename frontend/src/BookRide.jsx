@@ -9,7 +9,7 @@ import {
   Lock, Settings, History, LogOut
 } from 'lucide-react';
 
-import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
 // --- CUSTOM MAP ICONS ---
@@ -44,13 +44,22 @@ const MapUpdater = ({ center, zoom }) => {
   return null;
 };
 
+// NEW: Hook to handle map clicks for Reverse Geocoding
+const MapClickHandler = ({ onMapClick }) => {
+  useMapEvents({
+    click(e) {
+      onMapClick(e.latlng);
+    },
+  });
+  return null;
+};
+
 const BookRide = () => {
   const [isStartModalOpen, setIsStartModalOpen] = useState(false);
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [shareTripEnabled, setShareTripEnabled] = useState(true);
   const [marketingEnabled, setMarketingEnabled] = useState(false);
-
 
   const [selectedCard, setSelectedCard] = useState(null);
   const [showBanner, setShowBanner] = useState(true);
@@ -79,7 +88,6 @@ const BookRide = () => {
   const [rideConfirmed, setRideConfirmed] = useState(false);
   const [selectedCar, setSelectedCar] = useState('SmartMini');
   
-  // NEW: State for the search dropdown
   const [focusedInput, setFocusedInput] = useState(null);
 
   const [rideProgress, setRideProgress] = useState(0);
@@ -102,7 +110,6 @@ const BookRide = () => {
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
 
-  // NEW: Mock Suggestions for the Dropdown (Based on your screenshots!)
   const locationSuggestions = [
     { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
     { title: "Ahmedabad Junction", subtitle: "Sakar Bazzar, Kalupur, Ahmedabad" },
@@ -174,24 +181,41 @@ const BookRide = () => {
     }
   };
 
-    const handleConfirmRide = async () => {
+  // 🔥 NEW: Function to handle when you click on the map!
+  const handleMapClick = async (latlng) => {
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
+      const data = await response.json();
+      
+      if (data && data.display_name) {
+        // Grab just the first two parts of the address
+        const shortAddress = data.display_name.split(', ').slice(0, 2).join(', ');
+        
+        if (focusedInput === 'dropoff' || (pickup && !dropoff)) {
+          setDropoff(shortAddress);
+        } else {
+          setPickup(shortAddress);
+        }
+      }
+    } catch (error) {
+      console.error("Could not fetch address from map click");
+    }
+  };
+
+  const handleConfirmRide = async () => {
     setIsSearching(true);
     const pCoords = await geocodeLocation(pickup);
     const dCoords = await geocodeLocation(dropoff);
     setIsSearching(false);
 
     if (pCoords && dCoords) {
-      // --- 🚀 NEW: CALLING OUR PYTHON BACKEND 🚀 ---
       try {
         const response = await fetch(`http://localhost:8000/api/ai/check-route?driver_id=Rahul_S&current_lat=${pCoords[0]}&current_lng=${pCoords[1]}`);
         const aiData = await response.json();
-        
-        // This will pop up a message from Python on your screen!
         alert(`🔒 PYTHON AI SECURITY CHECK:\nStatus: ${aiData.status}\nMessage: ${aiData.message}`);
       } catch (error) {
         console.error("Could not reach Python. Is the server running?");
       }
-      // ----------------------------------------------
 
       setPickupCoords(pCoords);
       setDropoffCoords(dCoords);
@@ -218,7 +242,8 @@ const BookRide = () => {
     setActiveTab(feature);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
-    const openFeatureDetails = (feature) => {
+
+  const openFeatureDetails = (feature) => {
     if (feature === 'intercity') {
       setSelectedCard({
         title: 'Intercity Travel',
@@ -273,7 +298,6 @@ const BookRide = () => {
     setShowDeviationPopup(false);
   };
 
-  // NEW: Helper function to render the Uber-style search inputs with dropdowns
   const renderLocationInput = (type, placeholder, value, setValue) => {
     const isPickup = type === 'pickup';
     return (
@@ -297,7 +321,12 @@ const BookRide = () => {
             {locationSuggestions.filter(s => s.title.toLowerCase().includes(value.toLowerCase()) || value === '').map((loc, idx) => (
               <div 
                 key={idx} 
-                onClick={() => {setValue(loc.title); setFocusedInput(null);}} 
+                // 🔥 FIXED: Used onMouseDown to fix the unclickable dropdown bug!
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  setValue(loc.title); 
+                  setFocusedInput(null);
+                }} 
                 className="flex items-center px-4 py-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 text-left transition-colors"
               >
                 <div className="bg-gray-100 p-2.5 rounded-full mr-4 shrink-0"><MapPin className="h-5 w-5 text-gray-700" /></div>
@@ -307,9 +336,12 @@ const BookRide = () => {
                 </div>
               </div>
             ))}
-            <div className="flex items-center px-4 py-4 hover:bg-gray-50 cursor-pointer text-black font-medium border-t border-gray-100 transition-colors">
+            <div 
+              onMouseDown={(e) => { e.preventDefault(); setFocusedInput(null); }}
+              className="flex items-center px-4 py-4 hover:bg-gray-50 cursor-pointer text-black font-medium border-t border-gray-100 transition-colors"
+            >
               <div className="bg-gray-100 p-2.5 rounded-full mr-4 shrink-0"><Map className="h-5 w-5 text-black" /></div>
-              Set location on map
+              Click the map to set location
             </div>
           </div>
         )}
@@ -328,7 +360,6 @@ const BookRide = () => {
 
       <div id="google_translate_element" style={{ display: 'none' }}></div>
 
-      {/* --- ADD NEW CONTACT MODAL --- */}
       {showAddContactModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl relative">
@@ -345,7 +376,6 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* --- SOS EMERGENCY POPUP --- */}
       {showSOSPopup && (
         <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[300] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
           <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
@@ -358,7 +388,6 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* --- ROUTE DEVIATION POPUP --- */}
       {showDeviationPopup && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-yellow-400 relative overflow-hidden">
@@ -374,7 +403,6 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* LANGUAGE MODAL */}
       {isLangModalOpen && (
         <div className="fixed inset-0 bg-white z-[200] overflow-y-auto animate-in fade-in duration-200">
           <div className="p-6 md:p-12 max-w-6xl mx-auto relative min-h-screen">
@@ -400,7 +428,6 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* TOP NAVIGATION BAR */}
       <nav className="bg-black text-white flex flex-col md:flex-row justify-between items-center px-4 md:px-12 py-4 gap-4">
         <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
           <div className="flex items-center space-x-2 cursor-pointer" onClick={() => {setMainView('ride'); resetRide();}}>
@@ -423,7 +450,6 @@ const BookRide = () => {
         </div>
       </nav>
 
-      {/* 🔐 LOGIN PAGE */}
       {mainView === 'login' && (
         <main className="max-w-md mx-auto px-4 py-24 animate-in fade-in duration-500">
           <h1 className="text-4xl font-bold mb-8 text-center">Welcome back</h1>
@@ -437,7 +463,6 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* 📝 REGISTER PAGE */}
       {mainView === 'signup' && (
         <main className="max-w-md mx-auto px-4 py-16 animate-in fade-in duration-500">
           <h1 className="text-4xl font-bold mb-2 text-center">Create Account</h1>
@@ -452,7 +477,6 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* 👤 PASSENGER DASHBOARD PAGE */}
       {mainView === 'dashboard' && (
         <main className="max-w-6xl mx-auto px-4 md:px-12 py-12 animate-in fade-in duration-500 flex flex-col md:flex-row gap-8">
           <div className="w-full md:w-1/4">
@@ -508,7 +532,7 @@ const BookRide = () => {
                 </div>
               </div>
             )}
-                        {dashTab === 'settings' && (
+            {dashTab === 'settings' && (
               <div>
                 <h2 className="text-3xl font-bold mb-6">Security & Settings</h2>
                 <div className="space-y-4">
@@ -537,13 +561,10 @@ const BookRide = () => {
                 </div>
               </div>
             )}
-              
-              
             </div>
         </main>
       )}
 
-      {/* 🟢 RIDE PAGE (Includes Ride tracking, Parcel, Rentals) */}
       {mainView === 'ride' && (
         <div className="animate-in fade-in duration-500">
           
@@ -559,10 +580,8 @@ const BookRide = () => {
           </div>
 
           <main className="max-w-7xl mx-auto px-4 md:px-12 py-12 flex flex-col md:flex-row gap-12 items-start">
-            {/* LEFT COLUMN: THE FORMS */}
             <div className={`w-full flex flex-col relative min-h-[500px] ${rideConfirmed ? '' : 'md:w-1/2'}`}>
               
-              {/* --- 📦 PARCEL VIEW --- */}
               {activeTab === 'parcel' && !showPrices && !rideConfirmed && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   <div className="w-full h-40 bg-orange-100 rounded-t-2xl overflow-hidden mb-6 relative">
@@ -583,7 +602,6 @@ const BookRide = () => {
                 </div>
               )}
               
-              {/* --- 🚗 RENTALS VIEW --- */}
               {activeTab === 'rentals' && !showPrices && !rideConfirmed && (
                 <div className="animate-in fade-in duration-300 w-full max-w-md h-full flex flex-col">
                   <h1 className="text-4xl font-bold mb-8 mt-4">Find a trip</h1>
@@ -620,11 +638,9 @@ const BookRide = () => {
                 </div>
               )}
             
-              {/* --- STANDARD RIDE VIEWS (Request, Prices, etc) --- */}
               {(['request', 'reserve', 'explore'].includes(activeTab) || showPrices || rideConfirmed) && (
                 <>
                   {rideConfirmed ? (
-                    // 🚨 LIVE SECURITY DASHBOARD - NOW FULL WIDTH 🚨
                     <div className="w-full h-[600px] flex flex-col animate-in fade-in duration-500">
                       <h2 className="text-3xl font-bold mb-4 flex items-center"><ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring</h2>
                       
@@ -710,7 +726,7 @@ const BookRide = () => {
                         <button onClick={() => setShowPrices(false)} className="flex items-center text-blue-600 font-medium hover:underline mb-4"><ArrowLeft className="h-4 w-4 mr-1" /> Back to locations</button>
                         <h2 className="text-3xl font-bold mb-4">Choose your ride</h2>
                       </div>
-                                            <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
+                      <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
                         <div onClick={() => setSelectedCar('SmartBike')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartBike' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}><div className="flex items-center space-x-4"><Bike className="h-8 w-8 text-red-500" /><div><h3 className="font-bold text-lg notranslate">SmartBike</h3><p className="text-xs text-red-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> Helmet Verified</p></div></div><div className="text-xl font-bold">₹100</div></div>
                         <div onClick={() => setSelectedCar('SmartMini')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}><div className="flex items-center space-x-4"><Car className="h-8 w-8 text-gray-700" /><div><h3 className="font-bold text-lg notranslate">SmartMini</h3><p className="text-xs text-green-600 font-medium flex items-center mt-1"><ShieldCheck className="h-3 w-3 mr-1"/> SOS Active</p></div></div><div className="text-xl font-bold">₹240</div></div>
                         <div onClick={() => setSelectedCar('SmartSedan')} className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSedan' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}><div className="flex items-center space-x-4"><Car className="h-10 w-10 text-gray-900" /><div><h3 className="font-bold text-lg notranslate">SmartSedan</h3><p className="text-xs text-blue-600 font-medium flex items-center mt-1"><Shield className="h-3 w-3 mr-1"/> Top Rated Driver</p></div></div><div className="text-xl font-bold">₹320</div></div>
@@ -741,19 +757,20 @@ const BookRide = () => {
               )}
             </div>
 
-            {/* RIGHT COLUMN: The Background Map (Hides when ride is confirmed to allow Dashboard to be full width) */}
+            {/* 🔥 FIXED: Right Column Map is now Interactive (Zoom, Pan, Click to Set Address) */}
             {!rideConfirmed && (
               <div className="w-full md:w-1/2 mt-8 md:mt-0 h-[500px]">
-                <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl bg-gray-100">
-                  <div className="absolute inset-0 z-0 pointer-events-none opacity-60">
-                    <MapContainer center={[20.5937, 78.9629]} zoom={4} scrollWheelZoom={false} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl bg-gray-100 cursor-crosshair">
+                  <div className="absolute inset-0 z-0 opacity-80">
+                    <MapContainer center={[20.5937, 78.9629]} zoom={5} scrollWheelZoom={true} style={{ height: '100%', width: '100%' }}>
                         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        <MapClickHandler onMapClick={handleMapClick} />
                     </MapContainer>
                   </div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8">
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8 pointer-events-none">
                     <h3 className="text-white text-3xl font-bold w-3/4">Travel safely anywhere in India.</h3>
                   </div>
-                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold text-green-700 shadow z-20">
+                  <div className="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-2 rounded-full flex items-center space-x-2 text-sm font-bold text-green-700 shadow z-20 pointer-events-none">
                     <ShieldCheck className="h-4 w-4" />
                     <span>AI Security Active</span>
                   </div>
@@ -763,65 +780,17 @@ const BookRide = () => {
 
           </main>
 
-          {/* EXPLORE SECTION */}
           <section id="explore-section" className="max-w-7xl mx-auto px-4 md:px-12 py-16">
             <h2 className="text-3xl font-bold mb-8">Explore what you can do with SmartCab</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('request')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Ride</h3><p className="text-sm text-gray-600 mb-6">Go anywhere with full GPS tracking. Request a ride, hop in, and go safely.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Car className="h-20 w-20 text-gray-700 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
               <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('reserve')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Reserve</h3><p className="text-sm text-gray-600 mb-6">Reserve your secure ride in advance. Pre-vetted drivers assigned for safety.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Calendar className="h-20 w-20 text-blue-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
-                            <div
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md"
-                onClick={() => openFeatureDetails('intercity')}
-              >
-                <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Intercity</h3>
-                    <p className="text-sm text-gray-600 mb-6">
-                      Get convenient, affordable outstation cabs with real-time route alerts.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openFeatureDetails('intercity');
-                    }}
-                    className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50"
-                  >
-                    Details
-                  </button>
-                </div>
-                <Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
-              </div>
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => openFeatureDetails('intercity')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Intercity</h3><p className="text-sm text-gray-600 mb-6">Get convenient, affordable outstation cabs with real-time route alerts.</p></div><button type="button" onClick={(e) => { e.stopPropagation(); openFeatureDetails('intercity'); }} className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
               <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('rentals')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Rentals</h3><p className="text-sm text-gray-600 mb-6">Request a trip for a block of time and make multiple stops easily.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Clock className="h-20 w-20 text-purple-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
-                            <div
-                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md"
-                onClick={() => openFeatureDetails('bike')}
-              >
-                <div className="flex flex-col h-full justify-between pr-4">
-                  <div>
-                    <h3 className="text-xl font-bold mb-2">Bike</h3>
-                    <p className="text-sm text-gray-600 mb-6">
-                      Get affordable, quick motorbike rides in minutes at your doorstep.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openFeatureDetails('bike');
-                    }}
-                    className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50"
-                  >
-                    Details
-                  </button>
-                </div>
-                <Bike className="h-20 w-20 text-red-500 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
-              </div>
+              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => openFeatureDetails('bike')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Bike</h3><p className="text-sm text-gray-600 mb-6">Get affordable, quick motorbike rides in minutes at your doorstep.</p></div><button type="button" onClick={(e) => { e.stopPropagation(); openFeatureDetails('bike'); }} className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Bike className="h-20 w-20 text-red-500 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
             </div>
           </section>
 
-          {/* --- PLAN FOR LATER SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-12">
             <div className="flex flex-col lg:flex-row bg-[#e2f1f8] rounded-2xl overflow-hidden relative">
               <div className="w-full lg:w-1/2 p-8 md:p-12 z-10 flex flex-col justify-center">
@@ -848,7 +817,6 @@ const BookRide = () => {
             </div>
           </section>
 
-          {/* --- GROUP RIDES SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <div className="flex flex-col md:flex-row items-center gap-12">
               <div className="w-full md:w-1/2 flex justify-center">
@@ -874,7 +842,6 @@ const BookRide = () => {
             </div>
           </section>
 
-          {/* --- 3-COLUMN INFO SECTION --- */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">Use the SmartCab app to help you travel your way</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -886,7 +853,6 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* 🟡 DRIVE PAGE  */}
       {mainView === 'drive' && (
         <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
           <div className="w-full md:w-1/2 flex flex-col">
@@ -903,7 +869,6 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* 🔵 BUSINESS PAGE  */}
       {mainView === 'business' && (
         <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
           <div className="w-full md:w-1/2 flex flex-col">
@@ -920,7 +885,6 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* 🟣 ABOUT PAGE */}
       {mainView === 'about' && (
         <main className="max-w-4xl mx-auto px-4 md:px-12 py-24 text-center animate-in fade-in duration-500">
           <ShieldCheck className="h-24 w-24 text-green-500 mx-auto mb-8" />
@@ -929,7 +893,7 @@ const BookRide = () => {
           <button onClick={() => setMainView('ride')} className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg hover:bg-gray-800 transition shadow-lg hover:scale-105 transform">Take a Ride →</button>
         </main>
       )}
-      {/* ✅ PROFESSIONAL DETAILS POPUP FOR INTERCITY / BIKE / OTHER DETAILS */}
+
       {selectedCard && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden relative animate-in zoom-in duration-200">

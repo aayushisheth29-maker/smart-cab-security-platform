@@ -61,3 +61,46 @@ See:  [System_Architecture_Diagram](docs/System_Architecture_Diagram.md)
 
 ### Business Logic
 - [Business Logic](docs/Business_Logic.md)
+
+## Login Page
+See: [Login Page](docs/Login_Page.md)  
+
+## Driver Registration Page
+See: [Driver Registration](docs/Driver_Registration.md)
+
+## Ride Booking Page
+See: [Ride Booking](docs/Ride_Booking.md)
+
+## Live Tracking Page
+See: [Live Tracking](docs/Live_Tracking.md)
+
+## SOS Emergency Page
+See: [SOS Emergency](docs/SOS_Emergency.md)
+
+
+## Week 5 - Frontend Development
+
+### User Interface Design
+- [User Interface Design](docs/UI_Design.md)
+
+### Home Page Design
+- [Home Page Design](docs/Home_Page.md)
+
+### Authentication Pages
+- [Authentication Pages](docs/Authentication_Pages.md)
+
+### Dashboard Design
+- [Dashboard Design](docs/Dashboard_Design.md)
+
+### Frontend Integration
+- [Frontend Integration](docs/Frontend_Backend_Integration.md)
+
+### API Integration
+- [API Integration](docs/API_Integration.md)
+
+### Responsive Design
+- [Responsive Design](docs/Responsive_Design.md)
+
+
+
+
