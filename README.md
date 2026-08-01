@@ -101,6 +101,19 @@ See: [SOS Emergency](docs/SOS_Emergency.md)
 ### Responsive Design
 - [Responsive Design](docs/Responsive_Design.md)
 
+## Project Modules
+
+### Frontend
+See: [Frontend Source Code](frontend/)
+
+### Backend (Java)
+See: [Java Backend](backend-java-core/)
+
+### AI Backend (Python)
+See: [Python AI Backend](backend-python-ai/)
+
+### Database
+See: [Database Files](database/)
 
 
 
