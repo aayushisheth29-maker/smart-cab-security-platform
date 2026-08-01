@@ -6,7 +6,7 @@ import {
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
-  Lock, Settings, History, LogOut
+  Lock, Settings, History, LogOut, Search, Compass
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -44,7 +44,7 @@ const MapUpdater = ({ center, zoom }) => {
   return null;
 };
 
-// NEW: Hook to handle map clicks for Reverse Geocoding
+// Hook to handle map clicks for Reverse Geocoding
 const MapClickHandler = ({ onMapClick }) => {
   useMapEvents({
     click(e) {
@@ -102,6 +102,10 @@ const BookRide = () => {
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
 
+  // ✈️ NEW: States for Airport & City Search Modals
+  const [searchModalType, setSearchModalType] = useState(null); // 'airports' | 'cities' | null
+  const [searchQuery, setSearchQuery] = useState('');
+
   const [emergencyContacts, setEmergencyContacts] = useState([
     { name: 'Mom', phone: '+919876543210' },
     { name: 'Dad', phone: '+919876543211' }
@@ -121,6 +125,51 @@ const BookRide = () => {
     { title: "Delhi Airport", subtitle: "Indira Gandhi International Airport" },
     { title: "Mumbai Central", subtitle: "Mumbai, Maharashtra" }
   ];
+
+  // ✈️ Indian Airports Database
+  const airportList = [
+    { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ SmartCabs Nearby" },
+    { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ SmartCabs Nearby" },
+    { name: "Kempegowda International Airport (BLR)", code: "BLR", city: "Bengaluru", state: "Karnataka", activeCabs: "120+ SmartCabs Nearby" },
+    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ SmartCabs Nearby" },
+    { name: "Rajiv Gandhi International Airport (HYD)", code: "HYD", city: "Hyderabad", state: "Telangana", activeCabs: "110+ SmartCabs Nearby" },
+    { name: "Chennai International Airport (MAA)", code: "MAA", city: "Chennai", state: "Tamil Nadu", activeCabs: "88+ SmartCabs Nearby" },
+    { name: "Netaji Subhash Chandra Bose International Airport (CCU)", code: "CCU", city: "Kolkata", state: "West Bengal", activeCabs: "75+ SmartCabs Nearby" },
+    { name: "Cochin International Airport (COK)", code: "COK", city: "Kochi", state: "Kerala", activeCabs: "60+ SmartCabs Nearby" },
+    { name: "Manohar International Airport (GOX)", code: "GOX", city: "Mopa", state: "Goa", activeCabs: "50+ SmartCabs Nearby" },
+    { name: "Pune Airport (PNQ)", code: "PNQ", city: "Pune", state: "Maharashtra", activeCabs: "80+ SmartCabs Nearby" },
+    { name: "Jaipur International Airport (JAI)", code: "JAI", city: "Jaipur", state: "Rajasthan", activeCabs: "45+ SmartCabs Nearby" },
+    { name: "Lal Bahadur Shastri Airport (VNS)", code: "VNS", city: "Varanasi", state: "Uttar Pradesh", activeCabs: "35+ SmartCabs Nearby" }
+  ];
+
+  // 🏙️ Indian Cities Database
+  const cityList = [
+    { name: "Ahmedabad", state: "Gujarat", activeVehicles: "1,240 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Delhi / NCR", state: "Delhi", activeVehicles: "3,850 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Mumbai", state: "Maharashtra", activeVehicles: "4,120 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Bengaluru", state: "Karnataka", activeVehicles: "2,980 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Hyderabad", state: "Telangana", activeVehicles: "2,150 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Chennai", state: "Tamil Nadu", activeVehicles: "1,890 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Kolkata", state: "West Bengal", activeVehicles: "1,640 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Pune", state: "Maharashtra", activeVehicles: "1,420 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Jaipur", state: "Rajasthan", activeVehicles: "980 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Surat", state: "Gujarat", activeVehicles: "1,110 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Lucknow", state: "Uttar Pradesh", activeVehicles: "850 Cabs Available", coverage: "100% AI Security Active" },
+    { name: "Chandigarh", state: "Punjab", activeVehicles: "720 Cabs Available", coverage: "100% AI Security Active" }
+  ];
+
+  const handleSelectLocationFromModal = (locationName) => {
+    if (!pickup) {
+      setPickup(locationName);
+    } else {
+      setDropoff(locationName);
+    }
+    setSearchModalType(null);
+    setSearchQuery('');
+    setMainView('ride');
+    setActiveTab('request');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
 
   const handleAddContact = () => {
     if(newContactName && newContactPhone) {
@@ -181,14 +230,12 @@ const BookRide = () => {
     }
   };
 
-  // 🔥 NEW: Function to handle when you click on the map!
   const handleMapClick = async (latlng) => {
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
       const data = await response.json();
       
       if (data && data.display_name) {
-        // Grab just the first two parts of the address
         const shortAddress = data.display_name.split(', ').slice(0, 2).join(', ');
         
         if (focusedInput === 'dropoff' || (pickup && !dropoff)) {
@@ -321,7 +368,6 @@ const BookRide = () => {
             {locationSuggestions.filter(s => s.title.toLowerCase().includes(value.toLowerCase()) || value === '').map((loc, idx) => (
               <div 
                 key={idx} 
-                // 🔥 FIXED: Used onMouseDown to fix the unclickable dropdown bug!
                 onMouseDown={(e) => {
                   e.preventDefault();
                   setValue(loc.title); 
@@ -359,6 +405,89 @@ const BookRide = () => {
       `}</style>
 
       <div id="google_translate_element" style={{ display: 'none' }}></div>
+
+      {/* ✈️ / 🏙️ AIRPORT & CITY SEARCH MODAL */}
+      {searchModalType && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[350] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden relative flex flex-col max-h-[85vh]">
+            <div className="p-6 bg-black text-white flex justify-between items-center shrink-0">
+              <div className="flex items-center space-x-3">
+                {searchModalType === 'airports' ? <Plane className="h-7 w-7 text-green-400" /> : <Globe className="h-7 w-7 text-blue-400" />}
+                <div>
+                  <h3 className="text-2xl font-bold">{searchModalType === 'airports' ? '700+ Airports Supported' : '15,000+ Cities Active'}</h3>
+                  <p className="text-xs text-gray-300">Select any location across India to pre-fill your trip</p>
+                </div>
+              </div>
+              <button onClick={() => { setSearchModalType(null); setSearchQuery(''); }} className="p-2 hover:bg-gray-800 rounded-full transition"><X className="h-6 w-6 text-white" /></button>
+            </div>
+
+            <div className="p-4 bg-gray-50 border-b border-gray-200 shrink-0">
+              <div className="flex items-center bg-white border border-gray-300 rounded-2xl px-4 py-3 shadow-inner focus-within:ring-2 ring-black">
+                <Search className="h-5 w-5 text-gray-400 mr-3" />
+                <input 
+                  type="text" 
+                  placeholder={searchModalType === 'airports' ? "Search airport name, code (DEL, BOM, AMD), or city..." : "Search city name or state (Delhi, Gujarat, Mumbai)..."} 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="w-full bg-transparent outline-none font-medium text-lg text-gray-900"
+                  autoFocus
+                />
+                {searchQuery && <button onClick={() => setSearchQuery('')} className="text-xs bg-gray-200 text-gray-600 px-2 py-1 rounded-full hover:bg-gray-300">Clear</button>}
+              </div>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-3 flex-1">
+              {searchModalType === 'airports' ? (
+                airportList.filter(a => 
+                  a.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                  a.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  a.code.toLowerCase().includes(searchQuery.toLowerCase())
+                ).map((airport, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => handleSelectLocationFromModal(airport.name)}
+                    className="p-4 rounded-2xl border border-gray-200 hover:border-black hover:bg-green-50/50 cursor-pointer transition flex justify-between items-center group"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="p-3 bg-black text-white rounded-xl group-hover:bg-green-600 transition"><Plane className="h-6 w-6" /></div>
+                      <div>
+                        <h4 className="font-bold text-base text-gray-900">{airport.name}</h4>
+                        <p className="text-xs text-gray-500 font-medium">{airport.city}, {airport.state}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <span className="inline-block bg-green-100 text-green-800 text-xs font-bold px-2.5 py-1 rounded-full">{airport.activeCabs}</span>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                cityList.filter(c => 
+                  c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                  c.state.toLowerCase().includes(searchQuery.toLowerCase())
+                ).map((city, idx) => (
+                  <div 
+                    key={idx} 
+                    onClick={() => handleSelectLocationFromModal(`${city.name}, ${city.state}`)}
+                    className="p-4 rounded-2xl border border-gray-200 hover:border-black hover:bg-blue-50/50 cursor-pointer transition flex justify-between items-center group"
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="p-3 bg-black text-white rounded-xl group-hover:bg-blue-600 transition"><Globe className="h-6 w-6" /></div>
+                      <div>
+                        <h4 className="font-bold text-base text-gray-900">{city.name}</h4>
+                        <p className="text-xs text-gray-500 font-medium">{city.state}, India</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs font-bold text-blue-600">{city.activeVehicles}</p>
+                      <p className="text-[10px] text-gray-400 font-bold">{city.coverage}</p>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {showAddContactModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
@@ -757,7 +886,6 @@ const BookRide = () => {
               )}
             </div>
 
-            {/* 🔥 FIXED: Right Column Map is now Interactive (Zoom, Pan, Click to Set Address) */}
             {!rideConfirmed && (
               <div className="w-full md:w-1/2 mt-8 md:mt-0 h-[500px]">
                 <div className="relative w-full h-full rounded-2xl overflow-hidden shadow-2xl bg-gray-100 cursor-crosshair">
@@ -842,12 +970,44 @@ const BookRide = () => {
             </div>
           </section>
 
+          {/* ✈️ 🏙️ 3-COLUMN INFO SECTION (NOW FULLY INTERACTIVE!) */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">Use the SmartCab app to help you travel your way</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="flex flex-col h-full"><div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100"><img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600" alt="Ride options" className="w-full h-full object-cover hover:scale-105 transition duration-500" /></div><h3 className="text-xl font-bold mb-3">Ride options</h3><p className="text-gray-600 mb-6 flex-grow">There’s more than one way to move with SmartCab, no matter where you are or where you’re headed next.</p><button onClick={() => setIsStartModalOpen(true)} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max">Search ride options</button></div>
-              <div className="flex flex-col h-full"><div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100"><img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=600" alt="Airports" className="w-full h-full object-cover hover:scale-105 transition duration-500" /></div><h3 className="text-xl font-bold mb-3">700+ airports</h3><p className="text-gray-600 mb-6 flex-grow">You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.</p><button onClick={() => setIsStartModalOpen(true)} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"><Plane className="h-4 w-4 mr-2" /> Search airports</button></div>
-              <div className="flex flex-col h-full"><div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100"><img src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600" alt="Cities" className="w-full h-full object-cover hover:scale-105 transition duration-500" /></div><h3 className="text-xl font-bold mb-3">15,000+ cities</h3><p className="text-gray-600 mb-6 flex-grow">The app is available in thousands of cities worldwide, so you can request a ride even when you’re far from home.</p><button onClick={() => setIsStartModalOpen(true)} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center"><Globe className="h-4 w-4 mr-2" /> Search cities</button></div>
+              
+              <div className="flex flex-col h-full">
+                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
+                  <img src="https://images.unsplash.com/photo-1549317661-bd32c8ce0db2?auto=format&fit=crop&q=80&w=600" alt="Ride options" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">Ride options</h3>
+                <p className="text-gray-600 mb-6 flex-grow">There’s more than one way to move with SmartCab, no matter where you are or where you’re headed next.</p>
+                <button onClick={() => { setActiveTab('request'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max">Search ride options</button>
+              </div>
+
+              {/* ✈️ AIRPORT SEARCH BUTTON */}
+              <div className="flex flex-col h-full">
+                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
+                  <img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=600" alt="Airports" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">700+ airports</h3>
+                <p className="text-gray-600 mb-6 flex-grow">You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.</p>
+                <button onClick={() => setSearchModalType('airports')} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center shadow-md hover:scale-105 transform">
+                  <Plane className="h-4 w-4 mr-2" /> Search airports
+                </button>
+              </div>
+
+              {/* 🏙️ CITY SEARCH BUTTON */}
+              <div className="flex flex-col h-full">
+                <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
+                  <img src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600" alt="Cities" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
+                </div>
+                <h3 className="text-xl font-bold mb-3">15,000+ cities</h3>
+                <p className="text-gray-600 mb-6 flex-grow">The app is available in thousands of cities worldwide, so you can request a ride even when you’re far from home.</p>
+                <button onClick={() => setSearchModalType('cities')} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max flex items-center shadow-md hover:scale-105 transform">
+                  <Globe className="h-4 w-4 mr-2" /> Search cities
+                </button>
+              </div>
+
             </div>
           </section>
         </div>
