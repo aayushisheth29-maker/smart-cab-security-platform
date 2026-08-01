@@ -206,6 +206,39 @@ const BookRide = () => {
     setActiveTab(feature);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
+    const openFeatureDetails = (feature) => {
+    if (feature === 'intercity') {
+      setSelectedCard({
+        title: 'Intercity Travel',
+        subtitle: 'Safe outstation rides between cities',
+        description: 'Book comfortable long-distance cabs for city-to-city travel with verified drivers, live GPS monitoring, SOS support, and route-deviation alerts.',
+        benefits: [
+          'Verified outstation drivers',
+          'Live GPS route tracking',
+          'Route-deviation safety alerts',
+          'Comfortable cars for long trips',
+          'Transparent fare estimate',
+          'Emergency SOS support'
+        ]
+      });
+    }
+
+    if (feature === 'bike') {
+      setSelectedCard({
+        title: 'SmartBike',
+        subtitle: 'Fast and affordable bike rides',
+        description: 'Beat city traffic with quick SmartBike rides. SmartCab adds safety checks, helmet verification, live tracking, and SOS support for a safer two-wheeler experience.',
+        benefits: [
+          'Quick rides through traffic',
+          'Affordable short-distance travel',
+          'Helmet safety verification',
+          'Live GPS tracking',
+          'Verified bike drivers',
+          'SOS and emergency support'
+        ]
+      });
+    }
+  };
 
   const closeAllForms = () => {
     setShowDriverForm(false);
@@ -723,10 +756,55 @@ const BookRide = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('request')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Ride</h3><p className="text-sm text-gray-600 mb-6">Go anywhere with full GPS tracking. Request a ride, hop in, and go safely.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Car className="h-20 w-20 text-gray-700 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
               <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('reserve')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Reserve</h3><p className="text-sm text-gray-600 mb-6">Reserve your secure ride in advance. Pre-vetted drivers assigned for safety.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Calendar className="h-20 w-20 text-blue-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
-              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => setSelectedCard({ title: 'Intercity Travel', description: 'Comfortable outstation cabs for long-distance travel. All intercity vehicles undergo a 24-point maintenance check before dispatch and feature physical SOS panic buttons installed in the rear passenger seats.' })}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Intercity</h3><p className="text-sm text-gray-600 mb-6">Get convenient, affordable outstation cabs with real-time route alerts.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
-              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('parcel')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Parcel</h3><p className="text-sm text-gray-600 mb-6">SmartCab makes same-day item delivery easier and safer than ever.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Package className="h-20 w-20 text-amber-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
+                            <div
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md"
+                onClick={() => openFeatureDetails('intercity')}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Intercity</h3>
+                    <p className="text-sm text-gray-600 mb-6">
+                      Get convenient, affordable outstation cabs with real-time route alerts.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openFeatureDetails('intercity');
+                    }}
+                    className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50"
+                  >
+                    Details
+                  </button>
+                </div>
+                <Map className="h-20 w-20 text-green-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+              </div>
               <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => handleFeatureCardClick('rentals')}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Rentals</h3><p className="text-sm text-gray-600 mb-6">Request a trip for a block of time and make multiple stops easily.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Clock className="h-20 w-20 text-purple-600 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
-              <div className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" onClick={() => setSelectedCard({ title: 'SmartBike', description: 'Beat the traffic with our fast and affordable motorcycle rides. We enforce a strict helmet-verification protocol—the ride cannot start until the driver uploads a selfie wearing their helmet.' })}><div className="flex flex-col h-full justify-between pr-4"><div><h3 className="text-xl font-bold mb-2">Bike</h3><p className="text-sm text-gray-600 mb-6">Get affordable, quick motorbike rides in minutes at your doorstep.</p></div><button className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50">Details</button></div><Bike className="h-20 w-20 text-red-500 drop-shadow-md group-hover:scale-110 transition-transform duration-300" /></div>
+                            <div
+                className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md"
+                onClick={() => openFeatureDetails('bike')}
+              >
+                <div className="flex flex-col h-full justify-between pr-4">
+                  <div>
+                    <h3 className="text-xl font-bold mb-2">Bike</h3>
+                    <p className="text-sm text-gray-600 mb-6">
+                      Get affordable, quick motorbike rides in minutes at your doorstep.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openFeatureDetails('bike');
+                    }}
+                    className="bg-white font-medium px-4 py-2 rounded-full shadow-sm w-max text-sm hover:bg-gray-50"
+                  >
+                    Details
+                  </button>
+                </div>
+                <Bike className="h-20 w-20 text-red-500 drop-shadow-md group-hover:scale-110 transition-transform duration-300" />
+              </div>
             </div>
           </section>
 
