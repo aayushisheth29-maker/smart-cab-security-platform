@@ -63,19 +63,19 @@ See:  [System_Architecture_Diagram](docs/System_Architecture_Diagram.md)
 - [Business Logic](docs/Business_Logic.md
 
 ## Login Page
-See: [Login Page](./Login_Page.md)  
+See: [Login Page](docs/Login_Page.md)  
 
 ## Driver Registration Page
-See: [Driver Registration](./Driver_Registration.md)
+See: [Driver Registration](docs/Driver_Registration.md)
 
 ## Ride Booking Page
-See: [Ride Booking](./Ride_Booking.md)
+See: [Ride Booking](docs/Ride_Booking.md)
 
 ## Live Tracking Page
-See: [Live Tracking](./Live_Tracking.md)
+See: [Live Tracking](docs/Live_Tracking.md)
 
 ## SOS Emergency Page
-See: [SOS Emergency](./SOS_Emergency.md)
+See: [SOS Emergency](docs/SOS_Emergency.md)
 
 
 ## Week 5 - Frontend Development
