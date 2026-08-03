@@ -99,10 +99,12 @@ const BookRide = () => {
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
 
+  // 🚨 SIMULATION POPUP STATES
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
+  const [showGPSLostPopup, setShowGPSLostPopup] = useState(false);
 
-  // ✈️ NEW: States for Airport & City Search Modals
+  // ✈️ States for Airport & City Search Modals
   const [searchModalType, setSearchModalType] = useState(null); // 'airports' | 'cities' | null
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -205,7 +207,7 @@ const BookRide = () => {
   };
 
   useEffect(() => {
-    if (rideConfirmed && rideProgress < 100 && !showDeviationPopup) {
+    if (rideConfirmed && rideProgress < 100 && !showDeviationPopup && !showGPSLostPopup) {
       const timer = setInterval(() => {
         setRideProgress((prev) => {
           const next = prev + 1;
@@ -214,7 +216,7 @@ const BookRide = () => {
       }, 1000);
       return () => clearInterval(timer);
     }
-  }, [rideConfirmed, rideProgress, showDeviationPopup]);
+  }, [rideConfirmed, rideProgress, showDeviationPopup, showGPSLostPopup]);
 
   const geocodeLocation = async (address) => {
     try {
@@ -343,6 +345,7 @@ const BookRide = () => {
     setMapZoom(5);
     setShowSOSPopup(false);
     setShowDeviationPopup(false);
+    setShowGPSLostPopup(false);
   };
 
   const renderLocationInput = (type, placeholder, value, setValue) => {
@@ -527,6 +530,22 @@ const BookRide = () => {
             <div className="flex flex-col gap-3">
               <button onClick={() => setShowDeviationPopup(false)} className="w-full bg-green-500 text-white font-bold text-xl py-4 rounded-xl hover:bg-green-600 shadow-lg">Yes, I am fine</button>
               <button onClick={() => { setShowDeviationPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- 📡 GPS SIGNAL LOST POPUP (FOR DEMO) --- */}
+      {showGPSLostPopup && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-orange-500 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 bg-orange-500 h-2 animate-pulse"></div>
+            <Globe className="h-20 w-20 text-orange-500 mb-6 mx-auto opacity-50" />
+            <h2 className="text-3xl font-bold text-center mb-4">GPS Signal Lost</h2>
+            <p className="text-gray-600 text-center text-lg mb-8">SmartCab AI has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe?</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={() => setShowGPSLostPopup(false)} className="w-full bg-black text-white font-bold text-xl py-4 rounded-xl hover:bg-gray-800 shadow-lg">Yes, I am fine</button>
+              <button onClick={() => { setShowGPSLostPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
             </div>
           </div>
         </div>
@@ -970,7 +989,6 @@ const BookRide = () => {
             </div>
           </section>
 
-          {/* ✈️ 🏙️ 3-COLUMN INFO SECTION (NOW FULLY INTERACTIVE!) */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">Use the SmartCab app to help you travel your way</h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -984,7 +1002,6 @@ const BookRide = () => {
                 <button onClick={() => { setActiveTab('request'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} className="bg-black text-white font-bold py-3 px-6 rounded-xl hover:bg-gray-800 transition w-max">Search ride options</button>
               </div>
 
-              {/* ✈️ AIRPORT SEARCH BUTTON */}
               <div className="flex flex-col h-full">
                 <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
                   <img src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&q=80&w=600" alt="Airports" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
@@ -996,7 +1013,6 @@ const BookRide = () => {
                 </button>
               </div>
 
-              {/* 🏙️ CITY SEARCH BUTTON */}
               <div className="flex flex-col h-full">
                 <div className="w-full aspect-[4/3] rounded-2xl overflow-hidden mb-6 bg-gray-100">
                   <img src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600" alt="Cities" className="w-full h-full object-cover hover:scale-105 transition duration-500" />
@@ -1219,6 +1235,35 @@ const BookRide = () => {
       )}
 
       <StartModal isOpen={isStartModalOpen} onClose={() => setIsStartModalOpen(false)} />
+
+      {/* 🎛️ SECRET MENTOR DEMO PANEL 🎛️ */}
+      <div className="fixed bottom-20 right-4 z-[500] bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-bottom-10">
+        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+          <span className="text-xs font-bold text-gray-500 tracking-wider uppercase">Mentor Demo Controls</span>
+          <ShieldCheck className="h-4 w-4 text-green-500" />
+        </div>
+        <div className="space-y-2">
+          <button 
+            onClick={() => setShowDeviationPopup(true)} 
+            className="w-full text-left text-sm font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-700 px-3 py-2 rounded-lg transition border border-yellow-200"
+          >
+            🟡 Simulate 500m Deviation
+          </button>
+          <button 
+            onClick={() => setShowGPSLostPopup(true)} 
+            className="w-full text-left text-sm font-bold bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg transition border border-orange-200"
+          >
+            📡 Simulate GPS Lost
+          </button>
+          <button 
+            onClick={() => setShowSOSPopup(true)} 
+            className="w-full text-left text-sm font-bold bg-red-50 hover:bg-red-100 text-red-700 px-3 py-2 rounded-lg transition border border-red-200"
+          >
+            🚨 Simulate SOS / Police
+          </button>
+        </div>
+      </div>
+
     </div>
   );
 };
