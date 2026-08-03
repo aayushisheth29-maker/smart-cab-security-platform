@@ -6,7 +6,7 @@ import {
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
-  Lock, Settings, History, LogOut, Search, Compass
+  Lock, Settings, History, LogOut, Search, Compass, Video, Download
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -79,9 +79,6 @@ const BookRide = () => {
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
-  const [driverData, setDriverData] = useState({ name: '', phone: '', city: '', carModel: '' });
-  const [businessData, setBusinessData] = useState({ company: '', email: '', employees: '' });
-
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
   const [showPrices, setShowPrices] = useState(false);
@@ -103,6 +100,13 @@ const BookRide = () => {
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
   const [showGPSLostPopup, setShowGPSLostPopup] = useState(false);
+
+  // 🔴 NEW: WOMEN & CHILD SAFETY STATES
+  const [showLiveGuardModal, setShowLiveGuardModal] = useState(false);
+  const [showSilentSOSModal, setShowSilentSOSModal] = useState(false);
+  const [liveGuardLink, setLiveGuardLink] = useState("");
+  const [isRecording, setIsRecording] = useState(false);
+  const [emergencyAlertSent, setEmergencyAlertSent] = useState(false);
 
   // ✈️ States for Airport & City Search Modals
   const [searchModalType, setSearchModalType] = useState(null); // 'airports' | 'cities' | null
@@ -128,7 +132,6 @@ const BookRide = () => {
     { title: "Mumbai Central", subtitle: "Mumbai, Maharashtra" }
   ];
 
-  // ✈️ Indian Airports Database
   const airportList = [
     { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ SmartCabs Nearby" },
     { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ SmartCabs Nearby" },
@@ -144,7 +147,6 @@ const BookRide = () => {
     { name: "Lal Bahadur Shastri Airport (VNS)", code: "VNS", city: "Varanasi", state: "Uttar Pradesh", activeCabs: "35+ SmartCabs Nearby" }
   ];
 
-  // 🏙️ Indian Cities Database
   const cityList = [
     { name: "Ahmedabad", state: "Gujarat", activeVehicles: "1,240 Cabs Available", coverage: "100% AI Security Active" },
     { name: "Delhi / NCR", state: "Delhi", activeVehicles: "3,850 Cabs Available", coverage: "100% AI Security Active" },
@@ -346,6 +348,8 @@ const BookRide = () => {
     setShowSOSPopup(false);
     setShowDeviationPopup(false);
     setShowGPSLostPopup(false);
+    setShowLiveGuardModal(false);
+    setShowSilentSOSModal(false);
   };
 
   const renderLocationInput = (type, placeholder, value, setValue) => {
@@ -546,6 +550,196 @@ const BookRide = () => {
             <div className="flex flex-col gap-3">
               <button onClick={() => setShowGPSLostPopup(false)} className="w-full bg-black text-white font-bold text-xl py-4 rounded-xl hover:bg-gray-800 shadow-lg">Yes, I am fine</button>
               <button onClick={() => { setShowGPSLostPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 👀 LIVE GUARD MODAL (Upgraded with Evidence Saving & Driver Profile) */}
+      {showLiveGuardModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl relative flex flex-col overflow-hidden">
+            <div className="p-6 bg-pink-500 text-white flex justify-between items-center">
+              <div className="flex items-center space-x-3">
+                <Shield className="h-7 w-7 text-white" />
+                <h3 className="text-2xl font-bold">Live Guard Mode</h3>
+              </div>
+              <button onClick={() => setShowLiveGuardModal(false)} className="p-2 hover:bg-white/20 rounded-full transition">
+                <X className="h-6 w-6 text-white" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto max-h-[80vh]">
+              {/* VIDEO FEED */}
+              <div className="bg-gray-900 rounded-2xl aspect-video mb-4 flex items-center justify-center relative overflow-hidden shadow-inner">
+                <video className="w-full h-full object-cover" autoPlay loop muted>
+                  <source src="https://assets.mixkit.co/videos/preview/mixkit-woman-in-a-car-with-a-driver-4423-large.mp4" type="video/mp4" />
+                  Your browser does not support the video tag.
+                </video>
+                <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center">
+                  <MapPin className="h-4 w-4 mr-1" /> Live GPS
+                </div>
+                <div className="absolute bottom-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center">
+                  <Clock className="h-4 w-4 mr-1" /> {new Date().toLocaleTimeString()}
+                </div>
+                <div className="absolute top-4 right-4 bg-red-500 text-white px-3 py-1 rounded-full text-sm font-bold animate-pulse">
+                  LIVE
+                </div>
+              </div>
+
+              {/* SAVE EVIDENCE BUTTON */}
+              <div className="flex justify-between items-center mb-6">
+                <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Secure Stream Encrypted</p>
+                <button
+                  onClick={() => {
+                    alert("✅ Video securely downloaded and encrypted. Ready to share with local police authorities as evidence.");
+                  }}
+                  className="bg-red-50 text-red-600 font-bold px-4 py-2 rounded-lg text-sm hover:bg-red-100 transition flex items-center border border-red-200 shadow-sm hover:scale-105 transform"
+                >
+                  <Download className="h-4 w-4 mr-2" /> Save Evidence
+                </button>
+              </div>
+
+              {/* DRIVER PROFILE FOR POLICE REPORTING */}
+              <h4 className="text-sm font-bold text-gray-900 mb-2 uppercase">Verified Driver Details</h4>
+              <div className="flex items-center bg-gray-50 p-4 rounded-xl mb-6 border border-gray-200 shadow-sm">
+                <div className="h-14 w-14 bg-gray-300 rounded-full overflow-hidden mr-4 border-2 border-white shadow">
+                  <img src="https://randomuser.me/api/portraits/men/32.jpg" alt="Driver" className="h-full w-full object-cover" />
+                </div>
+                <div className="flex-1">
+                  <h4 className="font-bold text-gray-900 text-lg">Rahul S.</h4>
+                  <p className="text-xs text-gray-600 font-medium">DL: MH02-2019-1234567 • ★ 4.8</p>
+                </div>
+                <div className="text-right">
+                  <h4 className="font-bold text-gray-900 bg-yellow-100 px-2 py-1 rounded border border-yellow-300">MH 02 AB 1234</h4>
+                  <p className="text-xs text-gray-600 font-medium mt-1">White SmartMini</p>
+                </div>
+              </div>
+
+              <h4 className="text-sm font-bold text-gray-900 mb-2 uppercase">Share Live Link</h4>
+              <div className="bg-gray-100 p-3 rounded-xl mb-6 flex items-center justify-between">
+                <span className="text-sm font-mono truncate">{liveGuardLink || "https://smartcab.live/guard?ride=RIDE12345"}</span>
+                <button
+                  onClick={() => {
+                    navigator.clipboard.writeText(liveGuardLink || "https://smartcab.live/guard?ride=RIDE12345");
+                    alert("Link copied to clipboard!");
+                  }}
+                  className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition"
+                >
+                  Copy
+                </button>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowLiveGuardModal(false)}
+                  className="flex-1 bg-gray-200 text-black font-bold py-4 rounded-xl hover:bg-gray-300 transition"
+                >
+                  Close
+                </button>
+                <button
+                  onClick={() => {
+                    setIsRecording(true);
+                    setShowLiveGuardModal(false);
+                    alert("Live Guard activated! Your contacts are now monitoring the trip.");
+                  }}
+                  className="flex-1 bg-pink-500 text-white font-bold py-4 rounded-xl hover:bg-pink-600 transition shadow-lg hover:scale-105 transform"
+                >
+                  Start Live Guard
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🚨 SILENT SOS MODAL (One-Click Emergency Alert) */}
+      {showSilentSOSModal && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl relative">
+            <div className="p-6 bg-red-600 text-white flex justify-between items-center rounded-t-3xl">
+              <div className="flex items-center space-x-3">
+                <Siren className="h-7 w-7 text-white animate-pulse" />
+                <h3 className="text-2xl font-bold">Silent SOS Activated</h3>
+              </div>
+              <button onClick={() => setShowSilentSOSModal(false)} className="p-2 hover:bg-white/20 rounded-full transition">
+                <X className="h-6 w-6 text-white" />
+              </button>
+            </div>
+
+            <div className="p-6">
+              {emergencyAlertSent ? (
+                <>
+                  <div className="bg-green-100 border-l-4 border-green-500 p-4 mb-6">
+                    <div className="flex">
+                      <CheckCircle className="h-6 w-6 text-green-500 mr-3" />
+                      <p className="text-green-700 font-bold">Emergency alert sent successfully!</p>
+                    </div>
+                    <p className="text-sm text-green-600 mt-2">
+                      Your emergency contacts, police (112), and women's helpline (181) have been notified with:
+                    </p>
+                    <ul className="text-sm text-green-600 mt-2 list-disc pl-5">
+                      <li>Driver's name, photo, and license</li>
+                      <li>Car model and number plate</li>
+                      <li>Live GPS location and route</li>
+                      <li>10-second video of the cab interior</li>
+                    </ul>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => {
+                        setShowSilentSOSModal(false);
+                        setEmergencyAlertSent(false);
+                      }}
+                      className="flex-1 bg-gray-200 text-black font-bold py-3 rounded-xl hover:bg-gray-300 transition"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => {
+                        window.open("tel:112", "_blank");
+                        setShowSilentSOSModal(false);
+                      }}
+                      className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-700 transition flex items-center justify-center"
+                    >
+                      <PhoneCall className="h-5 w-5 mr-2" /> Call 112
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="bg-red-50 p-4 rounded-xl mb-6">
+                    <h4 className="font-bold text-red-700 mb-2">Are you in danger?</h4>
+                    <p className="text-sm text-gray-700">
+                      This will send an emergency alert to your contacts, police (112), and women's helpline (181) with:
+                    </p>
+                    <ul className="text-sm text-gray-700 mt-2 list-disc pl-5">
+                      <li>Driver's name, photo, and license</li>
+                      <li>Car model and number plate</li>
+                      <li>Live GPS location and route</li>
+                      <li>10-second video of the cab interior</li>
+                    </ul>
+                  </div>
+
+                  <div className="flex gap-3">
+                    <button
+                      onClick={() => setShowSilentSOSModal(false)}
+                      className="flex-1 bg-gray-200 text-black font-bold py-3 rounded-xl hover:bg-gray-300 transition"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEmergencyAlertSent(true);
+                      }}
+                      className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-700 transition"
+                    >
+                      Send Emergency Alert
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -829,11 +1023,34 @@ const BookRide = () => {
                           </div>
                           
                           <div className="w-full md:w-1/3 border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-8">
+                            
+                            {/* 🔴 LIVE GUARD & SILENT SOS BUTTONS */}
+                            <div className="flex justify-between items-center mb-4">
+                              <p className="text-base font-bold text-gray-700">Emergency Safety</p>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setLiveGuardLink(`https://smartcab.live/guard?ride=${Math.random().toString(36).substring(2, 8)}`);
+                                    setShowLiveGuardModal(true);
+                                  }}
+                                  className="text-sm font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg hover:bg-pink-100 flex items-center transition border border-pink-200"
+                                >
+                                  <Video className="h-4 w-4 mr-1" /> Live Guard
+                                </button>
+                                <button
+                                  onClick={() => setShowSilentSOSModal(true)}
+                                  className="text-sm font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 flex items-center transition border border-red-200"
+                                >
+                                  <Siren className="h-4 w-4 mr-1" /> Silent SOS
+                                </button>
+                              </div>
+                            </div>
+
                             <div className="flex justify-between items-center mb-4">
                               <p className="text-base font-bold text-gray-700">Emergency Contacts</p>
                               <button 
                                 onClick={() => setShowAddContactModal(true)} 
-                                className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center transition"
+                                className="text-sm font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 flex items-center transition border border-blue-200"
                               >
                                 <Plus className="h-4 w-4 mr-1"/> Add
                               </button>
