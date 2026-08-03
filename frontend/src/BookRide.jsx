@@ -1,5 +1,5 @@
 import StartModal from './components/StartModal';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react'; // Added useRef here!
 import { Link } from 'react-router-dom';
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
@@ -100,16 +100,20 @@ const BookRide = () => {
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
   const [showGPSLostPopup, setShowGPSLostPopup] = useState(false);
+  const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false); // NEW: Controls the demo panel
 
-  // 🔴 NEW: WOMEN & CHILD SAFETY STATES
+  // 🔴 WOMEN & CHILD SAFETY STATES
   const [showLiveGuardModal, setShowLiveGuardModal] = useState(false);
   const [showSilentSOSModal, setShowSilentSOSModal] = useState(false);
   const [liveGuardLink, setLiveGuardLink] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [emergencyAlertSent, setEmergencyAlertSent] = useState(false);
 
+  // 📸 WEBCAM REF FOR LIVE GUARD
+  const videoRef = useRef(null);
+
   // ✈️ States for Airport & City Search Modals
-  const [searchModalType, setSearchModalType] = useState(null); // 'airports' | 'cities' | null
+  const [searchModalType, setSearchModalType] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
   const [emergencyContacts, setEmergencyContacts] = useState([
@@ -136,31 +140,46 @@ const BookRide = () => {
     { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ SmartCabs Nearby" },
     { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ SmartCabs Nearby" },
     { name: "Kempegowda International Airport (BLR)", code: "BLR", city: "Bengaluru", state: "Karnataka", activeCabs: "120+ SmartCabs Nearby" },
-    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ SmartCabs Nearby" },
-    { name: "Rajiv Gandhi International Airport (HYD)", code: "HYD", city: "Hyderabad", state: "Telangana", activeCabs: "110+ SmartCabs Nearby" },
-    { name: "Chennai International Airport (MAA)", code: "MAA", city: "Chennai", state: "Tamil Nadu", activeCabs: "88+ SmartCabs Nearby" },
-    { name: "Netaji Subhash Chandra Bose International Airport (CCU)", code: "CCU", city: "Kolkata", state: "West Bengal", activeCabs: "75+ SmartCabs Nearby" },
-    { name: "Cochin International Airport (COK)", code: "COK", city: "Kochi", state: "Kerala", activeCabs: "60+ SmartCabs Nearby" },
-    { name: "Manohar International Airport (GOX)", code: "GOX", city: "Mopa", state: "Goa", activeCabs: "50+ SmartCabs Nearby" },
-    { name: "Pune Airport (PNQ)", code: "PNQ", city: "Pune", state: "Maharashtra", activeCabs: "80+ SmartCabs Nearby" },
-    { name: "Jaipur International Airport (JAI)", code: "JAI", city: "Jaipur", state: "Rajasthan", activeCabs: "45+ SmartCabs Nearby" },
-    { name: "Lal Bahadur Shastri Airport (VNS)", code: "VNS", city: "Varanasi", state: "Uttar Pradesh", activeCabs: "35+ SmartCabs Nearby" }
+    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ SmartCabs Nearby" }
   ];
 
   const cityList = [
     { name: "Ahmedabad", state: "Gujarat", activeVehicles: "1,240 Cabs Available", coverage: "100% AI Security Active" },
     { name: "Delhi / NCR", state: "Delhi", activeVehicles: "3,850 Cabs Available", coverage: "100% AI Security Active" },
     { name: "Mumbai", state: "Maharashtra", activeVehicles: "4,120 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Bengaluru", state: "Karnataka", activeVehicles: "2,980 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Hyderabad", state: "Telangana", activeVehicles: "2,150 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Chennai", state: "Tamil Nadu", activeVehicles: "1,890 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Kolkata", state: "West Bengal", activeVehicles: "1,640 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Pune", state: "Maharashtra", activeVehicles: "1,420 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Jaipur", state: "Rajasthan", activeVehicles: "980 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Surat", state: "Gujarat", activeVehicles: "1,110 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Lucknow", state: "Uttar Pradesh", activeVehicles: "850 Cabs Available", coverage: "100% AI Security Active" },
-    { name: "Chandigarh", state: "Punjab", activeVehicles: "720 Cabs Available", coverage: "100% AI Security Active" }
+    { name: "Bengaluru", state: "Karnataka", activeVehicles: "2,980 Cabs Available", coverage: "100% AI Security Active" }
   ];
+
+  // 📸 WEBCAM LOGIC: Turns on camera when Live Guard is open
+  useEffect(() => {
+    let stream = null;
+    const startCamera = async () => {
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+        }
+      } catch (err) {
+        console.error("Camera access denied or unavailable", err);
+      }
+    };
+
+    if (showLiveGuardModal) {
+      startCamera();
+    } else {
+      // Turn off camera when modal closes
+      if (videoRef.current && videoRef.current.srcObject) {
+        videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+      }
+    }
+
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [showLiveGuardModal]);
+
 
   const handleSelectLocationFromModal = (locationName) => {
     if (!pickup) {
@@ -403,7 +422,7 @@ const BookRide = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative">
+    <div className="min-h-screen bg-white font-sans text-gray-900 pb-24 relative overflow-x-hidden">
       <style>{`
         body { top: 0 !important; position: static !important; }
         .skiptranslate { display: none !important; }
@@ -512,36 +531,9 @@ const BookRide = () => {
         </div>
       )}
 
-      {showSOSPopup && (
-        <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[300] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
-          <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
-          <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
-          <p className="text-red-100 text-xl text-center max-w-lg mb-12">Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?</p>
-          <div className="flex flex-col w-full max-w-md gap-4">
-            <a href="tel:112" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center"><PhoneCall className="mr-3 h-8 w-8" /> Call Police (112)</a>
-            <button onClick={() => setShowSOSPopup(false)} className="w-full bg-transparent border-2 border-white/50 text-white font-bold text-xl py-5 rounded-2xl hover:bg-white/10 transition">Cancel - I am safe</button>
-          </div>
-        </div>
-      )}
-
-      {showDeviationPopup && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-yellow-400 relative overflow-hidden">
-            <div className="absolute top-0 left-0 right-0 bg-yellow-400 h-2 animate-pulse"></div>
-            <AlertCircle className="h-20 w-20 text-yellow-500 mb-6 mx-auto" />
-            <h2 className="text-3xl font-bold text-center mb-4">Route Deviation Detected</h2>
-            <p className="text-gray-600 text-center text-lg mb-8">Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in 60 seconds, we will alert your emergency contacts.</p>
-            <div className="flex flex-col gap-3">
-              <button onClick={() => setShowDeviationPopup(false)} className="w-full bg-green-500 text-white font-bold text-xl py-4 rounded-xl hover:bg-green-600 shadow-lg">Yes, I am fine</button>
-              <button onClick={() => { setShowDeviationPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* --- 📡 GPS SIGNAL LOST POPUP (FOR DEMO) --- */}
       {showGPSLostPopup && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[250] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-orange-500 relative overflow-hidden">
             <div className="absolute top-0 left-0 right-0 bg-orange-500 h-2 animate-pulse"></div>
             <Globe className="h-20 w-20 text-orange-500 mb-6 mx-auto opacity-50" />
@@ -555,9 +547,25 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* 👀 LIVE GUARD MODAL (Upgraded with Evidence Saving & Driver Profile) */}
+      {/* --- ⚠️ 500M DEVIATION POPUP --- */}
+      {showDeviationPopup && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
+          <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border-4 border-yellow-400 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 bg-yellow-400 h-2 animate-pulse"></div>
+            <AlertCircle className="h-20 w-20 text-yellow-500 mb-6 mx-auto" />
+            <h2 className="text-3xl font-bold text-center mb-4">Route Deviation Detected</h2>
+            <p className="text-gray-600 text-center text-lg mb-8">Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in 60 seconds, we will alert your emergency contacts.</p>
+            <div className="flex flex-col gap-3">
+              <button onClick={() => setShowDeviationPopup(false)} className="w-full bg-green-500 text-white font-bold text-xl py-4 rounded-xl hover:bg-green-600 shadow-lg">Yes, I am fine</button>
+              <button onClick={() => { setShowDeviationPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 👀 LIVE GUARD MODAL (Now with REAL Webcam!) */}
       {showLiveGuardModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[400] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl relative flex flex-col overflow-hidden">
             <div className="p-6 bg-pink-500 text-white flex justify-between items-center">
               <div className="flex items-center space-x-3">
@@ -570,12 +578,10 @@ const BookRide = () => {
             </div>
 
             <div className="p-6 overflow-y-auto max-h-[80vh]">
-              {/* VIDEO FEED */}
+              {/* 📸 REAL WEBCAM FEED */}
               <div className="bg-gray-900 rounded-2xl aspect-video mb-4 flex items-center justify-center relative overflow-hidden shadow-inner">
-                <video className="w-full h-full object-cover" autoPlay loop muted>
-                  <source src="https://assets.mixkit.co/videos/preview/mixkit-woman-in-a-car-with-a-driver-4423-large.mp4" type="video/mp4" />
-                  Your browser does not support the video tag.
-                </video>
+                {/* Notice we use ref={videoRef} here to hook it to your real camera! */}
+                <video ref={videoRef} className="w-full h-full object-cover transform scale-x-[-1]" autoPlay playsInline muted></video>
                 <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center">
                   <MapPin className="h-4 w-4 mr-1" /> Live GPS
                 </div>
@@ -655,7 +661,7 @@ const BookRide = () => {
 
       {/* 🚨 SILENT SOS MODAL (One-Click Emergency Alert) */}
       {showSilentSOSModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[450] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl relative">
             <div className="p-6 bg-red-600 text-white flex justify-between items-center rounded-t-3xl">
               <div className="flex items-center space-x-3">
@@ -741,6 +747,19 @@ const BookRide = () => {
                 </>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- SOS SIREN POPUP (Triggered by Demo Panel) --- */}
+      {showSOSPopup && (
+        <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[450] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
+          <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
+          <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
+          <p className="text-red-100 text-xl text-center max-w-lg mb-12">Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?</p>
+          <div className="flex flex-col w-full max-w-md gap-4">
+            <a href="tel:112" className="w-full bg-white text-red-600 font-bold text-2xl py-5 rounded-2xl shadow-2xl hover:bg-gray-100 flex justify-center items-center"><PhoneCall className="mr-3 h-8 w-8" /> Call Police (112)</a>
+            <button onClick={() => setShowSOSPopup(false)} className="w-full bg-transparent border-2 border-white/50 text-white font-bold text-xl py-5 rounded-2xl hover:bg-white/10 transition">Cancel - I am safe</button>
           </div>
         </div>
       )}
@@ -1287,198 +1306,46 @@ const BookRide = () => {
         </main>
       )}
 
-      {selectedCard && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[400] flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-2xl w-full shadow-2xl overflow-hidden relative animate-in zoom-in duration-200">
-            
-            <button
-              onClick={() => setSelectedCard(null)}
-              className="absolute top-4 right-4 p-2 bg-white/80 hover:bg-gray-100 rounded-full text-gray-700 transition z-10 shadow"
-            >
-              <X className="h-6 w-6" />
-            </button>
-
-            <div className={`p-8 ${
-              selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike')
-                ? 'bg-red-50'
-                : selectedCard.title.includes('Intercity')
-                ? 'bg-green-50'
-                : 'bg-blue-50'
-            }`}>
-              <div className="flex items-center gap-4 mb-4">
-                <div className={`p-4 rounded-2xl shadow-sm bg-white ${
-                  selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike')
-                    ? 'text-red-500'
-                    : selectedCard.title.includes('Intercity')
-                    ? 'text-green-600'
-                    : 'text-blue-600'
-                }`}>
-                  {selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike') ? (
-                    <Bike className="h-10 w-10" />
-                  ) : selectedCard.title.includes('Intercity') ? (
-                    <Map className="h-10 w-10" />
-                  ) : (
-                    <ShieldCheck className="h-10 w-10" />
-                  )}
-                </div>
-
-                <div>
-                  <h2 className="text-3xl font-bold text-gray-900">{selectedCard.title}</h2>
-                  <p className="text-gray-600 font-medium mt-1">SmartCab secure travel service</p>
-                </div>
-              </div>
-
-              <p className="text-lg text-gray-700 leading-relaxed">
-                {selectedCard.description}
-              </p>
+      {/* 🎛️ SECRET MENTOR DEMO PANEL (Now Minimizable & Lower Z-Index) */}
+      <div className="fixed bottom-6 right-4 z-[300] flex flex-col items-end">
+        {isDemoPanelOpen ? (
+          <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-bottom-2">
+            <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+              <span className="text-xs font-bold text-gray-500 tracking-wider uppercase">Mentor Controls</span>
+              <button onClick={() => setIsDemoPanelOpen(false)} className="p-1 hover:bg-gray-100 rounded-full transition">
+                <X className="h-4 w-4 text-gray-500" />
+              </button>
             </div>
-
-            <div className="p-8">
-              <h3 className="text-xl font-bold mb-5">What’s included</h3>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8">
-                {(selectedCard.title.includes('Intercity')
-                  ? [
-                      {
-                        title: 'Verified outstation drivers',
-                        text: 'Drivers are checked for long-route safety and reliability.'
-                      },
-                      {
-                        title: 'Live route monitoring',
-                        text: 'Your trip is tracked with GPS and route-deviation alerts.'
-                      },
-                      {
-                        title: 'Transparent pricing',
-                        text: 'Know your estimated fare before your journey begins.'
-                      },
-                      {
-                        title: 'Comfort for long trips',
-                        text: 'Clean cars suitable for city-to-city travel.'
-                      }
-                    ]
-                  : selectedCard.title.includes('Bike') || selectedCard.title.includes('SmartBike')
-                  ? [
-                      {
-                        title: 'Fast city travel',
-                        text: 'Beat traffic with quick and affordable motorbike rides.'
-                      },
-                      {
-                        title: 'Helmet safety check',
-                        text: 'SmartCab requires helmet safety before starting the ride.'
-                      },
-                      {
-                        title: 'Live GPS tracking',
-                        text: 'Your ride remains visible and monitored during the trip.'
-                      },
-                      {
-                        title: 'Low-cost rides',
-                        text: 'Perfect for short-distance daily travel.'
-                      }
-                    ]
-                  : [
-                      {
-                        title: 'SmartCab safety',
-                        text: 'Every ride includes GPS tracking and security tools.'
-                      },
-                      {
-                        title: 'Easy booking',
-                        text: 'Book your ride quickly from the SmartCab platform.'
-                      },
-                      {
-                        title: 'Reliable service',
-                        text: 'Designed for safe and comfortable travel.'
-                      },
-                      {
-                        title: 'Support included',
-                        text: 'Safety support is available during your trip.'
-                      }
-                    ]
-                ).map((item, index) => (
-                  <div key={index} className="border border-gray-200 rounded-2xl p-4 bg-gray-50">
-                    <div className="flex items-start gap-3">
-                      <CheckCircle className="h-5 w-5 text-green-600 mt-1 shrink-0" />
-                      <div>
-                        <h4 className="font-bold text-gray-900">{item.title}</h4>
-                        <p className="text-sm text-gray-600 mt-1">{item.text}</p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {(selectedCard.title.includes('Intercity') ||
-                selectedCard.title.includes('Bike') ||
-                selectedCard.title.includes('SmartBike')) && (
-                <div className="bg-black text-white rounded-2xl p-5 mb-6">
-                  <div className="flex items-center gap-3 mb-2">
-                    <ShieldCheck className="h-6 w-6 text-green-400" />
-                    <h4 className="font-bold text-lg">SmartCab Safety Promise</h4>
-                  </div>
-                  <p className="text-sm text-gray-300">
-                    SOS access, emergency contact support, GPS monitoring, and route-deviation alerts are included for safer travel.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex flex-col sm:flex-row gap-3">
-                <button
-                  onClick={() => setSelectedCard(null)}
-                  className="flex-1 bg-gray-100 text-black font-bold py-4 rounded-xl hover:bg-gray-200 transition"
-                >
-                  Close
-                </button>
-
-                <button
-                  onClick={() => {
-                    setSelectedCard(null);
-                    setActiveTab('request');
-                    setMainView('ride');
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }}
-                  className="flex-1 bg-black text-white font-bold py-4 rounded-xl hover:bg-gray-800 transition shadow-lg"
-                >
-                  Start booking
-                </button>
-              </div>
+            <div className="space-y-2">
+              <button 
+                onClick={() => setShowDeviationPopup(true)} 
+                className="w-full text-left text-sm font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-700 px-3 py-2 rounded-lg transition border border-yellow-200"
+              >
+                🟡 500m Deviation
+              </button>
+              <button 
+                onClick={() => setShowGPSLostPopup(true)} 
+                className="w-full text-left text-sm font-bold bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg transition border border-orange-200"
+              >
+                📡 GPS Lost
+              </button>
+              <button 
+                onClick={() => setShowSOSPopup(true)} 
+                className="w-full text-left text-sm font-bold bg-red-50 hover:bg-red-100 text-red-700 px-3 py-2 rounded-lg transition border border-red-200"
+              >
+                🚨 Police / SOS
+              </button>
             </div>
           </div>
-        </div>
-      )}
-      {showBanner && (
-        <div className="fixed bottom-0 left-0 right-0 bg-blue-50 border-t border-blue-100 px-4 py-3 flex justify-between items-center z-50">
-          <div className="flex items-center space-x-4 max-w-7xl mx-auto w-full justify-center text-sm md:text-base font-medium text-blue-900"><ShieldCheck className="h-5 w-5 text-blue-600 hidden md:block" /><p><strong>Welcome to SmartCab:</strong> All rides are monitored via GPS with real-time route deviation detection and SOS features.</p></div>
-          <button onClick={() => setShowBanner(false)} className="p-2 hover:bg-blue-100 rounded-full transition text-blue-900"><X className="h-5 w-5" /></button>
-        </div>
-      )}
-
-      <StartModal isOpen={isStartModalOpen} onClose={() => setIsStartModalOpen(false)} />
-
-      {/* 🎛️ SECRET MENTOR DEMO PANEL 🎛️ */}
-      <div className="fixed bottom-20 right-4 z-[500] bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-bottom-10">
-        <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
-          <span className="text-xs font-bold text-gray-500 tracking-wider uppercase">Mentor Demo Controls</span>
-          <ShieldCheck className="h-4 w-4 text-green-500" />
-        </div>
-        <div className="space-y-2">
+        ) : (
           <button 
-            onClick={() => setShowDeviationPopup(true)} 
-            className="w-full text-left text-sm font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-700 px-3 py-2 rounded-lg transition border border-yellow-200"
+            onClick={() => setIsDemoPanelOpen(true)} 
+            className="bg-black text-white p-3 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition border-2 border-white/20"
+            title="Open Demo Panel"
           >
-            🟡 Simulate 500m Deviation
+            <Settings className="h-6 w-6 text-green-400" />
           </button>
-          <button 
-            onClick={() => setShowGPSLostPopup(true)} 
-            className="w-full text-left text-sm font-bold bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg transition border border-orange-200"
-          >
-            📡 Simulate GPS Lost
-          </button>
-          <button 
-            onClick={() => setShowSOSPopup(true)} 
-            className="w-full text-left text-sm font-bold bg-red-50 hover:bg-red-100 text-red-700 px-3 py-2 rounded-lg transition border border-red-200"
-          >
-            🚨 Simulate SOS / Police
-          </button>
-        </div>
+        )}
       </div>
 
     </div>
