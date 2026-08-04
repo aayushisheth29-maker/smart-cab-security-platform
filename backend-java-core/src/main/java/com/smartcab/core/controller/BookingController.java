@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicLong;
 
+@CrossOrigin(origins = "*") // Allows your React frontend to connect cleanly
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
