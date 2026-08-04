@@ -1,36 +1,36 @@
 package com.smartcab.core.controller;
 
 import com.smartcab.core.model.Booking;
+import com.smartcab.core.repository.BookingRepository;
 import com.smartcab.core.service.FareCalculatorService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.atomic.AtomicLong;
 
-@CrossOrigin(origins = "*") // Allows your React frontend to connect cleanly
+@CrossOrigin(origins = "*")
 @RestController
 @RequestMapping("/api/bookings")
 public class BookingController {
 
     @Autowired
-    private FareCalculatorService fareCalculatorService;
+    private BookingRepository bookingRepository;
 
-    private final List<Booking> bookings = new ArrayList<>();
-    private final AtomicLong idCounter = new AtomicLong();
+    @Autowired
+    private FareCalculatorService fareCalculatorService;
 
     @PostMapping
     public Booking createBooking(@RequestBody Booking booking) {
-        booking.setId(idCounter.incrementAndGet());
         double fare = fareCalculatorService.calculateFare(booking.getDistanceKm());
         booking.setFare(fare);
-        bookings.add(booking);
-        return booking;
+        booking.setStatus("REQUESTED");
+        // Saves record directly into the SQL Database
+        return bookingRepository.save(booking);
     }
 
     @GetMapping
     public List<Booking> getAllBookings() {
-        return bookings;
+        // Fetches all records directly from the SQL Database
+        return bookingRepository.findAll();
     }
 }
