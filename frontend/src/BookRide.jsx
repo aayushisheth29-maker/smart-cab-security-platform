@@ -1,5 +1,5 @@
 import StartModal from './components/StartModal';
-import React, { useState, useEffect, useRef } from 'react'; // Added useRef here!
+import React, { useState, useEffect, useRef } from 'react'; 
 import { Link } from 'react-router-dom';
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
@@ -96,11 +96,14 @@ const BookRide = () => {
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
 
+  // ⭐ NEW: Store the Booking ID from Java!
+  const [currentBookingId, setCurrentBookingId] = useState(null);
+
   // 🚨 SIMULATION POPUP STATES
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
   const [showGPSLostPopup, setShowGPSLostPopup] = useState(false);
-  const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false); // NEW: Controls the demo panel
+  const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false); 
 
   // 🔴 WOMEN & CHILD SAFETY STATES
   const [showLiveGuardModal, setShowLiveGuardModal] = useState(false);
@@ -167,7 +170,6 @@ const BookRide = () => {
     if (showLiveGuardModal) {
       startCamera();
     } else {
-      // Turn off camera when modal closes
       if (videoRef.current && videoRef.current.srcObject) {
         videoRef.current.srcObject.getTracks().forEach(track => track.stop());
       }
@@ -179,7 +181,6 @@ const BookRide = () => {
       }
     };
   }, [showLiveGuardModal]);
-
 
   const handleSelectLocationFromModal = (locationName) => {
     if (!pickup) {
@@ -272,6 +273,25 @@ const BookRide = () => {
     }
   };
 
+  // ⭐ NEW: Tell Java Backend this ride is in DANGER!
+  const triggerBackendSOS = async () => {
+    if (!currentBookingId) {
+      console.warn("No booking ID yet — book a ride first so Java has a row to update");
+      return;
+    }
+    try {
+      const res = await fetch(`http://localhost:8080/api/bookings/${currentBookingId}/sos`, {
+        method: "PUT"
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        console.log("Java SOS updated to DANGER:", updated);
+      }
+    } catch (err) {
+      console.error("Java SOS failed:", err);
+    }
+  };
+
   const handleConfirmRide = async () => {
     setIsSearching(true);
     const pCoords = await geocodeLocation(pickup);
@@ -282,11 +302,40 @@ const BookRide = () => {
       try {
         const response = await fetch(`http://localhost:8000/api/ai/check-route?driver_id=Rahul_S&current_lat=${pCoords[0]}&current_lng=${pCoords[1]}`);
         const aiData = await response.json();
-        alert(`🔒 PYTHON AI SECURITY CHECK:\nStatus: ${aiData.status}\nMessage: ${aiData.message}`);
+        console.log("Python AI Check:", aiData);
       } catch (error) {
-        console.error("Could not reach Python. Is the server running?");
+        console.error("Could not reach Python AI server");
       }
 
+      // ⭐ FIXED: Send proper data to Java and SAVE THE ID!
+      try {
+        const bookingData = {
+          riderName: "Aayushi S.",
+          pickupLocation: pickup,
+          dropoffLocation: dropoff,
+          distanceKm: 15.5,
+          fare: 15.5 * 15,
+          status: "PENDING"
+        };
+
+        const javaResponse = await fetch("http://localhost:8080/api/bookings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify(bookingData)
+        });
+
+        const savedBooking = await javaResponse.json();
+        setCurrentBookingId(savedBooking.id); // Save the ID for SOS button
+        console.log("Saved to Java Backend:", savedBooking);
+        alert(`🎉 Booking Saved to Java Backend!\nBooking ID: ${savedBooking.id}\nCalculated Fare: ₹${savedBooking.fare}`);
+
+      } catch (error) {
+        console.error("Could not reach Java backend", error);
+      }
+
+      // 3. Update UI
       setPickupCoords(pCoords);
       setDropoffCoords(dCoords);
       setMapCenter(pCoords); 
@@ -296,7 +345,7 @@ const BookRide = () => {
       alert("We couldn't find one of those locations on the map. Try adding the city or state name.");
     }
   };
-
+    
   let currentCarLat = 0, currentCarLng = 0;
   if (pickupCoords && dropoffCoords) {
     currentCarLat = pickupCoords[0] + (dropoffCoords[0] - pickupCoords[0]) * (rideProgress / 100);
@@ -362,6 +411,7 @@ const BookRide = () => {
     setDropoff('');
     setPickupCoords(null);
     setDropoffCoords(null);
+    setCurrentBookingId(null); // Reset Java ID
     setMapCenter([20.5937, 78.9629]); 
     setMapZoom(5);
     setShowSOSPopup(false);
@@ -541,7 +591,7 @@ const BookRide = () => {
             <p className="text-gray-600 text-center text-lg mb-8">SmartCab AI has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe?</p>
             <div className="flex flex-col gap-3">
               <button onClick={() => setShowGPSLostPopup(false)} className="w-full bg-black text-white font-bold text-xl py-4 rounded-xl hover:bg-gray-800 shadow-lg">Yes, I am fine</button>
-              <button onClick={() => { setShowGPSLostPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
+              <button onClick={() => { triggerBackendSOS(); setShowGPSLostPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
             </div>
           </div>
         </div>
@@ -557,13 +607,13 @@ const BookRide = () => {
             <p className="text-gray-600 text-center text-lg mb-8">Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in 60 seconds, we will alert your emergency contacts.</p>
             <div className="flex flex-col gap-3">
               <button onClick={() => setShowDeviationPopup(false)} className="w-full bg-green-500 text-white font-bold text-xl py-4 rounded-xl hover:bg-green-600 shadow-lg">Yes, I am fine</button>
-              <button onClick={() => { setShowDeviationPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
+              <button onClick={() => { triggerBackendSOS(); setShowDeviationPopup(false); setShowSOSPopup(true); }} className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"><Siren className="h-6 w-6 mr-2" /> No, trigger SOS</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* 👀 LIVE GUARD MODAL (Now with REAL Webcam!) */}
+      {/* 👀 LIVE GUARD MODAL */}
       {showLiveGuardModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[400] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl relative flex flex-col overflow-hidden">
@@ -578,9 +628,7 @@ const BookRide = () => {
             </div>
 
             <div className="p-6 overflow-y-auto max-h-[80vh]">
-              {/* 📸 REAL WEBCAM FEED */}
               <div className="bg-gray-900 rounded-2xl aspect-video mb-4 flex items-center justify-center relative overflow-hidden shadow-inner">
-                {/* Notice we use ref={videoRef} here to hook it to your real camera! */}
                 <video ref={videoRef} className="w-full h-full object-cover transform scale-x-[-1]" autoPlay playsInline muted></video>
                 <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center">
                   <MapPin className="h-4 w-4 mr-1" /> Live GPS
@@ -593,7 +641,6 @@ const BookRide = () => {
                 </div>
               </div>
 
-              {/* SAVE EVIDENCE BUTTON */}
               <div className="flex justify-between items-center mb-6">
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Secure Stream Encrypted</p>
                 <button
@@ -606,7 +653,6 @@ const BookRide = () => {
                 </button>
               </div>
 
-              {/* DRIVER PROFILE FOR POLICE REPORTING */}
               <h4 className="text-sm font-bold text-gray-900 mb-2 uppercase">Verified Driver Details</h4>
               <div className="flex items-center bg-gray-50 p-4 rounded-xl mb-6 border border-gray-200 shadow-sm">
                 <div className="h-14 w-14 bg-gray-300 rounded-full overflow-hidden mr-4 border-2 border-white shadow">
@@ -659,7 +705,7 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* 🚨 SILENT SOS MODAL (One-Click Emergency Alert) */}
+      {/* 🚨 SILENT SOS MODAL */}
       {showSilentSOSModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[450] flex flex-col items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl relative">
@@ -737,6 +783,7 @@ const BookRide = () => {
                     </button>
                     <button
                       onClick={() => {
+                        triggerBackendSOS(); // ⭐ ALERT JAVA BACKEND
                         setEmergencyAlertSent(true);
                       }}
                       className="flex-1 bg-red-600 text-white font-bold py-3 rounded-xl hover:bg-red-700 transition"
@@ -751,7 +798,7 @@ const BookRide = () => {
         </div>
       )}
 
-      {/* --- SOS SIREN POPUP (Triggered by Demo Panel) --- */}
+      {/* --- SOS SIREN POPUP (Triggered by Demo Panel or Map SOS) --- */}
       {showSOSPopup && (
         <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[450] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
           <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
@@ -1016,8 +1063,9 @@ const BookRide = () => {
                           </MapContainer>
                         </div>
 
+                        {/* ⭐ TRIGGER JAVA BACKEND SOS */}
                         <button 
-                          onClick={() => setShowSOSPopup(true)}
+                          onClick={() => { triggerBackendSOS(); setShowSOSPopup(true); }}
                           className="absolute top-6 right-6 bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-5 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-2xl animate-pulse transition transform hover:scale-105"
                         >
                           <Siren className="mr-3 h-8 w-8" /> SOS
@@ -1043,7 +1091,6 @@ const BookRide = () => {
                           
                           <div className="w-full md:w-1/3 border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-8">
                             
-                            {/* 🔴 LIVE GUARD & SILENT SOS BUTTONS */}
                             <div className="flex justify-between items-center mb-4">
                               <p className="text-base font-bold text-gray-700">Emergency Safety</p>
                               <div className="flex gap-2">
@@ -1318,19 +1365,19 @@ const BookRide = () => {
             </div>
             <div className="space-y-2">
               <button 
-                onClick={() => setShowDeviationPopup(true)} 
+                onClick={() => { triggerBackendSOS(); setShowDeviationPopup(true); }} 
                 className="w-full text-left text-sm font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-700 px-3 py-2 rounded-lg transition border border-yellow-200"
               >
                 🟡 500m Deviation
               </button>
               <button 
-                onClick={() => setShowGPSLostPopup(true)} 
+                onClick={() => { triggerBackendSOS(); setShowGPSLostPopup(true); }} 
                 className="w-full text-left text-sm font-bold bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg transition border border-orange-200"
               >
                 📡 GPS Lost
               </button>
               <button 
-                onClick={() => setShowSOSPopup(true)} 
+                onClick={() => { triggerBackendSOS(); setShowSOSPopup(true); }} 
                 className="w-full text-left text-sm font-bold bg-red-50 hover:bg-red-100 text-red-700 px-3 py-2 rounded-lg transition border border-red-200"
               >
                 🚨 Police / SOS

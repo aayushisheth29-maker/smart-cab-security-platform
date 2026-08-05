@@ -1,7 +1,8 @@
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Dashboard from './Dashboard';
 import Login from './Login';
 import Signup from './Signup';
-import Help from './Help'; // ⭐ NEW: Imported Help page
+import Help from './Help'; 
 import BookRide from './BookRide';
 
 function App() {
@@ -11,9 +12,10 @@ function App() {
         <Route path="/" element={<BookRide />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
-        
-        {/* ⭐ NEW: The Help page */}
         <Route path="/help" element={<Help />} />
+        
+        {/* ⭐ NEW: Your Smart Cab Radar & Booking Page! */}
+        <Route path="/dashboard" element={<Dashboard />} />
       </Routes>
     </Router>
   );
