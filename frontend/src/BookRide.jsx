@@ -98,6 +98,28 @@ const BookRide = () => {
 
   // ⭐ NEW: Store the Booking ID from Java!
   const [currentBookingId, setCurrentBookingId] = useState(null);
+    // ⭐ NEW: Dashboard History State
+  const [dashboardBookings, setDashboardBookings] = useState([]);
+    // ⭐ NEW: Profile State (Stores the user's details!)
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [userProfile, setUserProfile] = useState({
+    name: 'Aayushi S.',
+    email: 'aayushi@example.com',
+    phone: '+91 98765 43210',
+    address: ''
+  });
+
+  // ⭐ NEW: Fetch REAL rides when opening Dashboard!
+  useEffect(() => {
+    if (mainView === 'dashboard' && dashTab === 'history') {
+      fetch('http://localhost:8080/api/bookings')
+        .then(res => res.json())
+        .then(data => {
+          setDashboardBookings(data.reverse()); // Show newest first!
+        })
+        .catch(err => console.error("Error fetching history:", err));
+    }
+  }, [mainView, dashTab]);
 
   // 🚨 SIMULATION POPUP STATES
   const [showSOSPopup, setShowSOSPopup] = useState(false);
@@ -890,7 +912,7 @@ const BookRide = () => {
           <div className="w-full md:w-1/4">
             <div className="flex items-center space-x-4 mb-8">
               <div className="h-16 w-16 bg-gray-200 rounded-full flex items-center justify-center border-2 border-black"><User className="h-8 w-8 text-gray-500"/></div>
-              <div><h2 className="text-xl font-bold">Aayushi S.</h2><p className="text-sm text-green-600 font-bold">Verified Rider</p></div>
+              <div><h2 className="text-xl font-bold">{userProfile.name}</h2><p className="text-sm text-green-600 font-bold">Verified Rider</p></div>
             </div>
             <div className="space-y-2">
               <button onClick={() => setDashTab('history')} className={`w-full text-left px-4 py-3 rounded-xl font-bold flex items-center transition ${dashTab === 'history' ? 'bg-black text-white' : 'hover:bg-gray-100 text-gray-700'}`}><History className="h-5 w-5 mr-3"/> Ride History</button>
@@ -903,40 +925,71 @@ const BookRide = () => {
             {dashTab === 'history' && (
               <div>
                 <h2 className="text-3xl font-bold mb-6">Recent Rides</h2>
+                
+                {/* ⭐ REAL DATABASE HISTORY UI */}
                 <div className="space-y-4">
-                  {[
-                    { date: 'Yesterday, 4:30 PM', car: 'SmartMini', status: 'Completed', price: '₹240', route: 'Delhi → Gurgaon' },
-                    { date: 'July 28, 9:15 AM', car: 'SmartSedan', status: 'Completed', price: '₹450', route: 'Airport → Home' },
-                    { date: 'July 20, 8:00 PM', car: 'SmartSUV', status: 'Canceled', price: '₹0', route: 'Office → City Center' }
-                  ].map((ride, i) => (
-                    <div key={i} className="border border-gray-200 rounded-2xl p-6 flex flex-col sm:flex-row justify-between sm:items-center hover:shadow-md transition">
-                      <div className="flex items-center space-x-4 mb-4 sm:mb-0">
-                        <div className="bg-gray-100 p-3 rounded-full"><Car className="h-6 w-6 text-gray-700"/></div>
-                        <div>
-                          <p className="font-bold text-lg">{ride.route}</p>
-                          <p className="text-sm text-gray-500">{ride.date} • {ride.car}</p>
+                  {dashboardBookings.length === 0 ? (
+                    <div className="text-center p-8 bg-gray-50 rounded-2xl border border-gray-200">
+                      <Car className="h-12 w-12 text-gray-300 mx-auto mb-3" />
+                      <p className="text-gray-500 font-bold">No rides found in the database yet. Go book one!</p>
+                    </div>
+                  ) : (
+                    dashboardBookings.map((ride, i) => (
+                      <div key={ride.id || i} className={`border-2 rounded-2xl p-6 flex flex-col sm:flex-row justify-between sm:items-center transition ${ride.status === 'DANGER' ? 'border-red-500 bg-red-50 shadow-sm' : 'border-gray-200 hover:shadow-md bg-white'}`}>
+                        <div className="flex items-center space-x-4 mb-4 sm:mb-0 w-2/3">
+                          <div className={`p-4 rounded-full ${ride.status === 'DANGER' ? 'bg-red-200' : 'bg-gray-100'}`}>
+                            <Car className={`h-6 w-6 ${ride.status === 'DANGER' ? 'text-red-700' : 'text-gray-700'}`}/>
+                          </div>
+                          <div className="truncate pr-4">
+                            <p className="font-bold text-lg truncate">{ride.pickupLocation} → {ride.dropoffLocation}</p>
+                            <p className="text-sm text-gray-500 font-medium mt-1">Passenger: {ride.riderName} • Dist: {ride.distanceKm} km</p>
+                          </div>
+                        </div>
+                        <div className="text-right sm:w-1/3">
+                          <p className="font-bold text-2xl">₹{ride.fare}</p>
+                          <p className={`text-sm font-bold mt-1 px-3 py-1 rounded-full inline-block ${ride.status === 'DANGER' ? 'bg-red-200 text-red-700 animate-pulse' : 'bg-green-100 text-green-700'}`}>
+                            {ride.status === 'DANGER' ? '🚨 SOS TRIGGERED' : 'Completed'}
+                          </p>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-bold text-xl">{ride.price}</p>
-                        <p className={`text-sm font-bold ${ride.status === 'Completed' ? 'text-green-600' : 'text-red-500'}`}>{ride.status}</p>
-                      </div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
             )}
-            {dashTab === 'profile' && (
-              <div>
+          
+                        {dashTab === 'profile' && (
+              <div className="animate-in fade-in duration-300">
                 <h2 className="text-3xl font-bold mb-6">Profile Details</h2>
-                <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100">
+                <div className="bg-gray-50 rounded-2xl p-8 border border-gray-100 shadow-sm">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div><label className="text-sm font-bold text-gray-500">Full Name</label><input type="text" value="Aayushi S." disabled className="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold text-gray-700" /></div>
-                    <div><label className="text-sm font-bold text-gray-500">Email</label><input type="email" value="aayushi@example.com" disabled className="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold text-gray-700" /></div>
-                    <div><label className="text-sm font-bold text-gray-500">Phone</label><input type="tel" value="+91 98765 43210" disabled className="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold text-gray-700" /></div>
-                    <div><label className="text-sm font-bold text-gray-500">Home Address</label><input type="text" placeholder="Add Home Address" className="w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold" /></div>
+                    <div>
+                      <label className="text-sm font-bold text-gray-500">Full Name</label>
+                      <input type="text" value={userProfile.name} onChange={(e) => setUserProfile({...userProfile, name: e.target.value})} disabled={!isEditingProfile} className={`w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold text-gray-900 transition ${!isEditingProfile ? 'opacity-60 bg-gray-100' : 'focus:ring-2 ring-black outline-none shadow-sm'}`} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-gray-500">Email</label>
+                      <input type="email" value={userProfile.email} onChange={(e) => setUserProfile({...userProfile, email: e.target.value})} disabled={!isEditingProfile} className={`w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold text-gray-900 transition ${!isEditingProfile ? 'opacity-60 bg-gray-100' : 'focus:ring-2 ring-black outline-none shadow-sm'}`} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-gray-500">Phone</label>
+                      <input type="tel" value={userProfile.phone} onChange={(e) => setUserProfile({...userProfile, phone: e.target.value})} disabled={!isEditingProfile} className={`w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold text-gray-900 transition ${!isEditingProfile ? 'opacity-60 bg-gray-100' : 'focus:ring-2 ring-black outline-none shadow-sm'}`} />
+                    </div>
+                    <div>
+                      <label className="text-sm font-bold text-gray-500">Home Address</label>
+                      <input type="text" placeholder="Add Home Address" value={userProfile.address} onChange={(e) => setUserProfile({...userProfile, address: e.target.value})} disabled={!isEditingProfile} className={`w-full bg-white border border-gray-200 rounded-lg px-4 py-3 mt-1 font-bold text-gray-900 transition ${!isEditingProfile ? 'opacity-60 bg-gray-100' : 'focus:ring-2 ring-black outline-none shadow-sm'}`} />
+                    </div>
                   </div>
-                  <button className="mt-8 bg-black text-white font-bold py-3 px-8 rounded-xl hover:bg-gray-800 transition">Edit Profile</button>
+                  
+                  {/* The Edit / Save Button */}
+                  <button 
+                    onClick={() => {
+                      if (isEditingProfile) alert("✅ Profile Updated Successfully!");
+                      setIsEditingProfile(!isEditingProfile);
+                    }} 
+                    className={`mt-8 font-bold py-3 px-8 rounded-xl transition shadow-md flex items-center ${isEditingProfile ? 'bg-green-600 hover:bg-green-700 text-white' : 'bg-black text-white hover:bg-gray-800'}`}>
+                    {isEditingProfile ? <><CheckCircle className="h-5 w-5 mr-2"/> Save Profile</> : 'Edit Profile'}
+                  </button>
                 </div>
               </div>
             )}
