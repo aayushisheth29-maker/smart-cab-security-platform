@@ -5,7 +5,7 @@ import {
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
-  Lock, Settings, History, LogOut, Search, Compass, Video, Download
+  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -52,20 +52,29 @@ const MapClickHandler = ({ onMapClick }) => {
   return null;
 };
 
-
 const BookRide = () => {
+  // 📸 Camera direction state (user = front selfie, environment = back dashcam)
+  const [facingMode, setFacingMode] = useState("user");
+
+  // 🚗 Dynamic Driver Database
+  const DRIVERS = [
+    { name: "Rahul S.", rating: 4.8, dl: "MH02-2019-1234567", plate: "MH 02 AB 1234", photo: "https://randomuser.me/api/portraits/men/32.jpg" },
+    { name: "Vikram P.", rating: 4.9, dl: "DL04-2018-9876543", plate: "DL 04 CD 5678", photo: "https://randomuser.me/api/portraits/men/44.jpg" },
+    { name: "Anita M.", rating: 5.0, dl: "KA01-2020-4567890", plate: "KA 01 EF 9012", photo: "https://randomuser.me/api/portraits/women/68.jpg" },
+    { name: "Suresh K.", rating: 4.7, dl: "GJ01-2017-3456789", plate: "GJ 01 GH 3456", photo: "https://randomuser.me/api/portraits/men/22.jpg" },
+    { name: "Priya T.", rating: 4.9, dl: "TS09-2021-1122334", plate: "TS 09 IJ 7890", photo: "https://randomuser.me/api/portraits/women/45.jpg" }
+  ];
+  
+  const [assignedDriver, setAssignedDriver] = useState(DRIVERS[0]);
+
   const JAVA_API = "https://smart-cab-security-platform.onrender.com";
   const PYTHON_API = "https://smart-cab-security-platform-1.onrender.com";
 
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
-
-  
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [shareTripEnabled, setShareTripEnabled] = useState(true);
   const [marketingEnabled, setMarketingEnabled] = useState(false);
-
   const [selectedCard, setSelectedCard] = useState(null);
-  const [showBanner, setShowBanner] = useState(true);
   
   const [activeTab, setActiveTab] = useState('request');
   const [mainView, setMainView] = useState('ride'); 
@@ -107,7 +116,7 @@ const BookRide = () => {
     email: 'aayushi@example.com',
     phone: '+91 98765 43210',
     address: ''
-    });
+  });
 
   useEffect(() => {
     if (mainView === 'dashboard' && dashTab === 'history') {
@@ -132,7 +141,6 @@ const BookRide = () => {
   const [emergencyAlertSent, setEmergencyAlertSent] = useState(false);
 
   const videoRef = useRef(null);
-
   const [searchModalType, setSearchModalType] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -170,11 +178,19 @@ const BookRide = () => {
     { name: "Bengaluru", state: "Karnataka", activeVehicles: "2,980 Cabs Available", coverage: "100% AI Security Active" }
   ];
 
+  // 📸 UPGRADED WEBCAM LOGIC: Supports Front/Back Camera Switching!
   useEffect(() => {
     let stream = null;
     const startCamera = async () => {
       try {
-        stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        if (videoRef.current && videoRef.current.srcObject) {
+          videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+        }
+        
+        stream = await navigator.mediaDevices.getUserMedia({ 
+          video: { facingMode: facingMode } 
+        });
+        
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
         }
@@ -196,7 +212,7 @@ const BookRide = () => {
         stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [showLiveGuardModal]);
+  }, [showLiveGuardModal, facingMode]); // Re-runs when facingMode changes!
 
   const handleSelectLocationFromModal = (locationName) => {
     if (!pickup) {
@@ -256,7 +272,7 @@ const BookRide = () => {
     }
   }, [rideConfirmed, rideProgress, showDeviationPopup, showGPSLostPopup]);
 
-    const geocodeLocation = async (address) => {
+  const geocodeLocation = async (address) => {
     try {
       const searchQuery = encodeURIComponent(address + ", India"); 
       const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${searchQuery}&limit=1`);
@@ -269,7 +285,7 @@ const BookRide = () => {
       console.warn("Map API blocked the request, using backup coordinates...");
     }
 
-    // 🛡️ THE BACKUP PLAN: If the free API blocks Vercel, the app will STILL WORK!
+    // 🛡️ THE BACKUP PLAN
     const lowerAddress = address.toLowerCase();
     if (lowerAddress.includes('mumbai')) return [19.0760, 72.8777];
     if (lowerAddress.includes('delhi')) return [28.7041, 77.1025];
@@ -282,7 +298,6 @@ const BookRide = () => {
     if (lowerAddress.includes('surat')) return [21.1702, 72.8311];
     if (lowerAddress.includes('jaipur')) return [21.251384, 81.629641];
     
-    // Ultimate fallback: Just put them somewhere in central India so the demo works!
     return [20.5937 + (Math.random() * 2), 78.9629 + (Math.random() * 2)];
   };
 
@@ -328,8 +343,13 @@ const BookRide = () => {
     setIsSearching(false);
 
     if (pCoords && dCoords) {
+      // 🚗 Assign a RANDOM dynamic driver every time!
+      const randomDriver = DRIVERS[Math.floor(Math.random() * DRIVERS.length)];
+      setAssignedDriver(randomDriver);
+
       try {
-        const response = await fetch(`${PYTHON_API}/api/ai/check-route?driver_id=Rahul_S&current_lat=${pCoords[0]}&current_lng=${pCoords[1]}`);
+        const response = await fetch(`${PYTHON_API}/api/ai/check-route?driver_id=${randomDriver.name.replace(' ', '_')}&current_lat=${pCoords[0]}&current_lng=${pCoords[1]}`);
+        const aiData = await response.json();
         console.log("Python AI Check:", aiData);
       } catch (error) {
         console.error("Could not reach Python AI server");
@@ -776,11 +796,21 @@ const BookRide = () => {
               <div className="bg-gray-900 rounded-2xl aspect-video mb-4 flex items-center justify-center relative overflow-hidden shadow-inner">
                 <video 
                   ref={videoRef} 
-                  className="w-full h-full object-cover transform scale-x-[-1]" 
+                  className={`w-full h-full object-cover transform ${facingMode === 'user' ? 'scale-x-[-1]' : ''}`} 
                   autoPlay 
                   playsInline 
                   muted
                 ></video>
+
+                {/* 🔄 FLIP CAMERA BUTTON */}
+                <button 
+                  onClick={() => setFacingMode(prev => prev === "user" ? "environment" : "user")}
+                  className="absolute bottom-4 right-4 bg-white/20 hover:bg-white/40 backdrop-blur-md border border-white/50 text-white p-3 rounded-full shadow-lg transition transform hover:scale-110 flex items-center justify-center z-50"
+                  title="Switch Camera"
+                >
+                  <RefreshCw className="h-5 w-5" />
+                </button>
+
                 <div className="absolute top-4 left-4 bg-black/60 text-white px-3 py-1 rounded-full text-sm font-bold flex items-center">
                   <MapPin className="h-4 w-4 mr-1" /> Live GPS
                 </div>
@@ -808,18 +838,18 @@ const BookRide = () => {
               <div className="flex items-center bg-gray-50 p-4 rounded-xl mb-6 border border-gray-200 shadow-sm">
                 <div className="h-14 w-14 bg-gray-300 rounded-full overflow-hidden mr-4 border-2 border-white shadow">
                   <img 
-                    src="https://randomuser.me/api/portraits/men/32.jpg" 
+                    src={assignedDriver?.photo} 
                     alt="Driver" 
                     className="h-full w-full object-cover" 
                   />
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-bold text-gray-900 text-lg">Rahul S.</h4>
-                  <p className="text-xs text-gray-600 font-medium">DL: MH02-2019-1234567 • ★ 4.8</p>
+                  <h4 className="font-bold text-gray-900 text-lg">{assignedDriver?.name}</h4>
+                  <p className="text-xs text-gray-600 font-medium">DL: {assignedDriver?.dl} • ★ {assignedDriver?.rating}</p>
                 </div>
                 <div className="text-right">
-                  <h4 className="font-bold text-gray-900 bg-yellow-100 px-2 py-1 rounded border border-yellow-300">MH 02 AB 1234</h4>
-                  <p className="text-xs text-gray-600 font-medium mt-1">White SmartMini</p>
+                  <h4 className="font-bold text-gray-900 bg-yellow-100 px-2 py-1 rounded border border-yellow-300">{assignedDriver?.plate}</h4>
+                  <p className="text-xs text-gray-600 font-medium mt-1">White {selectedCar}</p>
                 </div>
               </div>
 
@@ -1556,7 +1586,7 @@ const BookRide = () => {
                           <div className="w-full md:w-2/3">
                             <div className="flex justify-between items-center mb-2">
                               <h2 className="text-2xl font-bold text-gray-900">
-                                Driver Rahul S. ({selectedCar})
+                                Driver {assignedDriver?.name} ({selectedCar})
                               </h2>
                               <span className="text-sm font-bold bg-green-100 text-green-700 px-3 py-1 rounded-full">
                                 On Route
