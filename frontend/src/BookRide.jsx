@@ -372,6 +372,7 @@ const BookRide = () => {
     navigator.clipboard.writeText(shareLink);
     alert(`✅ Link Created (Offline Mode)!\n\n${shareLink}`);
   });
+};
 
   useEffect(() => {
     if (!document.getElementById('google-translate-script')) {
