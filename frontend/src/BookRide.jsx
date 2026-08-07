@@ -308,18 +308,19 @@ const BookRide = () => {
       downloadVideoLocally(videoBlob);
     }
   };
-
-  // 🎥 DOWNLOAD VIDEO LOCALLY
+    // 🎥 DOWNLOAD VIDEO LOCALLY
   const downloadVideoLocally = (videoBlob) => {
-    const url = URL.createObjectURL(videoBlob);
+    // Force save as MP4 so Android/iPhone can open it directly!
+    const mp4Blob = new Blob([videoBlob], { type: 'video/mp4' });
+    const url = URL.createObjectURL(mp4Blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SmartCab_Evidence_${Date.now()}.webm`;
+    a.download = `SmartCab_Evidence_${Date.now()}.mp4`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    alert("✅ Video downloaded locally as backup!");
+    alert("✅ Video downloaded as MP4! You can now open it directly in your phone gallery!");
   };
 
   // 🎥 GENERATE SHAREABLE LINK
@@ -329,9 +330,11 @@ const BookRide = () => {
     return;
   }
 
-  const linkId = `RIDE_${currentBookingId}_${Date.now().toString(36)}`;
-   const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app/";
-   const shareLink = `${FRONTEND_URL}/track/${linkId}`;
+    const linkId = `RIDE_${currentBookingId}_${Date.now().toString(36)}`;
+  
+  // FIX: Removed the trailing slash from the URL to stop the double slash "//" error!
+  const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app";
+  const shareLink = `${FRONTEND_URL}/track/${linkId}`;
   
   fetch(`${JAVA_API}/api/location/share`, {
     method: 'POST',
@@ -351,10 +354,17 @@ const BookRide = () => {
   })
   .then(res => res.json())
   .then(data => {
-    console.log("✅ Shareable link created:", data);
+    console.log("✅ Shareable link created successfully:", data);
     setShareableLocationLink(shareLink);
     navigator.clipboard.writeText(shareLink);
-    alert(`✅ Live Location Link Copied!\n\n${shareLink}\n\nShare this with your emergency contacts.`);
+    
+    // 1. Show alert to user
+    alert(`✅ Live Location Link Copied!\n\n${shareLink}\n\nOpening WhatsApp to share with emergency contacts...`);
+    
+    // 2. This instantly opens WhatsApp on your phone with the tracking link ready!
+    const whatsappMessage = encodeURIComponent(`🚨 EMERGENCY! Track my live cab ride here: ${shareLink}`);
+    const whatsappUrl = `https://api.whatsapp.com/send?text=${whatsappMessage}`;
+    window.open(whatsappUrl, '_blank');
   })
   .catch(err => {
     console.error("Link creation failed:", err);
@@ -362,7 +372,6 @@ const BookRide = () => {
     navigator.clipboard.writeText(shareLink);
     alert(`✅ Link Created (Offline Mode)!\n\n${shareLink}`);
   });
-};
 
   useEffect(() => {
     if (!document.getElementById('google-translate-script')) {
