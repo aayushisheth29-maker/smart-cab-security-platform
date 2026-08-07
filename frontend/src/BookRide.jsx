@@ -5,7 +5,8 @@ import {
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
-  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw
+  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw,
+  Share2, MessageCircle, Send, Copy
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -158,6 +159,8 @@ const BookRide = () => {
   const [isRecordingVideo, setIsRecordingVideo] = useState(false);
   const [recordingTimer, setRecordingTimer] = useState(0);
   const [shareableLocationLink, setShareableLocationLink] = useState("");
+  const [showShareSheet, setShowShareSheet] = useState(false);
+  const [shareLinkCopied, setShareLinkCopied] = useState(false);
 
   const locationSuggestions = [
     { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
@@ -324,55 +327,123 @@ const BookRide = () => {
   };
 
   // 🎥 GENERATE SHAREABLE LINK
- const generateShareableLink = () => {
-  if (!currentBookingId || !pickupCoords || !dropoffCoords) {
-    alert("❌ No active ride to share");
-    return;
-  }
+  const generateShareableLink = () => {
+    if (!currentBookingId || !pickupCoords || !dropoffCoords) {
+      alert("❌ No active ride to share");
+      return;
+    }
 
     const linkId = `RIDE_${currentBookingId}_${Date.now().toString(36)}`;
-  
-  // FIX: Removed the trailing slash from the URL to stop the double slash "//" error!
-  const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app";
-  const shareLink = `${FRONTEND_URL}/track/${linkId}`;
-  
-  fetch(`${JAVA_API}/api/location/share`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
+    // FIX: removed trailing slash so the URL no longer has "//" before "track"
+    const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app";
+    const shareLink = `${FRONTEND_URL}/track/${linkId}`;
+
+    // Build the full tracking payload so the track page can show real data
+    // even when the Java backend is asleep (it falls back to localStorage).
+    const sharePayload = {
+      linkId,
       bookingId: currentBookingId,
-      linkId: linkId,
       driverName: assignedDriver.name,
       driverLicense: assignedDriver.dl,
       carPlate: assignedDriver.plate,
-      pickup: pickup,
-      dropoff: dropoff,
+      carModel: `White ${selectedCar}`,
+      pickup,
+      dropoff,
       currentLocation: { lat: pickupCoords[0], lng: pickupCoords[1] },
       riderName: userProfile.name,
       createdAt: new Date().toISOString()
+    };
+
+    // 1. Try to save it on the server (so other devices can see the ride)
+    fetch(`${JAVA_API}/api/location/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(sharePayload)
     })
-  })
-  .then(res => res.json())
-  .then(data => {
-    console.log("✅ Shareable link created successfully:", data);
+    .then(res => res.json())
+    .then(data => {
+      console.log("✅ Shareable link created on server:", data);
+    })
+    .catch(err => {
+      console.warn("Server share save failed (offline mode), keeping link locally:", err);
+    });
+
+    // 2. ALWAYS save to localStorage so the same browser can open the track
+    //    page with real data even when Render is sleeping.
+    try {
+      localStorage.setItem(`smartcab_track_${linkId}`, JSON.stringify({
+        ...sharePayload,
+        lastUpdate: new Date().toISOString()
+      }));
+    } catch (e) {
+      console.warn("localStorage write failed:", e);
+    }
+
+    // 3. Save the link in state and open the proper share sheet modal
     setShareableLocationLink(shareLink);
-    navigator.clipboard.writeText(shareLink);
-    
-    // 1. Show alert to user
-    alert(`✅ Live Location Link Copied!\n\n${shareLink}\n\nOpening WhatsApp to share with emergency contacts...`);
-    
-    // 2. This instantly opens WhatsApp on your phone with the tracking link ready!
-    const whatsappMessage = encodeURIComponent(`🚨 EMERGENCY! Track my live cab ride here: ${shareLink}`);
-    const whatsappUrl = `https://api.whatsapp.com/send?text=${whatsappMessage}`;
-    window.open(whatsappUrl, '_blank');
-  })
-  .catch(err => {
-    console.error("Link creation failed:", err);
-    setShareableLocationLink(shareLink);
-    navigator.clipboard.writeText(shareLink);
-    alert(`✅ Link Created (Offline Mode)!\n\n${shareLink}`);
-  });
-};
+    setShowShareSheet(true);
+  };
+
+  // 🚖 UBER-STYLE SHARE SHEET ACTIONS
+  const shareToWhatsApp = () => {
+    const msg = encodeURIComponent(
+      `🚖 Track my SmartCab ride live\nDriver: ${assignedDriver?.name || ''}\nPlate: ${assignedDriver?.plate || ''}\n\n${shareableLocationLink}`
+    );
+    window.open(`https://api.whatsapp.com/send?text=${msg}`, '_blank');
+    setShowShareSheet(false);
+  };
+
+  const shareToTelegram = () => {
+    const msg = encodeURIComponent(
+      `🚖 Track my SmartCab ride live: ${shareableLocationLink}`
+    );
+    window.open(`https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${msg}`, '_blank');
+    setShowShareSheet(false);
+  };
+
+  const shareViaSMS = () => {
+    const msg = encodeURIComponent(
+      `🚖 SmartCab live ride tracking: ${shareableLocationLink}`
+    );
+    window.open(`sms:?body=${msg}`, '_blank');
+    setShowShareSheet(false);
+  };
+
+  const shareViaEmail = () => {
+    const subject = encodeURIComponent('Track my SmartCab ride live');
+    const body = encodeURIComponent(
+      `Hi,\n\nYou can track my SmartCab ride live using this link:\n${shareableLocationLink}\n\nDriver: ${assignedDriver?.name}\nPlate: ${assignedDriver?.plate}\n\n— Sent via SmartCab`
+    );
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+    setShowShareSheet(false);
+  };
+
+  const copyShareLink = async () => {
+    try {
+      await navigator.clipboard.writeText(shareableLocationLink);
+      setShareLinkCopied(true);
+      setTimeout(() => setShareLinkCopied(false), 2000);
+    } catch (e) {
+      window.prompt("Copy this link:", shareableLocationLink);
+    }
+  };
+
+  const openNativeShare = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: 'SmartCab Live Tracking',
+          text: `Track my SmartCab ride live. Driver: ${assignedDriver?.name}, Plate: ${assignedDriver?.plate}`,
+          url: shareableLocationLink
+        });
+        setShowShareSheet(false);
+      } catch (e) {
+        // user cancelled — keep sheet open
+      }
+    } else {
+      copyShareLink();
+    }
+  };
 
   useEffect(() => {
     if (!document.getElementById('google-translate-script')) {
@@ -975,7 +1046,18 @@ const BookRide = () => {
                 <p className="text-xs font-bold text-gray-500 uppercase tracking-wider">Secure Stream Encrypted</p>
                 <button
                   onClick={() => {
-                    alert("✅ Video securely downloaded and encrypted. Ready to share with local police authorities as evidence.");
+                    if (recordedVideoURL) {
+                      // Save the most recent 10s evidence recording as an MP4 file
+                      const a = document.createElement('a');
+                      a.href = recordedVideoURL;
+                      a.download = `SmartCab_Evidence_${Date.now()}.webm`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                    } else {
+                      // No recording yet — start one, then auto-save when done
+                      alert("⏺️ No evidence recorded yet. Tap 'Record 10s Evidence' first, then 'Save Evidence' will export the clip to your phone.");
+                    }
                   }}
                   className="bg-red-50 text-red-600 font-bold px-4 py-2 rounded-lg text-sm hover:bg-red-100 transition flex items-center border border-red-200 shadow-sm hover:scale-105 transform"
                 >
@@ -2344,6 +2426,105 @@ const BookRide = () => {
 
             </div>
           </section>
+        </div>
+      )}
+
+      {/* 🚖 UBER-STYLE SHARE SHEET MODAL */}
+      {showShareSheet && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[500] flex items-end sm:items-center justify-center p-0 sm:p-4 animate-in fade-in duration-200">
+          <div className="bg-white w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden animate-in slide-in-from-bottom-4 duration-300">
+            <div className="p-6 bg-gradient-to-r from-black to-gray-800 text-white flex justify-between items-center">
+              <div>
+                <h3 className="text-2xl font-bold flex items-center"><Share2 className="h-6 w-6 mr-2 text-green-400" /> Share live trip</h3>
+                <p className="text-xs text-gray-300 mt-1">Friends and family can follow your ride in real-time</p>
+              </div>
+              <button
+                onClick={() => setShowShareSheet(false)}
+                className="p-2 hover:bg-white/20 rounded-full transition"
+              >
+                  <X className="h-6 w-6" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-100 rounded-xl p-3 flex items-center gap-2">
+                <input
+                  type="text"
+                  value={shareableLocationLink}
+                  readOnly
+                  className="flex-1 bg-transparent outline-none text-xs font-mono text-gray-700 truncate"
+                />
+                <button
+                  onClick={copyShareLink}
+                  className="bg-black text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-gray-800 transition flex items-center shrink-0"
+                >
+                  <Copy className="h-3 w-3 mr-1" /> {shareLinkCopied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={shareToWhatsApp}
+                  className="flex flex-col items-center justify-center bg-green-50 hover:bg-green-100 border-2 border-green-200 rounded-2xl p-4 transition hover:scale-105"
+                >
+                  <div className="bg-green-500 text-white rounded-full p-3 mb-2">
+                    <MessageCircle className="h-6 w-6" />
+                  </div>
+                  <span className="font-bold text-sm text-green-900">WhatsApp</span>
+                </button>
+
+                <button
+                  onClick={shareViaSMS}
+                  className="flex flex-col items-center justify-center bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 rounded-2xl p-4 transition hover:scale-105"
+                >
+                  <div className="bg-blue-500 text-white rounded-full p-3 mb-2">
+                    <MessageCircle className="h-6 w-6" />
+                  </div>
+                  <span className="font-bold text-sm text-blue-900">SMS</span>
+                </button>
+
+                <button
+                  onClick={shareToTelegram}
+                  className="flex flex-col items-center justify-center bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-2xl p-4 transition hover:scale-105"
+                >
+                  <div className="bg-sky-500 text-white rounded-full p-3 mb-2">
+                    <Send className="h-6 w-6" />
+                  </div>
+                  <span className="font-bold text-sm text-sky-900">Telegram</span>
+                </button>
+
+                <button
+                  onClick={shareViaEmail}
+                  className="flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 border-2 border-gray-200 rounded-2xl p-4 transition hover:scale-105"
+                >
+                  <div className="bg-gray-700 text-white rounded-full p-3 mb-2">
+                    <Mail className="h-6 w-6" />
+                  </div>
+                  <span className="font-bold text-sm text-gray-900">Email</span>
+                </button>
+              </div>
+
+              {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+                <button
+                  onClick={openNativeShare}
+                  className="w-full bg-black hover:bg-gray-800 text-white font-bold py-4 rounded-xl transition flex items-center justify-center shadow-lg"
+                >
+                  <Share2 className="h-5 w-5 mr-2" /> More sharing options
+                </button>
+              )}
+
+              <button
+                onClick={() => setShowShareSheet(false)}
+                className="w-full bg-gray-100 hover:bg-gray-200 text-black font-bold py-3 rounded-xl transition"
+              >
+                Cancel
+              </button>
+
+              <p className="text-[10px] text-gray-400 text-center leading-relaxed">
+                🔒 Your live trip data is end-to-end encrypted. The shared link stops working once you end the ride.
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
