@@ -151,6 +151,13 @@ const BookRide = () => {
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
+    // 🎥 NEW VIDEO RECORDING STATES
+  const [videoChunks, setVideoChunks] = useState([]);
+  const [mediaRecorder, setMediaRecorder] = useState(null);
+  const [recordedVideoURL, setRecordedVideoURL] = useState(null);
+  const [isRecordingVideo, setIsRecordingVideo] = useState(false);
+  const [recordingTimer, setRecordingTimer] = useState(0);
+  const [shareableLocationLink, setShareableLocationLink] = useState("");
 
   const locationSuggestions = [
     { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
@@ -235,6 +242,127 @@ const BookRide = () => {
       setShowAddContactModal(false);
     }
   };
+    // 🎥 START VIDEO RECORDING
+  const startVideoRecording = () => {
+    if (!videoRef.current || !videoRef.current.srcObject) {
+      alert("❌ Camera not active. Please enable Live Guard first.");
+      return;
+    }
+
+    const stream = videoRef.current.srcObject;
+    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    
+    const chunks = [];
+    
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        chunks.push(event.data);
+      }
+    };
+
+    recorder.onstop = () => {
+      const blob = new Blob(chunks, { type: 'video/webm' });
+      const url = URL.createObjectURL(blob);
+      setRecordedVideoURL(url);
+      setVideoChunks(chunks);
+      uploadVideoEvidence(blob);
+    };
+
+    recorder.start();
+    setMediaRecorder(recorder);
+    setIsRecordingVideo(true);
+    setRecordingTimer(10);
+
+    setTimeout(() => {
+      if (recorder.state === "recording") {
+        recorder.stop();
+        setIsRecordingVideo(false);
+      }
+    }, 10000);
+  };
+
+  // 🎥 UPLOAD VIDEO
+  const uploadVideoEvidence = async (videoBlob) => {
+    try {
+      const formData = new FormData();
+      formData.append('video', videoBlob, `evidence_${currentBookingId}_${Date.now()}.webm`);
+      formData.append('bookingId', currentBookingId);
+      formData.append('timestamp', new Date().toISOString());
+      formData.append('location', JSON.stringify({
+        lat: pickupCoords ? pickupCoords[0] : 0,
+        lng: pickupCoords ? pickupCoords[1] : 0
+      }));
+
+      const response = await fetch(`${JAVA_API}/api/evidence/upload`, {
+        method: 'POST',
+        body: formData
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        console.log("✅ Video Evidence Uploaded:", result);
+        alert(`✅ Video Evidence Saved!\nEvidence ID: ${result.evidenceId || 'LOCAL'}`);
+      }
+    } catch (error) {
+      console.error("❌ Video upload failed:", error);
+      downloadVideoLocally(videoBlob);
+    }
+  };
+
+  // 🎥 DOWNLOAD VIDEO LOCALLY
+  const downloadVideoLocally = (videoBlob) => {
+    const url = URL.createObjectURL(videoBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `SmartCab_Evidence_${Date.now()}.webm`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert("✅ Video downloaded locally as backup!");
+  };
+
+  // 🎥 GENERATE SHAREABLE LINK
+ const generateShareableLink = () => {
+  if (!currentBookingId || !pickupCoords || !dropoffCoords) {
+    alert("❌ No active ride to share");
+    return;
+  }
+
+  const linkId = `RIDE_${currentBookingId}_${Date.now().toString(36)}`;
+   const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app/";
+   const shareLink = `${FRONTEND_URL}/track/${linkId}`;
+  
+  fetch(`${JAVA_API}/api/location/share`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      bookingId: currentBookingId,
+      linkId: linkId,
+      driverName: assignedDriver.name,
+      driverLicense: assignedDriver.dl,
+      carPlate: assignedDriver.plate,
+      pickup: pickup,
+      dropoff: dropoff,
+      currentLocation: { lat: pickupCoords[0], lng: pickupCoords[1] },
+      riderName: userProfile.name,
+      createdAt: new Date().toISOString()
+    })
+  })
+  .then(res => res.json())
+  .then(data => {
+    console.log("✅ Shareable link created:", data);
+    setShareableLocationLink(shareLink);
+    navigator.clipboard.writeText(shareLink);
+    alert(`✅ Live Location Link Copied!\n\n${shareLink}\n\nShare this with your emergency contacts.`);
+  })
+  .catch(err => {
+    console.error("Link creation failed:", err);
+    setShareableLocationLink(shareLink);
+    navigator.clipboard.writeText(shareLink);
+    alert(`✅ Link Created (Offline Mode)!\n\n${shareLink}`);
+  });
+};
 
   useEffect(() => {
     if (!document.getElementById('google-translate-script')) {
@@ -271,6 +399,15 @@ const BookRide = () => {
       return () => clearInterval(timer);
     }
   }, [rideConfirmed, rideProgress, showDeviationPopup, showGPSLostPopup]);
+    // 🎥 Recording Timer
+  useEffect(() => {
+    if (isRecordingVideo && recordingTimer > 0) {
+      const timer = setTimeout(() => {
+        setRecordingTimer(prev => prev - 1);
+      }, 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [isRecordingVideo, recordingTimer]);
 
   const geocodeLocation = async (address) => {
     try {
@@ -448,7 +585,7 @@ const BookRide = () => {
     setFormSubmitted(false);
   };
 
-  const resetRide = () => {
+    const resetRide = () => {
     setShowPrices(false);
     setRideConfirmed(false);
     setRideProgress(0);
@@ -464,6 +601,8 @@ const BookRide = () => {
     setShowGPSLostPopup(false);
     setShowLiveGuardModal(false);
     setShowSilentSOSModal(false);
+    setRecordedVideoURL(null);           // NEW LINE
+    setShareableLocationLink("");        // NEW LINE
   };
 
   const renderLocationInput = (type, placeholder, value, setValue) => {
@@ -869,22 +1008,107 @@ const BookRide = () => {
                 </button>
               </div>
 
-              <div className="flex gap-3">
+                            <div className="space-y-3">
+                {/* Recording Status */}
+                {isRecordingVideo && (
+                  <div className="bg-red-100 border-2 border-red-500 rounded-xl p-4 flex items-center justify-between animate-pulse">
+                    <div className="flex items-center">
+                      <div className="h-3 w-3 bg-red-600 rounded-full mr-3 animate-ping"></div>
+                      <span className="font-bold text-red-700">Recording Evidence...</span>
+                    </div>
+                    <span className="text-2xl font-bold text-red-600">{recordingTimer}s</span>
+                  </div>
+                )}
+
+                {/* Recorded Video Preview */}
+                {recordedVideoURL && !isRecordingVideo && (
+                  <div className="bg-green-100 border-2 border-green-500 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center">
+                        <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                        <span className="font-bold text-green-700">Evidence Recorded</span>
+                      </div>
+                      <button
+                        onClick={() => {
+                          const a = document.createElement('a');
+                          a.href = recordedVideoURL;
+                          a.download = `Evidence_${Date.now()}.webm`;
+                          a.click();
+                        }}
+                        className="text-sm bg-green-600 text-white px-3 py-1.5 rounded-lg font-bold hover:bg-green-700 flex items-center"
+                      >
+                        <Download className="h-4 w-4 mr-1" /> Download
+                      </button>
+                    </div>
+                    <video 
+                      src={recordedVideoURL} 
+                      controls 
+                      className="w-full rounded-lg border border-green-300"
+                    />
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={startVideoRecording}
+                    disabled={isRecordingVideo}
+                    className={`flex-1 font-bold py-3 rounded-xl transition flex items-center justify-center ${
+                      isRecordingVideo 
+                        ? 'bg-gray-300 cursor-not-allowed text-gray-500' 
+                        : 'bg-red-600 text-white hover:bg-red-700'
+                    }`}
+                  >
+                    {isRecordingVideo ? (
+                      <>
+                        <Loader2 className="h-5 w-5 mr-2 animate-spin" /> Recording...
+                      </>
+                    ) : (
+                      <>
+                        <Video className="h-5 w-5 mr-2" /> Record 10s Evidence
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    onClick={generateShareableLink}
+                    className="flex-1 bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition flex items-center justify-center"
+                  >
+                    <Compass className="h-5 w-5 mr-2" /> Share Live Location
+                  </button>
+                </div>
+
+                {/* Shareable Link Display */}
+                {shareableLocationLink && (
+                  <div className="bg-blue-50 border-2 border-blue-500 rounded-xl p-4">
+                    <p className="text-xs font-bold text-blue-700 mb-2 uppercase">Live Tracking Link</p>
+                    <div className="flex items-center gap-2">
+                      <input 
+                        type="text" 
+                        value={shareableLocationLink} 
+                        readOnly 
+                        className="flex-1 bg-white border border-blue-300 rounded-lg px-3 py-2 text-sm font-mono"
+                      />
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(shareableLocationLink);
+                          alert("✅ Link copied again!");
+                        }}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 text-sm"
+                      >
+                        Copy
+                      </button>
+                    </div>
+                    <p className="text-xs text-blue-600 mt-2">Anyone with this link can track this ride in real-time</p>
+                  </div>
+                )}
+
+                {/* Close Button */}
                 <button
                   onClick={() => setShowLiveGuardModal(false)}
-                  className="flex-1 bg-gray-200 text-black font-bold py-4 rounded-xl hover:bg-gray-300 transition"
+                  className="w-full bg-gray-200 text-black font-bold py-3 rounded-xl hover:bg-gray-300 transition"
                 >
                   Close
-                </button>
-                <button
-                  onClick={() => {
-                    setIsRecording(true);
-                    setShowLiveGuardModal(false);
-                    alert("Live Guard activated! Your contacts are now monitoring the trip.");
-                  }}
-                  className="flex-1 bg-pink-500 text-white font-bold py-4 rounded-xl hover:bg-pink-600 transition shadow-lg hover:scale-105 transform"
-                >
-                  Start Live Guard
                 </button>
               </div>
             </div>

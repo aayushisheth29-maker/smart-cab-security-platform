@@ -1,3 +1,4 @@
+import TrackRide from './TrackRide';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import Login from './Login';
@@ -10,6 +11,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<BookRide />} />
+        <Route path="/track/:linkId" element={<TrackRide />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/help" element={<Help />} />
