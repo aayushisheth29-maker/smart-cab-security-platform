@@ -69,7 +69,7 @@ public class ProductionDataSourceConfig {
                     ? "postgres"
                     : uri.getPath().substring(1);
 
-            String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db;
+            String jdbcUrl = "jdbc:postgresql://" + host + ":" + port + "/" + db + "?sslmode=require&ApplicationName=smartcab-core";
 
             log.info("Loaded DATABASE_URL -> host={} port={} db={} user={}",
                      host, port, db, username);
