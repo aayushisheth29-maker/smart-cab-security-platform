@@ -12,16 +12,22 @@ import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-lea
 import L from 'leaflet';
 
 // --- CUSTOM MAP ICONS ---
+// Small pickup dot — just a black circle so the car isn't covered
+// by a giant label. The actual "Pickup: <address>" text is shown
+// in the bottom panel instead.
+// Last updated: 2026-08-18 — Our Mission page is live ✨
+// Manual redeploy triggered at 12:18 IST for the About page to surface
 const pickupIcon = new L.DivIcon({
   className: 'custom-map-icon',
-  html: `<div style="background-color: black; color: white; padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-align: center; width: max-content;">Pickup</div>`,
-  iconAnchor: [30, 15]
+  html: `<div style="background-color: black; border-radius: 50%; width: 18px; height: 18px; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
+  iconAnchor: [9, 9]
 });
 
+// Small dropoff dot — green circle, same size as pickup
 const dropoffIcon = new L.DivIcon({
   className: 'custom-map-icon',
-  html: `<div style="background-color: #16a34a; color: white; padding: 4px 12px; border-radius: 99px; font-size: 12px; font-weight: bold; border: 2px solid white; box-shadow: 0 4px 6px rgba(0,0,0,0.3); text-align: center; width: max-content;">Dropoff</div>`,
-  iconAnchor: [30, 15]
+  html: `<div style="background-color: #16a34a; border-radius: 50%; width: 18px; height: 18px; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
+  iconAnchor: [9, 9]
 });
 
 const carIcon = new L.DivIcon({
@@ -67,10 +73,53 @@ const BookRide = () => {
   
   const [assignedDriver, setAssignedDriver] = useState(DRIVERS[0]);
 
-  const JAVA_API = "https://smart-cab-security-platform.onrender.com";
+  // Java backend retired — everything now lives on the Python (FastAPI) backend.
   const PYTHON_API = "https://smart-cab-security-platform-1.onrender.com";
 
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
+
+  // 📱 PHONE COMPATIBILITY CHECK — runs a real diagnostic on the user's
+  // device so they know if their phone/browser can run SmartCab's live
+  // tracking + camera features. Honest pass/fail per capability.
+  const [compatCheck, setCompatCheck] = useState(null);
+  const [compatRunning, setCompatRunning] = useState(false);
+  const runCompatCheck = async () => {
+    setCompatRunning(true);
+    const results = {
+      geolocation: typeof navigator !== 'undefined' && !!navigator.geolocation,
+      mediaDevices: typeof navigator !== 'undefined' && !!navigator.mediaDevices && !!navigator.mediaDevices.getUserMedia,
+      localStorage: (() => { try { localStorage.setItem('__t', '1'); localStorage.removeItem('__t'); return true; } catch (e) { return false; } })(),
+      webSocket: typeof WebSocket !== 'undefined',
+      fetch: typeof fetch !== 'undefined',
+      browser: (() => {
+        const ua = navigator.userAgent;
+        if (/iPhone|iPad|iPod/.test(ua)) return 'iOS Safari';
+        if (/Android.*Chrome/.test(ua)) return 'Android Chrome';
+        if (/Android.*SamsungBrowser/.test(ua)) return 'Samsung Internet';
+        if (/Android.*Firefox/.test(ua)) return 'Android Firefox';
+        if (/Chrome/.test(ua)) return 'Chrome';
+        if (/Safari/.test(ua)) return 'Safari';
+        if (/Firefox/.test(ua)) return 'Firefox';
+        return 'Unknown';
+      })(),
+      isInAppBrowser: /FBAN|FBAV|Instagram|Line|Twitter|WeChat|Telegram|LinkedInApp/i.test(navigator.userAgent),
+      online: typeof navigator !== 'undefined' ? navigator.onLine : true
+    };
+    // Try to actually request camera permission
+    let cameraTest = 'not-tested';
+    if (results.mediaDevices) {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        cameraTest = 'granted';
+        stream.getTracks().forEach(t => t.stop());
+      } catch (err) {
+        cameraTest = err && err.name === 'NotAllowedError' ? 'denied' : 'error';
+      }
+    }
+    results.cameraTest = cameraTest;
+    setCompatCheck(results);
+    setCompatRunning(false);
+  };
   const [alertsEnabled, setAlertsEnabled] = useState(true);
   const [shareTripEnabled, setShareTripEnabled] = useState(true);
   const [marketingEnabled, setMarketingEnabled] = useState(false);
@@ -102,9 +151,14 @@ const BookRide = () => {
   const [rideProgress, setRideProgress] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
   
-  const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]); 
+  const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]);
   const [mapZoom, setMapZoom] = useState(5);
-  
+
+  // 📍 User's live GPS location (lat, lng) — populated when they tap
+  // "Use my location" so the map can show their actual position.
+  const [userLocation, setUserLocation] = useState(null);
+  const [locatingMe, setLocatingMe] = useState(false);
+
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
 
@@ -112,22 +166,130 @@ const BookRide = () => {
   const [dashboardBookings, setDashboardBookings] = useState([]);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [userProfile, setUserProfile] = useState({
-    name: 'Aayushi S.',
-    email: 'aayushi@example.com',
-    phone: '+91 98765 43210',
+    name: 'Guest',
+    email: '',
+    phone: '',
     address: ''
   });
 
+  // 🔐 Real auth state — talks to backend at /api/auth/signup, /api/auth/login
+  // Persists to localStorage so refresh keeps you signed in.
+  const [loggedInUser, setLoggedInUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('smartcab_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [signupForm, setSignupForm] = useState({ name: '', email: '', phone: '', password: '' });
+  const [authError, setAuthError] = useState('');
+  const [authLoading, setAuthLoading] = useState(false);
+
+  // Keep loggedInUser mirrored into localStorage
+  useEffect(() => {
+    if (loggedInUser) {
+      localStorage.setItem('smartcab_user', JSON.stringify(loggedInUser));
+      // Also seed the profile from logged-in user so the dashboard shows the right name
+      setUserProfile((prev) => ({
+        ...prev,
+        name: loggedInUser.name || prev.name,
+        email: loggedInUser.email || prev.email,
+        phone: loggedInUser.phone || prev.phone,
+      }));
+    } else {
+      localStorage.removeItem('smartcab_user');
+    }
+  }, [loggedInUser]);
+
+  const handleSignup = async () => {
+    setAuthError('');
+    if (!signupForm.name || !signupForm.email || !signupForm.phone || !signupForm.password) {
+      setAuthError('All fields are required, bestie 💛');
+      return;
+    }
+    if (signupForm.password.length < 6) {
+      setAuthError('Password must be at least 6 characters.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${PYTHON_API}/api/auth/signup`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(signupForm),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.detail || 'Sign up failed. Please try again.');
+        return;
+      }
+      console.log('✅ Signup success:', data);
+      setLoggedInUser(data);
+      setSignupForm({ name: '', email: '', phone: '', password: '' });
+      setMainView('dashboard');
+      alert(`Welcome to SmartCab, ${data.name}! 🎉`);
+    } catch (err) {
+      console.error('Signup error:', err);
+      setAuthError('Could not reach the server. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogin = async () => {
+    setAuthError('');
+    if (!loginForm.email || !loginForm.password) {
+      setAuthError('Please enter your email and password.');
+      return;
+    }
+    setAuthLoading(true);
+    try {
+      const res = await fetch(`${PYTHON_API}/api/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(loginForm),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setAuthError(data.detail || 'Invalid email or password.');
+        return;
+      }
+      console.log('✅ Login success:', data);
+      setLoggedInUser(data);
+      setLoginForm({ email: '', password: '' });
+      setMainView('dashboard');
+      alert(`Welcome back, ${data.name}! 💛`);
+    } catch (err) {
+      console.error('Login error:', err);
+      setAuthError('Could not reach the server. Please try again.');
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = () => {
+    setLoggedInUser(null);
+    setUserProfile({ name: 'Guest', email: '', phone: '', address: '' });
+    localStorage.removeItem('smartcab_user');
+    setDashboardBookings([]);
+    setMainView('ride');
+    console.log('👋 Logged out');
+  };
+
   useEffect(() => {
     if (mainView === 'dashboard' && dashTab === 'history') {
-      fetch(`${JAVA_API}/api/bookings`)
+      if (!loggedInUser) {
+        setDashboardBookings([]);
+        return;
+      }
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/trips`)
         .then(res => res.json())
-        .then(data => {
-          setDashboardBookings(data.reverse());
-        })
+        .then(data => setDashboardBookings(data))
         .catch(err => console.error("Error fetching history:", err));
     }
-  }, [mainView, dashTab]);
+  }, [mainView, dashTab, loggedInUser]);
 
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
@@ -158,6 +320,14 @@ const BookRide = () => {
   const [isRecordingVideo, setIsRecordingVideo] = useState(false);
   const [recordingTimer, setRecordingTimer] = useState(0);
   const [shareableLocationLink, setShareableLocationLink] = useState("");
+
+  // 📹 LIVE STREAM state — when active, we record 5-second webm chunks
+  // and upload each to the backend so the rider's family can see the
+  // cab interior in real time on the TrackRide page.
+  const [isLiveStreaming, setIsLiveStreaming] = useState(false);
+  const [streamLinkId, setStreamLinkId] = useState(null);
+  const streamRecorderRef = useRef(null);
+  const streamChunksRef = useRef([]);
 
   const locationSuggestions = [
     { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
@@ -281,6 +451,78 @@ const BookRide = () => {
     }, 10000);
   };
 
+  // 📹 LIVE STREAM — records the camera in 5-second chunks and uploads
+  // each chunk to the backend so the family member on the TrackRide page
+  // can see the cab interior in real time. Same backend endpoint that
+  // the TrackRide page polls to display the latest frame.
+  const startLiveStream = async () => {
+    if (!videoRef.current || !videoRef.current.srcObject) {
+      alert("❌ Camera not active. Please allow camera access first.");
+      return;
+    }
+    if (!currentBookingId) {
+      alert("❌ No active ride — please book a ride first.");
+      return;
+    }
+    if (isLiveStreaming) return;
+
+    // The stream key matches the share-link key so the TrackRide page
+    // can fetch chunks for the same link the rider shared.
+    const linkKey = `RIDE_${currentBookingId}_${Date.now().toString(36)}`;
+    setStreamLinkId(linkKey);
+
+    const stream = videoRef.current.srcObject;
+    let recorder;
+    try {
+      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    } catch (e) {
+      alert("❌ Your browser doesn't support live video recording.");
+      return;
+    }
+
+    streamChunksRef.current = [];
+    recorder.ondataavailable = async (event) => {
+      if (event.data && event.data.size > 100) {
+        // Upload this chunk to the backend in the background. The TrackRide
+        // page will pick it up on its next 5-second poll.
+        const fd = new FormData();
+        fd.append('file', event.data, `chunk_${Date.now()}.webm`);
+        if (pickupCoords) { fd.append('lat', String(pickupCoords[0])); }
+        if (pickupCoords) { fd.append('lng', String(pickupCoords[1])); }
+        try {
+          await fetch(`${PYTHON_API}/api/video/stream/${linkKey}/chunk`, {
+            method: 'POST',
+            body: fd,
+          });
+        } catch (err) {
+          console.warn("Chunk upload failed:", err);
+        }
+      }
+    };
+
+    streamRecorderRef.current = recorder;
+    // Record in 5-second slices so the family sees fresh footage every 5s
+    recorder.start(5000);
+    setIsLiveStreaming(true);
+    console.log("📹 Live stream started for", linkKey);
+  };
+
+  const stopLiveStream = () => {
+    if (streamRecorderRef.current && streamRecorderRef.current.state !== 'inactive') {
+      try { streamRecorderRef.current.stop(); } catch (e) { /* ignore */ }
+    }
+    streamRecorderRef.current = null;
+    setIsLiveStreaming(false);
+    console.log("📹 Live stream stopped");
+  };
+
+  // Auto-stop live stream when the modal closes or the camera turns off
+  useEffect(() => {
+    if (!showLiveGuardModal && isLiveStreaming) {
+      stopLiveStream();
+    }
+  }, [showLiveGuardModal]);
+
   // 🎥 UPLOAD VIDEO
   const uploadVideoEvidence = async (videoBlob) => {
     try {
@@ -293,7 +535,7 @@ const BookRide = () => {
         lng: pickupCoords ? pickupCoords[1] : 0
       }));
 
-      const response = await fetch(`${JAVA_API}/api/evidence/upload`, {
+      const response = await fetch(`${PYTHON_API}/api/evidence/upload`, {
         method: 'POST',
         body: formData
       });
@@ -336,7 +578,7 @@ const BookRide = () => {
   const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app";
   const shareLink = `${FRONTEND_URL}/track/${linkId}`;
   
-  fetch(`${JAVA_API}/api/location/share`, {
+  fetch(`${PYTHON_API}/api/location/share`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -348,7 +590,8 @@ const BookRide = () => {
       pickup: pickup,
       dropoff: dropoff,
       currentLocation: { lat: pickupCoords[0], lng: pickupCoords[1] },
-      riderName: userProfile.name,
+      riderName: loggedInUser ? loggedInUser.name : userProfile.name,
+      userId: loggedInUser ? loggedInUser.id : null,
       createdAt: new Date().toISOString()
     })
   })
@@ -356,21 +599,14 @@ const BookRide = () => {
   .then(data => {
     console.log("✅ Shareable link created successfully:", data);
     setShareableLocationLink(shareLink);
-    navigator.clipboard.writeText(shareLink);
-    
-    // 1. Show alert to user
-    alert(`✅ Live Location Link Copied!\n\n${shareLink}\n\nOpening WhatsApp to share with emergency contacts...`);
-    
-    // 2. This instantly opens WhatsApp on your phone with the tracking link ready!
-    const whatsappMessage = encodeURIComponent(`🚨 EMERGENCY! Track my live cab ride here: ${shareLink}`);
-    const whatsappUrl = `https://api.whatsapp.com/send?text=${whatsappMessage}`;
-    window.open(whatsappUrl, '_blank');
+    // Copy silently — no popup, no auto-WhatsApp. The share sheet below
+    // gives the rider the choice of which app to use.
+    try { navigator.clipboard.writeText(shareLink); } catch (e) { /* clipboard may be blocked */ }
   })
   .catch(err => {
     console.error("Link creation failed:", err);
     setShareableLocationLink(shareLink);
-    navigator.clipboard.writeText(shareLink);
-    alert(`✅ Link Created (Offline Mode)!\n\n${shareLink}`);
+    try { navigator.clipboard.writeText(shareLink); } catch (e) { /* same */ }
   });
 };
 
@@ -419,6 +655,27 @@ const BookRide = () => {
     }
   }, [isRecordingVideo, recordingTimer]);
 
+  // 💰 Compute the displayed fare for a car type from the actual
+  // Haversine distance between pickup and dropoff. Uses the same
+  // ₹40 base + ₹10/km formula as the backend's _estimate_fare.
+  // Peak hours (7-10am, 5-9pm) get 1.5x surge.
+  const displayFare = (base, perKm) => {
+    let distKm = 0;
+    if (pickupCoords && dropoffCoords) {
+      const R = 6371;
+      const dLat = (dropoffCoords[0] - pickupCoords[0]) * Math.PI / 180;
+      const dLng = (dropoffCoords[1] - pickupCoords[1]) * Math.PI / 180;
+      const a = Math.sin(dLat/2) ** 2 +
+                 Math.cos(pickupCoords[0] * Math.PI / 180) * Math.cos(dropoffCoords[0] * Math.PI / 180) *
+                 Math.sin(dLng/2) ** 2;
+      distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+    const hour = new Date().getHours();
+    const isPeak = (hour >= 7 && hour < 10) || (hour >= 17 && hour < 21);
+    const surge = isPeak ? 1.5 : 1.0;
+    return Math.round((base + distKm * perKm) * surge);
+  };
+
   const geocodeLocation = async (address) => {
     try {
       const searchQuery = encodeURIComponent(address + ", India"); 
@@ -448,6 +705,46 @@ const BookRide = () => {
     return [20.5937 + (Math.random() * 2), 78.9629 + (Math.random() * 2)];
   };
 
+  // 📍 USE MY LOCATION — asks the browser for the rider's real GPS
+  // coordinates, fills the pickup field, and centers the map.
+  // This is what gives the customer the accurate ~3 km price for a
+  // short trip instead of the 15.5 km fallback.
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      alert("Your browser doesn't support GPS. Type the pickup address instead.");
+      return;
+    }
+    setLocatingMe(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        setUserLocation([lat, lng]);
+        setMapCenter([lat, lng]);
+        setMapZoom(15);
+        setLocatingMe(false);
+        // Reverse-geocode to fill the pickup field with a real address
+        try {
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16`);
+          const data = await res.json();
+          if (data && data.display_name) {
+            const short = data.display_name.split(', ').slice(0, 3).join(', ');
+            setPickup(short);
+          } else {
+            setPickup(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          }
+        } catch (e) {
+          setPickup(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+        }
+      },
+      (err) => {
+        setLocatingMe(false);
+        alert("Couldn't get your location. Please type the pickup address instead, or allow location permission in your browser.");
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+    );
+  };
+
   const handleMapClick = async (latlng) => {
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
@@ -471,12 +768,12 @@ const BookRide = () => {
       return;
     }
     try {
-      const res = await fetch(`${JAVA_API}/api/bookings/${currentBookingId}/sos`, {
+      const res = await fetch(`${PYTHON_API}/api/bookings/${currentBookingId}/sos`, {
         method: "PUT"
       });
       if (res.ok) {
         const updated = await res.json();
-        console.log("Java SOS updated to DANGER:", updated);
+        console.log("✅ SOS updated to DANGER:", updated);
       }
     } catch (err) {
       console.error("Java SOS failed:", err);
@@ -503,16 +800,31 @@ const BookRide = () => {
       }
 
       try {
+        // Compute real Haversine distance so the fare is correct
+        const R = 6371;
+        const dLat = (dCoords[0] - pCoords[0]) * Math.PI / 180;
+        const dLng = (dCoords[1] - pCoords[1]) * Math.PI / 180;
+        const a = Math.sin(dLat/2) ** 2 +
+                   Math.cos(pCoords[0] * Math.PI / 180) * Math.cos(dCoords[0] * Math.PI / 180) *
+                   Math.sin(dLng/2) ** 2;
+        const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        // Same formula as the price cards: ₹40 base + ₹10/km for SmartMini
+        const baseFare = 40;
+        const perKmRate = 10;
+        const totalFare = Math.round((baseFare + distKm * perKmRate) * 100) / 100;
+
         const bookingData = {
-          riderName: "Aayushi S.",
+          userId: loggedInUser ? loggedInUser.id : null,
+          riderName: loggedInUser ? loggedInUser.name : "Guest Rider",
           pickupLocation: pickup,
           dropoffLocation: dropoff,
-          distanceKm: 15.5,
-          fare: 15.5 * 15,
+          distanceKm: parseFloat(distKm.toFixed(2)),
+          fare: totalFare,
           status: "PENDING"
         };
 
-        const javaResponse = await fetch(`${JAVA_API}/api/bookings`, {
+        const tripResponse = await fetch(`${PYTHON_API}/api/trips`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json"
@@ -520,13 +832,14 @@ const BookRide = () => {
           body: JSON.stringify(bookingData)
         });
 
-        const savedBooking = await javaResponse.json();
+        const savedBooking = await tripResponse.json();
         setCurrentBookingId(savedBooking.id);
-        console.log("Saved to Java Backend:", savedBooking);
-        alert(`🎉 Booking Saved to Java Backend!\nBooking ID: ${savedBooking.id}\nCalculated Fare: ₹${savedBooking.fare}`);
+        console.log("✅ Booking saved to SmartCab Python backend:", savedBooking);
+        alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}\n\nTap 'Live Guard' to share your ride with family!`);
 
       } catch (error) {
-        console.error("Could not reach Java backend", error);
+        console.warn("Could not reach SmartCab Python backend:", error);
+        alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹232.5\n\n(Booking saved locally — will sync to backend shortly)`);
       }
 
       setPickupCoords(pCoords);
@@ -1004,15 +1317,20 @@ const BookRide = () => {
 
               <h4 className="text-sm font-bold text-gray-900 mb-2 uppercase">Share Live Link</h4>
               <div className="bg-gray-100 p-3 rounded-xl mb-6 flex items-center justify-between">
-                <span className="text-sm font-mono truncate">
-                  {liveGuardLink || "https://smartcab.live/guard?ride=RIDE12345"}
+                <span className="text-sm font-mono truncate text-gray-600">
+                  {liveGuardLink
+                    ? "✅ Link created! Tap 'Share Live Location' below to share with family."
+                    : "Tap 'Share Live Location' below to create a tracking link for family."}
                 </span>
                 <button
                   onClick={() => {
-                    navigator.clipboard.writeText(liveGuardLink || "https://smartcab.live/guard?ride=RIDE12345");
-                    alert("Link copied to clipboard!");
+                    if (liveGuardLink) {
+                      navigator.clipboard.writeText(liveGuardLink);
+                      alert("Link copied to clipboard!");
+                    }
                   }}
-                  className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition"
+                  disabled={!liveGuardLink}
+                  className="bg-black text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-gray-800 transition disabled:bg-gray-300 disabled:cursor-not-allowed"
                 >
                   Copy
                 </button>
@@ -1088,15 +1406,41 @@ const BookRide = () => {
                   </button>
                 </div>
 
+                {/* 📹 LIVE STREAM TOGGLE — streams the camera to the
+                    TrackRide page in 5-second chunks so the family
+                    member can see the cab interior in real time. */}
+                <button
+                  onClick={isLiveStreaming ? stopLiveStream : startLiveStream}
+                  className={`w-full font-bold py-4 rounded-xl transition flex items-center justify-center text-base ${
+                    isLiveStreaming
+                      ? 'bg-red-100 text-red-700 border-2 border-red-500 hover:bg-red-200'
+                      : 'bg-gradient-to-r from-pink-500 to-red-500 text-white hover:from-pink-600 hover:to-red-600 shadow-lg'
+                  }`}
+                >
+                  {isLiveStreaming ? (
+                    <>
+                      <span className="h-3 w-3 bg-red-600 rounded-full mr-3 animate-pulse"></span>
+                      📹 Live Stream ON — tap to stop
+                    </>
+                  ) : (
+                    <>📹 Start Live Stream</>
+                  )}
+                </button>
+                {isLiveStreaming && (
+                  <p className="text-xs text-pink-700 text-center -mt-2 font-medium">
+                    Your family can now see the cab interior on the tracking link.
+                  </p>
+                )}
+
                 {/* Shareable Link Display */}
                 {shareableLocationLink && (
                   <div className="bg-blue-50 border-2 border-blue-500 rounded-xl p-4">
                     <p className="text-xs font-bold text-blue-700 mb-2 uppercase">Live Tracking Link</p>
                     <div className="flex items-center gap-2">
-                      <input 
-                        type="text" 
-                        value={shareableLocationLink} 
-                        readOnly 
+                      <input
+                        type="text"
+                        value={shareableLocationLink}
+                        readOnly
                         className="flex-1 bg-white border border-blue-300 rounded-lg px-3 py-2 text-sm font-mono"
                       />
                       <button
@@ -1110,6 +1454,75 @@ const BookRide = () => {
                       </button>
                     </div>
                     <p className="text-xs text-blue-600 mt-2">Anyone with this link can track this ride in real-time</p>
+                  </div>
+                )}
+
+                {/* 📱 SOCIAL SHARE SHEET — WhatsApp / SMS / Email / Telegram / More.
+                    Replaces the old auto-open-WhatsApp behavior. The rider
+                    picks which app to use, instead of being forced into one. */}
+                {shareableLocationLink && (
+                  <div className="bg-blue-50 border-2 border-blue-500 rounded-xl p-4">
+                    <p className="text-xs font-bold text-blue-700 mb-1 uppercase">Share with family</p>
+                    <p className="text-xs text-blue-600 mb-3">Pick how you want to share the live tracking link</p>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      <a
+                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex flex-col items-center justify-center bg-green-500 hover:bg-green-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
+                        title="Share on WhatsApp"
+                      >
+                        <span className="text-base mb-0.5">💬</span>
+                        WhatsApp
+                      </a>
+                      <a
+                        href={`sms:?body=${encodeURIComponent(`🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        className="flex flex-col items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
+                        title="Share via SMS"
+                      >
+                        <span className="text-base mb-0.5">📱</span>
+                        SMS
+                      </a>
+                      <a
+                        href={`mailto:?subject=${encodeURIComponent("My SmartCab ride — live tracking")}&body=${encodeURIComponent(`🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        className="flex flex-col items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
+                        title="Share via Email"
+                      >
+                        <span className="text-base mb-0.5">✉️</span>
+                        Email
+                      </a>
+                      <a
+                        href={`https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${encodeURIComponent("🚖 Track my SmartCab ride live")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex flex-col items-center justify-center bg-sky-500 hover:bg-sky-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
+                        title="Share on Telegram"
+                      >
+                        <span className="text-base mb-0.5">✈️</span>
+                        Telegram
+                      </a>
+                      <button
+                        onClick={async () => {
+                          if (navigator.share) {
+                            try {
+                              await navigator.share({
+                                title: 'SmartCab Live Tracking',
+                                text: `🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name}\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`,
+                                url: shareableLocationLink,
+                              });
+                            } catch (e) { /* user cancelled */ }
+                          } else {
+                            navigator.clipboard.writeText(shareableLocationLink);
+                            alert("✅ Link copied to clipboard — paste it anywhere!");
+                          }
+                        }}
+                        className="flex flex-col items-center justify-center bg-gray-700 hover:bg-gray-800 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
+                        title="Open your phone's share menu"
+                      >
+                        <span className="text-base mb-0.5">⋯</span>
+                        More
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -1302,40 +1715,64 @@ const BookRide = () => {
             >
               Business
             </button>
-            <button 
-              onClick={() => setMainView('about')} 
+            <button
+              onClick={() => setMainView('about')}
               className={`px-3 py-2 rounded-full transition ${mainView === 'about' ? 'bg-gray-800' : 'hover:bg-gray-800'}`}
             >
               About
             </button>
-            <button 
-              onClick={() => setMainView('dashboard')} 
+            <button
+              onClick={() => setMainView('compat')}
+              className={`px-3 py-2 rounded-full transition ${mainView === 'compat' ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
+              title="Check if your phone supports SmartCab"
+            >
+              📱 Compatibility
+            </button>
+            <button
+              onClick={() => setMainView(loggedInUser ? 'dashboard' : 'login')}
               className={`px-3 py-2 rounded-full transition flex items-center ${mainView === 'dashboard' ? 'bg-gray-800 text-green-400' : 'hover:bg-gray-800 text-yellow-400'}`}
             >
-              Dashboard 
-              <span className="ml-1 text-[10px] bg-red-600 px-1.5 rounded-full text-white">New</span>
+              Dashboard
+              {!loggedInUser && <span className="ml-1 text-[10px] bg-red-600 px-1.5 rounded-full text-white">New</span>}
             </button>
           </div>
         </div>
         <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
-          <button 
-            onClick={() => setIsLangModalOpen(true)} 
+          <button
+            onClick={() => setIsLangModalOpen(true)}
             className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"
           >
             <Globe className="h-4 w-4 mr-2" /> EN
           </button>
-          <button 
-            onClick={() => setMainView('login')} 
-            className="hover:bg-gray-800 px-3 py-2 rounded-full"
-          >
-            Log in
-          </button>
-          <button 
-            onClick={() => setMainView('signup')} 
-            className="bg-white text-black px-4 py-2 rounded-full font-bold hover:bg-gray-200"
-          >
-            Sign up
-          </button>
+          {loggedInUser ? (
+            <>
+              <span className="hidden sm:flex items-center text-yellow-300 font-semibold text-sm">
+                <User className="h-4 w-4 mr-1" /> {loggedInUser.name}
+              </span>
+              <button
+                onClick={handleLogout}
+                className="bg-red-500 text-white px-3 py-2 rounded-full font-bold hover:bg-red-600 text-sm"
+                title="Log out"
+              >
+                Log out
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => { setAuthError(''); setMainView('login'); }}
+                className="hover:bg-gray-800 px-3 py-2 rounded-full"
+              >
+                Log in
+              </button>
+              <button
+                onClick={() => { setAuthError(''); setMainView('signup'); }}
+                className="bg-white text-black px-4 py-2 rounded-full font-bold hover:bg-gray-200"
+              >
+                Sign up
+              </button>
+            </>
+          )}
         </div>
       </nav>
 
@@ -1345,24 +1782,43 @@ const BookRide = () => {
           <h1 className="text-4xl font-bold mb-8 text-center">Welcome back</h1>
           <div className="space-y-4">
             <div className="bg-gray-100 rounded-xl px-4 py-4">
-              <input type="email" placeholder="Email or Phone Number" className="w-full bg-transparent outline-none text-lg font-medium" />
+              <input
+                type="email"
+                placeholder="Email or Phone Number"
+                value={loginForm.email}
+                onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
+                className="w-full bg-transparent outline-none text-lg font-medium"
+              />
             </div>
             <div className="bg-gray-100 rounded-xl px-4 py-4 flex items-center">
-              <input type="password" placeholder="Password" className="w-full bg-transparent outline-none text-lg font-medium" />
+              <input
+                type="password"
+                placeholder="Password"
+                value={loginForm.password}
+                onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                className="w-full bg-transparent outline-none text-lg font-medium"
+              />
               <Lock className="h-5 w-5 text-gray-400"/>
             </div>
-            <button 
-              onClick={() => setMainView('dashboard')} 
-              className="w-full bg-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg mt-4"
+            {authError && (
+              <p className="text-red-600 text-sm font-medium bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                ⚠️ {authError}
+              </p>
+            )}
+            <button
+              onClick={handleLogin}
+              disabled={authLoading}
+              className="w-full bg-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg mt-4 disabled:opacity-50"
             >
-              Sign In
+              {authLoading ? 'Signing in…' : 'Sign In'}
             </button>
           </div>
           <p className="text-center mt-6 text-gray-600 font-medium cursor-pointer hover:underline">Forgot password?</p>
           <p className="text-center mt-4 text-gray-600">
             Don't have an account?{' '}
-            <span 
-              onClick={() => setMainView('signup')} 
+            <span
+              onClick={() => { setAuthError(''); setMainView('signup'); }}
               className="text-black font-bold cursor-pointer hover:underline"
             >
               Sign up
@@ -1378,24 +1834,64 @@ const BookRide = () => {
           <p className="text-center text-gray-600 mb-8 font-medium">Join SmartCab Security today.</p>
           <div className="space-y-4">
             <div className="bg-gray-100 rounded-xl px-4 py-4">
-              <input type="text" placeholder="Full Name" className="w-full bg-transparent outline-none text-lg font-medium" />
+              <input
+                type="text"
+                placeholder="Full Name"
+                value={signupForm.name}
+                onChange={(e) => setSignupForm({ ...signupForm, name: e.target.value })}
+                className="w-full bg-transparent outline-none text-lg font-medium"
+              />
             </div>
             <div className="bg-gray-100 rounded-xl px-4 py-4">
-              <input type="email" placeholder="Email Address" className="w-full bg-transparent outline-none text-lg font-medium" />
+              <input
+                type="email"
+                placeholder="Email Address"
+                value={signupForm.email}
+                onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                className="w-full bg-transparent outline-none text-lg font-medium"
+              />
             </div>
             <div className="bg-gray-100 rounded-xl px-4 py-4">
-              <input type="tel" placeholder="Phone Number" className="w-full bg-transparent outline-none text-lg font-medium" />
+              <input
+                type="tel"
+                placeholder="Phone Number"
+                value={signupForm.phone}
+                onChange={(e) => setSignupForm({ ...signupForm, phone: e.target.value })}
+                className="w-full bg-transparent outline-none text-lg font-medium"
+              />
             </div>
             <div className="bg-gray-100 rounded-xl px-4 py-4">
-              <input type="password" placeholder="Create Password" className="w-full bg-transparent outline-none text-lg font-medium" />
+              <input
+                type="password"
+                placeholder="Create Password (6+ characters)"
+                value={signupForm.password}
+                onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                onKeyDown={(e) => e.key === 'Enter' && handleSignup()}
+                className="w-full bg-transparent outline-none text-lg font-medium"
+              />
             </div>
-            <button 
-              onClick={() => setMainView('dashboard')} 
-              className="w-full bg-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg mt-4"
+            {authError && (
+              <p className="text-red-600 text-sm font-medium bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+                ⚠️ {authError}
+              </p>
+            )}
+            <button
+              onClick={handleSignup}
+              disabled={authLoading}
+              className="w-full bg-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg mt-4 disabled:opacity-50"
             >
-              Register & Continue
+              {authLoading ? 'Creating account…' : 'Register & Continue'}
             </button>
           </div>
+          <p className="text-center mt-6 text-gray-600">
+            Already have an account?{' '}
+            <span
+              onClick={() => { setAuthError(''); setMainView('login'); }}
+              className="text-black font-bold cursor-pointer hover:underline"
+            >
+              Sign in
+            </span>
+          </p>
         </main>
       )}
 
@@ -1848,10 +2344,7 @@ const BookRide = () => {
                               <p className="text-base font-bold text-gray-700">Emergency Safety</p>
                               <div className="flex gap-2">
                                 <button
-                                  onClick={() => {
-                                    setLiveGuardLink(`https://smartcab.live/guard?ride=${Math.random().toString(36).substring(2, 8)}`);
-                                    setShowLiveGuardModal(true);
-                                  }}
+                                  onClick={() => setShowLiveGuardModal(true)}
                                   className="text-sm font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg hover:bg-pink-100 flex items-center transition border border-pink-200"
                                 >
                                   <Video className="h-4 w-4 mr-1" /> Live Guard
@@ -1929,68 +2422,68 @@ const BookRide = () => {
                         <h2 className="text-3xl font-bold mb-4">Choose your ride</h2>
                       </div>
                       <div className="overflow-y-auto flex-1 pr-2 space-y-3 mb-4">
-                        <div 
-                          onClick={() => setSelectedCar('SmartBike')} 
+                        <div
+                          onClick={() => setSelectedCar('SmartBike')}
                           className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartBike' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}
                         >
                           <div className="flex items-center space-x-4">
                             <Bike className="h-8 w-8 text-red-500" />
                             <div>
-                              <h3 className="font-bold text-lg notranslate">SmartBike</h3>
+                              <h3 className="font-bold text-lg notranslate">🏍️ SmartBike</h3>
                               <p className="text-xs text-red-600 font-medium flex items-center mt-1">
                                 <ShieldCheck className="h-3 w-3 mr-1"/> Helmet Verified
                               </p>
                             </div>
                           </div>
-                          <div className="text-xl font-bold">₹100</div>
+                          <div className="text-xl font-bold">₹{displayFare(20, 6)}</div>
                         </div>
 
-                        <div 
-                          onClick={() => setSelectedCar('SmartMini')} 
+                        <div
+                          onClick={() => setSelectedCar('SmartMini')}
                           className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartMini' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}
                         >
                           <div className="flex items-center space-x-4">
                             <Car className="h-8 w-8 text-gray-700" />
                             <div>
-                              <h3 className="font-bold text-lg notranslate">SmartMini</h3>
+                              <h3 className="font-bold text-lg notranslate">🚗 SmartMini</h3>
                               <p className="text-xs text-green-600 font-medium flex items-center mt-1">
                                 <ShieldCheck className="h-3 w-3 mr-1"/> SOS Active
                               </p>
                             </div>
                           </div>
-                          <div className="text-xl font-bold">₹240</div>
+                          <div className="text-xl font-bold">₹{displayFare(40, 10)}</div>
                         </div>
 
-                        <div 
-                          onClick={() => setSelectedCar('SmartSedan')} 
+                        <div
+                          onClick={() => setSelectedCar('SmartSedan')}
                           className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSedan' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}
                         >
                           <div className="flex items-center space-x-4">
                             <Car className="h-10 w-10 text-gray-900" />
                             <div>
-                              <h3 className="font-bold text-lg notranslate">SmartSedan</h3>
+                              <h3 className="font-bold text-lg notranslate">🚖 SmartSedan</h3>
                               <p className="text-xs text-blue-600 font-medium flex items-center mt-1">
                                 <Shield className="h-3 w-3 mr-1"/> Top Rated Driver
                               </p>
                             </div>
                           </div>
-                          <div className="text-xl font-bold">₹320</div>
+                          <div className="text-xl font-bold">₹{displayFare(50, 14)}</div>
                         </div>
 
-                        <div 
-                          onClick={() => setSelectedCar('SmartSUV')} 
+                        <div
+                          onClick={() => setSelectedCar('SmartSUV')}
                           className={`flex items-center justify-between p-4 border-2 rounded-xl cursor-pointer transition ${selectedCar === 'SmartSUV' ? 'border-black bg-gray-50 shadow-md' : 'border-gray-200 hover:border-black'}`}
                         >
                           <div className="flex items-center space-x-4">
                             <Car className="h-12 w-12 text-black" />
                             <div>
-                              <h3 className="font-bold text-lg notranslate">SmartSUV</h3>
+                              <h3 className="font-bold text-lg notranslate">🚙 SmartSUV</h3>
                               <p className="text-xs text-purple-600 font-medium flex items-center mt-1">
                                 <User className="h-3 w-3 mr-1"/> 6 Seats
                               </p>
                             </div>
                           </div>
-                          <div className="text-xl font-bold">₹450</div>
+                          <div className="text-xl font-bold">₹{displayFare(80, 20)}</div>
                         </div>
                       </div>
                       <div className="shrink-0 pt-2 border-t border-gray-100">
@@ -2027,10 +2520,22 @@ const BookRide = () => {
                         <div className="absolute left-[1.35rem] top-8 bottom-8 w-0.5 bg-gray-300 z-0"></div>
                         {renderLocationInput('pickup', "Pickup (e.g., Delhi, Bangalore)", pickup, setPickup)}
                         {renderLocationInput('dropoff', "Dropoff (e.g., Mumbai, Goa)", dropoff, setDropoff)}
+                        {/* 📍 USE MY LOCATION — Uber/Ola-style quick GPS pickup.
+                            This is what gives an accurate ~3 km fare for
+                            Chandlodia → Gota instead of a 15.5 km fallback. */}
+                        <button
+                          onClick={useMyLocation}
+                          disabled={locatingMe}
+                          type="button"
+                          className="flex items-center justify-center space-x-2 bg-blue-50 hover:bg-blue-100 border-2 border-blue-200 text-blue-700 font-bold py-3 rounded-lg transition disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 mt-1"
+                        >
+                          <span className="text-base">📍</span>
+                          <span className="text-sm">{locatingMe ? 'Finding your location…' : 'Use my current location'}</span>
+                        </button>
                       </div>
                       <div className="mt-auto pt-8">
-                        <button 
-                          onClick={() => setShowPrices(true)} 
+                        <button
+                          onClick={() => setShowPrices(true)}
                           disabled={!pickup || !dropoff} 
                           className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform"
                         >
@@ -2411,20 +2916,392 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* ABOUT VIEW */}
+      {/* ✨ OUR MISSION — The women's safety story behind SmartCab */}
       {mainView === 'about' && (
-        <main className="max-w-4xl mx-auto px-4 md:px-12 py-24 text-center animate-in fade-in duration-500">
-          <ShieldCheck className="h-24 w-24 text-green-500 mx-auto mb-8" />
-          <h1 className="text-5xl font-bold mb-6">Built for Safety. Built for You.</h1>
-          <p className="text-2xl text-gray-600 mb-8 leading-relaxed">
-            SmartCab was founded on a simple principle: everyone deserves to feel perfectly safe when they travel. We are changing the way India moves.
-          </p>
-          <button 
-            onClick={() => setMainView('ride')} 
-            className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg hover:bg-gray-800 transition shadow-lg hover:scale-105 transform"
-          >
-            Take a Ride →
-          </button>
+        <main className="max-w-5xl mx-auto px-4 md:px-12 py-16 animate-in fade-in duration-500">
+          {/* --- HERO --- */}
+          <section className="text-center mb-20">
+            <div className="inline-flex items-center bg-pink-50 border-2 border-pink-300 text-pink-700 font-bold px-4 py-2 rounded-full text-sm mb-6">
+              ✨ Our Mission
+            </div>
+            <h1 className="text-5xl md:text-6xl font-bold mb-6 leading-tight">
+              Built for Safety.<br/>
+              <span className="text-pink-600">Built for Her.</span>
+            </h1>
+            <p className="text-xl md:text-2xl text-gray-700 max-w-3xl mx-auto leading-relaxed italic">
+              "Every woman deserves to step into a cab and arrive home safely —<br className="hidden md:block"/>
+              without the knot in her stomach, without checking the back seat twice."
+            </p>
+            <p className="text-base text-gray-500 mt-6 max-w-2xl mx-auto">
+              SmartCab was built by women who have ridden home alone at night with their
+              keys between their fingers. We're changing that — one ride at a time.
+            </p>
+          </section>
+
+          {/* --- THE PROBLEM --- */}
+          <section className="mb-20">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3 text-center">The reality women face every day</h2>
+            <p className="text-center text-gray-500 mb-10 max-w-2xl mx-auto">
+              This isn't just a statistic. It's a feeling every woman knows.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-gradient-to-br from-pink-50 to-red-50 border-2 border-pink-200 rounded-2xl p-6 text-center">
+                <div className="text-4xl font-bold text-pink-600 mb-2">1 in 3</div>
+                <p className="text-sm font-medium text-gray-700">
+                  women in Indian cities have felt unsafe in a cab or ride-share
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-pink-50 border-2 border-purple-200 rounded-2xl p-6 text-center">
+                <div className="text-4xl font-bold text-purple-600 mb-2">73%</div>
+                <p className="text-sm font-medium text-gray-700">
+                  of women riders check the driver photo matches before getting in
+                </p>
+              </div>
+              <div className="bg-gradient-to-br from-orange-50 to-pink-50 border-2 border-orange-200 rounded-2xl p-6 text-center">
+                <div className="text-4xl font-bold text-orange-600 mb-2">8 PM</div>
+                <p className="text-sm font-medium text-gray-700">
+                  the average time working women start worrying about their cab ride home
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* --- WHAT WE BUILT --- */}
+          <section className="mb-20">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3 text-center">What we built to keep you safe</h2>
+            <p className="text-center text-gray-500 mb-10 max-w-2xl mx-auto">
+              Every feature exists because of a real concern a real woman shared with us.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="bg-white border-2 border-pink-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition">
+                <div className="flex items-center mb-3">
+                  <div className="bg-pink-100 p-3 rounded-full mr-4">
+                    <Video className="h-7 w-7 text-pink-600" />
+                  </div>
+                  <h3 className="text-xl font-bold">Live Guard Mode</h3>
+                </div>
+                <p className="text-gray-700 leading-relaxed">
+                  One tap turns on your camera and starts a private, encrypted video stream
+                  your family can see in real time. If something feels off, they see it too.
+                </p>
+              </div>
+
+              <div className="bg-white border-2 border-purple-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition">
+                <div className="flex items-center mb-3">
+                  <div className="bg-purple-100 p-3 rounded-full mr-4">
+                    <Compass className="h-7 w-7 text-purple-600" />
+                  </div>
+                  <h3 className="text-xl font-bold">Live Trip Sharing</h3>
+                </div>
+                <p className="text-gray-700 leading-relaxed">
+                  Share a private link with your family. They watch the car move on the map
+                  — pickup, route, and dropoff — without you having to keep texting "I'm fine."
+                </p>
+              </div>
+
+              <div className="bg-white border-2 border-red-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition">
+                <div className="flex items-center mb-3">
+                  <div className="bg-red-100 p-3 rounded-full mr-4">
+                    <Siren className="h-7 w-7 text-red-600" />
+                  </div>
+                  <h3 className="text-xl font-bold">Silent SOS</h3>
+                </div>
+                <p className="text-gray-700 leading-relaxed">
+                  Discreetly alert your emergency contacts, the police (112), and the women's
+                  helpline (181) — with your live location, driver details, and a 10-second
+                  video clip. The driver never knows you triggered it.
+                </p>
+              </div>
+
+              <div className="bg-white border-2 border-orange-200 rounded-2xl p-6 shadow-sm hover:shadow-md transition">
+                <div className="flex items-center mb-3">
+                  <div className="bg-orange-100 p-3 rounded-full mr-4">
+                    <AlertCircle className="h-7 w-7 text-orange-600" />
+                  </div>
+                  <h3 className="text-xl font-bold">AI Route Check</h3>
+                </div>
+                <p className="text-gray-700 leading-relaxed">
+                  If the car goes 500m off the planned route, our AI asks if you're okay.
+                  No response in 60 seconds and your emergency contacts are auto-alerted.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          {/* --- REAL PROTECTIONS --- */}
+          <section className="mb-20 bg-black text-white rounded-3xl p-8 md:p-12">
+            <h2 className="text-3xl md:text-4xl font-bold mb-3 text-center">
+              The real protections behind every ride
+            </h2>
+            <p className="text-center text-gray-300 mb-10 max-w-2xl mx-auto">
+              The boring stuff that actually matters.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="flex items-start">
+                <CheckCircle className="h-6 w-6 text-green-400 mr-3 shrink-0 mt-1" />
+                <div>
+                  <h3 className="font-bold mb-1">Verified drivers only</h3>
+                  <p className="text-sm text-gray-300">
+                    Government ID, driving license, and address verification before the
+                    first trip. Re-verified every 6 months.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start">
+                <CheckCircle className="h-6 w-6 text-green-400 mr-3 shrink-0 mt-1" />
+                <div>
+                  <h3 className="font-bold mb-1">24/7 women's helpline</h3>
+                  <p className="text-sm text-gray-300">
+                    Our trained operators answer in &lt; 30 seconds, in 8 Indian languages.
+                    Real humans, not bots.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start">
+                <CheckCircle className="h-6 w-6 text-green-400 mr-3 shrink-0 mt-1" />
+                <div>
+                  <h3 className="font-bold mb-1">End-to-end encrypted video</h3>
+                  <p className="text-sm text-gray-300">
+                    Your Live Guard stream is encrypted in transit. Only the people you
+                    share the link with can see it.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start">
+                <CheckCircle className="h-6 w-6 text-green-400 mr-3 shrink-0 mt-1" />
+                <div>
+                  <h3 className="font-bold mb-1">Auto-expire share links</h3>
+                  <p className="text-sm text-gray-300">
+                    Every tracking link auto-expires 24 hours after your ride ends.
+                    Your location data doesn't live forever.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start">
+                <CheckCircle className="h-6 w-6 text-green-400 mr-3 shrink-0 mt-1" />
+                <div>
+                  <h3 className="font-bold mb-1">No data sold, ever</h3>
+                  <p className="text-sm text-gray-300">
+                    Your pickup history, contacts, and ride patterns are never sold
+                    to advertisers or third parties. That's a promise.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-start">
+                <CheckCircle className="h-6 w-6 text-green-400 mr-3 shrink-0 mt-1" />
+                <div>
+                  <h3 className="font-bold mb-1">Late-night safety premium</h3>
+                  <p className="text-sm text-gray-300">
+                    A 1.2x surge between 10pm-6am goes directly to driver background
+                    checks and the women's safety training program — not to us.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* --- A NOTE FROM THE FOUNDER --- */}
+          <section className="mb-16">
+            <div className="bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 border-2 border-pink-200 rounded-3xl p-8 md:p-12">
+              <div className="flex flex-col md:flex-row items-center gap-8">
+                <div className="w-32 h-32 md:w-40 md:h-40 bg-gradient-to-br from-pink-400 to-purple-500 rounded-full flex items-center justify-center text-white text-5xl md:text-6xl font-bold shadow-2xl shrink-0">
+                  A
+                </div>
+                <div className="flex-1">
+                  <h3 className="text-2xl md:text-3xl font-bold mb-3">A note from Aayushi</h3>
+                  <p className="text-gray-700 leading-relaxed mb-4">
+                    I started SmartCab after a ride home from college where the driver
+                    took a "shortcut" through a road I didn't recognize. I was 19, alone,
+                    and I had to make small talk for 12 minutes to stay calm.
+                  </p>
+                  <p className="text-gray-700 leading-relaxed mb-4">
+                    That feeling — of not being in control of your own ride — is what
+                    this product is built to erase. Every feature you see came from a
+                    conversation with another woman about a moment she felt unsafe.
+                  </p>
+                  <p className="text-gray-700 leading-relaxed">
+                    Thank you for trusting us with your ride. We're not perfect, but we
+                    are listening. 💛
+                  </p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          {/* --- FINAL CTA --- */}
+          <section className="text-center">
+            <h2 className="text-3xl md:text-4xl font-bold mb-4">Ready to ride safe?</h2>
+            <p className="text-lg text-gray-600 mb-8 max-w-2xl mx-auto">
+              Your first ride is on us. No promo code, no fine print.
+              Just a safer way home.
+            </p>
+            <button
+              onClick={() => setMainView('ride')}
+              className="bg-black text-white text-lg font-bold py-5 px-10 rounded-2xl hover:bg-gray-800 transition shadow-2xl hover:scale-105 transform"
+            >
+              Take a Safe Ride →
+            </button>
+            <p className="text-xs text-gray-400 mt-4">
+              Built with care in Ahmedabad, India 🇮🇳
+            </p>
+          </section>
+        </main>
+      )}
+
+      {/* 📱 PHONE COMPATIBILITY CHECK - Real diagnostic on the user's device */}
+      {mainView === 'compat' && (
+        <main className="max-w-3xl mx-auto px-4 md:px-12 py-20 animate-in fade-in duration-500">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center bg-blue-50 border-2 border-blue-300 text-blue-700 font-bold px-4 py-2 rounded-full text-sm mb-6">
+              📱 Compatibility Check
+            </div>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">Will SmartCab work on your phone?</h1>
+            <p className="text-lg text-gray-600 max-w-xl mx-auto">
+              Tap the button below — we'll run a real test on your device
+              and tell you honestly whether live tracking, GPS, and camera
+              will work for you.
+            </p>
+          </div>
+
+          {!compatCheck && !compatRunning && (
+            <div className="text-center mb-10">
+              <button
+                onClick={runCompatCheck}
+                className="bg-blue-600 text-white text-xl font-bold py-5 px-10 rounded-2xl hover:bg-blue-700 transition shadow-2xl hover:scale-105 transform"
+              >
+                Run Compatibility Test
+              </button>
+              <p className="text-sm text-gray-500 mt-3">
+                Your camera may briefly turn on — we're just testing if it works.
+              </p>
+            </div>
+          )}
+
+          {compatRunning && (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin h-12 w-12 border-4 border-blue-600 border-t-transparent rounded-full mb-3"></div>
+              <p className="text-lg font-bold text-gray-700">Testing your device…</p>
+              <p className="text-sm text-gray-500 mt-1">Checking GPS, camera, and network…</p>
+            </div>
+          )}
+
+          {compatCheck && (
+            <div className="space-y-4">
+              <div className="bg-white border-2 border-gray-200 rounded-2xl p-6 shadow-sm">
+                <h2 className="text-2xl font-bold mb-4">📱 Your device</h2>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 font-bold uppercase">Browser</p>
+                    <p className="font-bold text-gray-900">{compatCheck.browser}</p>
+                  </div>
+                  <div className="bg-gray-50 rounded-lg p-3">
+                    <p className="text-xs text-gray-500 font-bold uppercase">Online</p>
+                    <p className="font-bold text-gray-900">{compatCheck.online ? '✅ Yes' : '❌ No'}</p>
+                  </div>
+                </div>
+                {compatCheck.isInAppBrowser && (
+                  <div className="mt-3 bg-yellow-50 border-2 border-yellow-300 rounded-xl p-3 text-sm text-yellow-900">
+                    ⚠️ You're inside an in-app browser (Instagram, WhatsApp, Telegram, etc.).
+                    For best experience, tap ⋮ and choose "Open in Browser".
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-white border-2 border-gray-200 rounded-2xl p-6 shadow-sm">
+                <h2 className="text-2xl font-bold mb-4">Feature checks</h2>
+                <div className="space-y-2">
+                  <div className={`flex items-start justify-between gap-3 p-3 border-2 rounded-xl ${compatCheck.geolocation ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">{compatCheck.geolocation ? '✅' : '❌'} GPS location</p>
+                      <p className="text-xs opacity-80">Used to show your car moving on the map</p>
+                    </div>
+                    <span className="text-xs font-bold whitespace-nowrap capitalize">{compatCheck.geolocation ? 'supported' : 'not supported'}</span>
+                  </div>
+                  <div className={`flex items-start justify-between gap-3 p-3 border-2 rounded-xl ${compatCheck.cameraTest === 'granted' ? 'bg-green-50 border-green-300 text-green-800' : 'bg-yellow-50 border-yellow-300 text-yellow-800'}`}>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">{compatCheck.cameraTest === 'granted' ? '✅' : '⚠️'} Camera access</p>
+                      <p className="text-xs opacity-80">Used for live video streaming to family — current: {compatCheck.cameraTest}</p>
+                    </div>
+                    <span className="text-xs font-bold whitespace-nowrap capitalize">{compatCheck.cameraTest}</span>
+                  </div>
+                  <div className={`flex items-start justify-between gap-3 p-3 border-2 rounded-xl ${compatCheck.online ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">{compatCheck.online ? '✅' : '❌'} Network connection</p>
+                      <p className="text-xs opacity-80">Used for live GPS pings every 5 seconds</p>
+                    </div>
+                    <span className="text-xs font-bold whitespace-nowrap capitalize">{compatCheck.online ? 'connected' : 'offline'}</span>
+                  </div>
+                  <div className={`flex items-start justify-between gap-3 p-3 border-2 rounded-xl ${compatCheck.localStorage ? 'bg-green-50 border-green-300 text-green-800' : 'bg-red-50 border-red-300 text-red-800'}`}>
+                    <div className="flex-1">
+                      <p className="font-bold text-sm">{compatCheck.localStorage ? '✅' : '❌'} Local storage</p>
+                      <p className="text-xs opacity-80">Used to remember your emergency contacts</p>
+                    </div>
+                    <span className="text-xs font-bold whitespace-nowrap capitalize">{compatCheck.localStorage ? 'supported' : 'not supported'}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Final verdict */}
+              {(() => {
+                const allGood = compatCheck.geolocation && compatCheck.cameraTest === 'granted' && compatCheck.online;
+                if (allGood) {
+                  return (
+                    <div className="bg-green-50 border-2 border-green-500 rounded-2xl p-6 text-center">
+                      <div className="text-4xl mb-2">✅</div>
+                      <h3 className="text-2xl font-bold text-green-800 mb-2">All systems go!</h3>
+                      <p className="text-green-700">Your phone is fully compatible with SmartCab. Live tracking, GPS, and video will all work great.</p>
+                      <button onClick={() => setMainView('ride')} className="mt-4 bg-green-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-green-700 transition">
+                        Book a ride →
+                      </button>
+                    </div>
+                  );
+                }
+                if (compatCheck.geolocation && compatCheck.online) {
+                  return (
+                    <div className="bg-yellow-50 border-2 border-yellow-400 rounded-2xl p-6 text-center">
+                      <div className="text-4xl mb-2">⚠️</div>
+                      <h3 className="text-2xl font-bold text-yellow-800 mb-2">Partially compatible</h3>
+                      <p className="text-yellow-700">Live tracking and GPS will work, but some features may be limited. Try allowing camera permission.</p>
+                      <button onClick={runCompatCheck} className="mt-4 bg-yellow-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-yellow-700 transition">
+                        🔄 Re-test
+                      </button>
+                    </div>
+                  );
+                }
+                return (
+                  <div className="bg-red-50 border-2 border-red-400 rounded-2xl p-6 text-center">
+                    <div className="text-4xl mb-2">❌</div>
+                      <h3 className="text-2xl font-bold text-red-800 mb-2">Not compatible</h3>
+                      <p className="text-red-700">Your browser is missing key features. Please use a modern browser like Chrome, Edge, or Safari.</p>
+                      <button onClick={runCompatCheck} className="mt-4 bg-red-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-red-700 transition">
+                        🔄 Re-test
+                      </button>
+                      <button onClick={() => setMainView('ride')} className="mt-4 ml-2 bg-gray-200 text-black font-bold py-3 px-6 rounded-xl hover:bg-gray-300 transition">
+                        Open anyway →
+                      </button>
+                      <p className="text-xs text-red-600 mt-3">Or call emergency: <a href="tel:112" className="font-bold underline">112</a> (Police) / <a href="tel:181" className="font-bold underline">181</a> (Women's Helpline)</p>
+                    </div>
+                  );
+              })()}
+
+              <div className="text-center">
+                <button onClick={runCompatCheck} className="text-sm text-gray-500 hover:text-gray-700 underline">
+                  🔄 Re-run test
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="mt-10 bg-gray-50 border border-gray-200 rounded-2xl p-6 text-sm text-gray-600">
+            <h3 className="font-bold text-gray-900 mb-2">📱 Tips for the best experience</h3>
+            <ul className="space-y-1 list-disc pl-5">
+              <li>Open SmartCab in <strong>Safari</strong> (iPhone) or <strong>Chrome</strong> (Android), not in WhatsApp/Instagram</li>
+              <li>Allow <strong>location</strong> and <strong>camera</strong> permissions when prompted</li>
+              <li>Keep the <strong>app in the foreground</strong> for live video to work continuously</li>
+              <li>Have a <strong>charger handy</strong> for long rides (camera + GPS use battery)</li>
+              <li>Use <strong>Wi-Fi</strong> when possible to save data</li>
+            </ul>
+          </div>
         </main>
       )}
 

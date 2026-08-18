@@ -15,45 +15,71 @@ const TrackRide = () => {
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Default fallback data so React NEVER crashes
-  const defaultMockData = {
-    riderName: "Aayushi S.",
-    driverName: "Rahul S.",
-    driverLicense: "MH02-2019-1234567",
-    carPlate: "MH 02 AB 1234",
-    carModel: "White SmartMini",
-    pickup: "Kalupur Railway Station, Ahmedabad",
-    dropoff: "Ahmedabad International Airport",
-    currentLocation: { lat: 23.0225, lng: 72.5714 },
-    status: "ON_ROUTE"
-  };
+  // No hardcoded mock data — the TrackRide page must NEVER show fake
+  // rider/driver/route info to a real family member. If the backend has
+  // no record of this link, we show "Waiting for rider" with em-dashes.
 
   useEffect(() => {
     const fetchTracking = async () => {
       try {
-        const response = await fetch(`https://smart-cab-security-platform.onrender.com/api/location/track/${linkId}`);
-        
-        if (!response.ok) {
-          throw new Error(`Server returned status ${response.status}`);
-        }
-        
+        // The Java service is dead, all calls go to the live Python backend.
+        // The URL must include the "-1" suffix to point to the active service.
+        const PYTHON_API = "https://smart-cab-security-platform-1.onrender.com";
+        const response = await fetch(`${PYTHON_API}/api/location/track/${linkId}`);
+
         const data = await response.json();
-        
-        // Ensure essential fields exist before setting
-        if (data && data.driverName) {
-          setTrackingData(data);
+        console.log("📡 Track data received:", data);
+
+        // The backend returns isFallback=True when the link doesn't exist
+        // (expired or never created). In that case, show a friendly
+        // waiting state. Otherwise show the real data.
+        if (data && data.isFallback) {
+          setTrackingData({
+            isWaiting: true,
+            message: data.message || "This link isn't active yet. The rider needs to start a ride and tap 'Share Live Location' — you'll see their car and camera here within seconds.",
+            pickup: "—",
+            dropoff: "—",
+            driverName: "—",
+            driverLicense: "—",
+            carPlate: "—",
+            carModel: "—",
+            riderName: "—",
+            currentLocation: data.currentLocation || { lat: 23.0225, lng: 72.5714 },
+          });
         } else {
-          setTrackingData(defaultMockData);
+          // Real data — show it directly, even if some fields are null
+          setTrackingData({
+            isWaiting: false,
+            riderName: data.riderName || "—",
+            driverName: data.driverName || "—",
+            driverLicense: data.driverLicense || "—",
+            carPlate: data.carPlate || "—",
+            carModel: data.carModel || "—",
+            pickup: data.pickup || "—",
+            dropoff: data.dropoff || "—",
+            currentLocation: data.currentLocation || { lat: 23.0225, lng: 72.5714 },
+            status: data.status || "ON_ROUTE",
+            pingCount: data.pingCount || 0,
+          });
         }
       } catch (err) {
-        console.warn("Backend link not found or loading. Using live tracking preview mode:", err);
-        setTrackingData(defaultMockData);
+        console.warn("Backend link not found or loading:", err);
+        setTrackingData({
+          isWaiting: true,
+          message: "Backend offline. Trying to connect...",
+          pickup: "—", dropoff: "—", driverName: "—", driverLicense: "—",
+          carPlate: "—", carModel: "—", riderName: "—",
+          currentLocation: { lat: 23.0225, lng: 72.5714 },
+        });
       } finally {
         setLoading(false);
       }
     };
 
     fetchTracking();
+    // Refresh every 5 seconds to update GPS location in real time
+    const interval = setInterval(fetchTracking, 5000);
+    return () => clearInterval(interval);
   }, [linkId]);
 
   if (loading) {
@@ -84,26 +110,66 @@ const TrackRide = () => {
 
       {/* Main Content */}
       <main className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        
+
         {/* Live Status Bar */}
-        <div className="bg-green-100 border-2 border-green-500 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm">
+        <div className={`${trackingData?.isWaiting ? 'bg-yellow-100 border-yellow-500' : 'bg-green-100 border-green-500'} border-2 rounded-2xl p-4 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 shadow-sm`}>
           <div className="flex items-center space-x-3">
-            <span className="relative flex h-4 w-4 shrink-0">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-4 w-4 bg-green-500"></span>
+            <span className={`relative flex h-4 w-4 shrink-0`}>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${trackingData?.isWaiting ? 'bg-yellow-400' : 'bg-green-400'} opacity-75`}></span>
+              <span className={`relative inline-flex rounded-full h-4 w-4 ${trackingData?.isWaiting ? 'bg-yellow-500' : 'bg-green-500'}`}></span>
             </span>
             <div>
-              <p className="font-bold text-green-900 text-lg">Live AI Security Active</p>
-              <p className="text-xs text-green-700">Tracking Code: <span className="font-mono font-bold">{linkId}</span></p>
+              <p className={`font-bold text-lg ${trackingData?.isWaiting ? 'text-yellow-900' : 'text-green-900'}`}>
+                {trackingData?.isWaiting ? '⏳ Waiting for rider' : 'Live AI Security Active'}
+              </p>
+              <p className={`text-xs ${trackingData?.isWaiting ? 'text-yellow-700' : 'text-green-700'}`}>Tracking Code: <span className="font-mono font-bold">{linkId}</span></p>
             </div>
           </div>
-          <a 
-            href="tel:112" 
+          <a
+            href="tel:112"
             className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center shadow transition"
           >
             <PhoneCall className="h-4 w-4 mr-2" /> Emergency 112
           </a>
         </div>
+
+        {/* Waiting for rider banner — shown when the link is expired or
+            hasn't been activated yet. Yellow alert with a helpful
+            message instead of dashes for the driver/route info. */}
+        {trackingData?.isWaiting && (
+          <div className="bg-yellow-50 border-2 border-yellow-400 rounded-2xl p-6 shadow-sm">
+            <div className="flex items-start space-x-3">
+              <span className="text-3xl flex-shrink-0">⏳</span>
+              <div className="flex-1">
+                <h3 className="text-xl font-bold text-yellow-900 mb-2">Waiting for rider to start</h3>
+                <p className="text-sm text-yellow-800 leading-relaxed">
+                  {trackingData.message}
+                </p>
+                <p className="text-xs text-yellow-700 mt-3">
+                  This page will update automatically every 5 seconds. The link is unique and unguessable — only the rider can activate it.
+                </p>
+                <button
+                  onClick={async () => {
+                    try {
+                      const res = await fetch('https://smart-cab-security-platform-1.onrender.com/api/debug/create_test_link', { method: 'POST' });
+                      const data = await res.json();
+                      if (data && data.linkId) {
+                        window.open(`${window.location.origin}/track/${data.linkId}`, '_blank');
+                      } else {
+                        alert("Backend returned an unexpected response.");
+                      }
+                    } catch (e) {
+                      alert("Couldn't create test link. Backend may be offline. Error: " + e.message);
+                    }
+                  }}
+                  className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition"
+                >
+                  🧪 Create Test Ride (for demo)
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Info Grid */}
         <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-200 grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -112,7 +178,11 @@ const TrackRide = () => {
           <div>
             <div className="mb-6">
               <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Rider</p>
-              <p className="text-2xl font-bold text-gray-900">{trackingData?.riderName || "Aayushi S."}</p>
+              <p className="text-2xl font-bold text-gray-900">
+                {trackingData?.isWaiting
+                  ? <span className="text-gray-400">Waiting…</span>
+                  : (trackingData?.riderName || "—")}
+              </p>
             </div>
 
             <div>
@@ -120,11 +190,15 @@ const TrackRide = () => {
               <div className="space-y-3 relative pl-4 border-l-2 border-dashed border-gray-300">
                 <div>
                   <p className="text-xs text-gray-500 font-bold">PICKUP</p>
-                  <p className="font-bold text-gray-900">{trackingData?.pickup || "Kalupur Railway Station"}</p>
+                  <p className="font-bold text-gray-900">
+                    {trackingData?.isWaiting ? '—' : (trackingData?.pickup && trackingData.pickup !== '—' ? trackingData.pickup : 'Not set yet')}
+                  </p>
                 </div>
                 <div>
                   <p className="text-xs text-gray-500 font-bold">DROPOFF</p>
-                  <p className="font-bold text-gray-900">{trackingData?.dropoff || "Ahmedabad Airport"}</p>
+                  <p className="font-bold text-gray-900">
+                    {trackingData?.isWaiting ? '—' : (trackingData?.dropoff && trackingData.dropoff !== '—' ? trackingData.dropoff : 'Not set yet')}
+                  </p>
                 </div>
               </div>
             </div>
@@ -139,17 +213,25 @@ const TrackRide = () => {
                   <Car className="h-8 w-8 text-green-400" />
                 </div>
                 <div>
-                  <p className="text-xl font-bold text-gray-900">{trackingData?.driverName || "Rahul S."}</p>
-                  <p className="text-xs font-bold text-gray-500">DL: {trackingData?.driverLicense || "MH02-2019-1234567"}</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    {trackingData?.isWaiting
+                      ? <span className="text-gray-400 text-base">Waiting…</span>
+                      : (trackingData?.driverName || "—")}
+                  </p>
+                  <p className="text-xs font-bold text-gray-500">
+                    {trackingData?.isWaiting ? '—' : (trackingData?.driverLicense ? `DL: ${trackingData.driverLicense}` : '—')}
+                  </p>
                 </div>
               </div>
             </div>
 
             <div className="flex justify-between items-center bg-white p-3.5 rounded-xl border border-gray-200 shadow-sm">
               <span className="font-mono font-bold bg-yellow-100 px-3 py-1 rounded text-yellow-800 border border-yellow-300">
-                {trackingData?.carPlate || "MH 02 AB 1234"}
+                {trackingData?.carPlate && trackingData.carPlate !== '—' ? trackingData.carPlate : '—'}
               </span>
-              <span className="text-xs font-bold text-gray-600">{trackingData?.carModel || "SmartCab Cab"}</span>
+              <span className="text-xs font-bold text-gray-600">
+                {trackingData?.carModel && trackingData.carModel !== '—' ? trackingData.carModel : '—'}
+              </span>
             </div>
           </div>
         </div>
