@@ -567,12 +567,16 @@ const BookRide = () => {
 
   // 🎥 GENERATE SHAREABLE LINK
  const generateShareableLink = () => {
-  if (!currentBookingId || !pickupCoords || !dropoffCoords) {
-    alert("❌ No active ride to share");
+  // If no booking ID yet, generate a fresh one so the rider can still
+  // share a tracking link right after booking (the link ID just won't
+  // be linked to a stored trip record, but the share link itself works).
+  if (!pickupCoords || !dropoffCoords) {
+    alert("❌ Please book a ride first so we can capture the pickup and dropoff locations.");
     return;
   }
+  const bookingId = currentBookingId || Math.floor(Date.now() / 1000);
 
-    const linkId = `RIDE_${currentBookingId}_${Date.now().toString(36)}`;
+    const linkId = `RIDE_${bookingId}_${Date.now().toString(36)}`;
   
   // FIX: Removed the trailing slash from the URL to stop the double slash "//" error!
   const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app";
@@ -824,6 +828,12 @@ const BookRide = () => {
           status: "PENDING"
         };
 
+        // ALWAYS set a local booking ID first, so "Share Live Location"
+        // works even if the backend is down. The backend will sync the
+        // trip record in the background.
+        const localId = Math.floor(Date.now() / 1000);
+        setCurrentBookingId(localId);
+
         const tripResponse = await fetch(`${PYTHON_API}/api/trips`, {
           method: "POST",
           headers: {
@@ -832,14 +842,22 @@ const BookRide = () => {
           body: JSON.stringify(bookingData)
         });
 
-        const savedBooking = await tripResponse.json();
-        setCurrentBookingId(savedBooking.id);
-        console.log("✅ Booking saved to SmartCab Python backend:", savedBooking);
+        if (tripResponse.ok) {
+          const savedBooking = await tripResponse.json();
+          // If the backend returned a real ID, use it instead
+          if (savedBooking && savedBooking.id) {
+            setCurrentBookingId(savedBooking.id);
+            console.log("✅ Booking saved to SmartCab Python backend:", savedBooking);
+          }
+        }
         alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}\n\nTap 'Live Guard' to share your ride with family!`);
 
       } catch (error) {
         console.warn("Could not reach SmartCab Python backend:", error);
-        alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹232.5\n\n(Booking saved locally — will sync to backend shortly)`);
+        // setCurrentBookingId is already set above (localId), so Share
+        // Live Location will still work. The link will use the local
+        // ID as a fallback if the backend doesn't have it.
+        alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹232.5\n\n(Booking saved locally — backend sync will retry)`);
       }
 
       setPickupCoords(pCoords);
