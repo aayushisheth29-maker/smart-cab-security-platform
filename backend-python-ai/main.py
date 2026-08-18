@@ -36,7 +36,7 @@ POST /api/video/upload-evidence           -> upload encrypted video evidence
 from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Union
 from datetime import datetime, timezone
 import random
 import os
@@ -479,7 +479,11 @@ class ShareLinkCreate(BaseModel):
     # We support BOTH Pydantic v1 (class Config) AND v2 (model_config) syntax
     # so this works regardless of which version is installed.
     linkId: Optional[str] = None
-    bookingId: Optional[str] = None
+    # Accept int OR str here — the frontend sends the numeric trip id
+    # straight from the booking response, and Pydantic v2 (unlike v1)
+    # does NOT silently coerce int -> str, so a strict `str` type here
+    # was rejecting every real booking with a 422.
+    bookingId: Optional[Union[str, int]] = None
     riderName: Optional[str] = ""
     driverName: Optional[str] = ""
     driverLicense: Optional[str] = ""
@@ -783,6 +787,113 @@ def get_user_trips(user_id: int):
         if user:
             user_trips = [t for t in TRIPS if t.get("riderName") == user.get("name")]
     return sorted(user_trips, key=lambda t: t.get("createdAt", ""), reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# 👤 PROFILE / ADDRESSES / EMERGENCY CONTACTS — per-user CRUD endpoints
+# (added in bestie's v2 backend so the dashboard can edit profile, save
+# Home/Work addresses, and manage emergency contacts separately from
+# the Live Guard modal contacts).
+# ---------------------------------------------------------------------------
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    preferredLanguage: Optional[str] = None
+    marketingOptIn: Optional[bool] = None
+
+
+class SavedAddress(BaseModel):
+    label: str  # "Home", "Work", "Gym", etc.
+    address: str
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+
+class EmergencyContact(BaseModel):
+    name: str
+    phone: str
+
+
+def _find_user(user_id: int) -> Dict[str, Any]:
+    """Look up a user by id, or 404."""
+    user = next((u for u in USERS if u.get("id") == user_id), None)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    return user
+
+
+@app.get("/api/users/{user_id}/profile")
+def get_profile(user_id: int):
+    """Fetch a user's profile (without password)."""
+    user = _find_user(user_id)
+    return {k: v for k, v in user.items() if k != "password"}
+
+
+@app.put("/api/users/{user_id}/profile")
+def update_profile(user_id: int, payload: ProfileUpdate):
+    """Update a user's profile fields (name, phone, language, marketing opt-in)."""
+    user = _find_user(user_id)
+    for field, value in payload.model_dump(exclude_unset=True).items():
+        user[field] = value
+    log.info("👤 Profile updated for user %d: %s", user_id, list(payload.model_dump(exclude_unset=True).keys()))
+    return {k: v for k, v in user.items() if k != "password"}
+
+
+@app.get("/api/users/{user_id}/addresses")
+def list_addresses(user_id: int):
+    """List a user's saved addresses (Home, Work, etc.)."""
+    return _find_user(user_id).get("savedAddresses", [])
+
+
+@app.post("/api/users/{user_id}/addresses")
+def add_address(user_id: int, payload: SavedAddress):
+    """Add a new saved address. If the label already exists (e.g. "Home"),
+    the old one is replaced so the user always sees one "Home" not two."""
+    user = _find_user(user_id)
+    addresses = user.setdefault("savedAddresses", [])
+    # Replace if the label already exists
+    addresses[:] = [a for a in addresses if a.get("label") != payload.label]
+    addresses.append(payload.model_dump())
+    log.info("📍 Address added for user %d: %s", user_id, payload.label)
+    return addresses
+
+
+@app.delete("/api/users/{user_id}/addresses/{label}")
+def delete_address(user_id: int, label: str):
+    """Delete a saved address by its label (e.g. "Home")."""
+    user = _find_user(user_id)
+    user["savedAddresses"] = [
+        a for a in user.get("savedAddresses", []) if a.get("label") != label
+    ]
+    log.info("📍 Address deleted for user %d: %s", user_id, label)
+    return user["savedAddresses"]
+
+
+@app.get("/api/users/{user_id}/emergency-contacts")
+def list_emergency_contacts(user_id: int):
+    """List a user's saved emergency contacts (for the dashboard)."""
+    return _find_user(user_id).get("emergencyContacts", [])
+
+
+@app.post("/api/users/{user_id}/emergency-contacts")
+def add_emergency_contact(user_id: int, payload: EmergencyContact):
+    """Add an emergency contact to the user's profile."""
+    user = _find_user(user_id)
+    contacts = user.setdefault("emergencyContacts", [])
+    contacts.append(payload.model_dump())
+    log.info("🚨 Emergency contact added for user %d: %s", user_id, payload.name)
+    return contacts
+
+
+@app.delete("/api/users/{user_id}/emergency-contacts/{phone}")
+def delete_emergency_contact(user_id: int, phone: str):
+    """Delete an emergency contact by phone number."""
+    user = _find_user(user_id)
+    user["emergencyContacts"] = [
+        c for c in user.get("emergencyContacts", []) if c.get("phone") != phone
+    ]
+    log.info("🚨 Emergency contact deleted for user %d: %s", user_id, phone)
+    return user["emergencyContacts"]
 
 
 # ---------------------------------------------------------------------------
