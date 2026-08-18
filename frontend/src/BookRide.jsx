@@ -1454,19 +1454,20 @@ const BookRide = () => {
                 {shareableLocationLink && (
                   <div className="bg-blue-50 border-2 border-blue-500 rounded-xl p-4">
                     <p className="text-xs font-bold text-blue-700 mb-2 uppercase">Live Tracking Link</p>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-col sm:flex-row items-stretch gap-2">
                       <input
                         type="text"
                         value={shareableLocationLink}
                         readOnly
-                        className="flex-1 bg-white border border-blue-300 rounded-lg px-3 py-2 text-sm font-mono"
+                        onClick={(e) => e.target.select()}
+                        className="flex-1 bg-white border border-blue-300 rounded-lg px-3 py-2 text-xs font-mono min-w-0"
                       />
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(shareableLocationLink);
                           alert("✅ Link copied again!");
                         }}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 text-sm"
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 text-sm whitespace-nowrap"
                       >
                         Copy
                       </button>
