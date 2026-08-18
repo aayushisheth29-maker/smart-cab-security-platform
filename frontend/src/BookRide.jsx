@@ -566,7 +566,7 @@ const BookRide = () => {
   };
 
   // 🎥 GENERATE SHAREABLE LINK
- const generateShareableLink = () => {
+ const generateShareableLink = (isRetry = false) => {
   // If no booking ID yet, generate a fresh one so the rider can still
   // share a tracking link right after booking (the link ID just won't
   // be linked to a stored trip record, but the share link itself works).
@@ -576,12 +576,16 @@ const BookRide = () => {
   }
   const bookingId = currentBookingId || Math.floor(Date.now() / 1000);
 
-    const linkId = `RIDE_${bookingId}_${Date.now().toString(36)}`;
-  
+    // Keep the SAME linkId across a retry — otherwise a retry would create
+    // a second, different link instead of actually fixing the first one.
+    const linkId = shareableLocationLink
+      ? shareableLocationLink.split('/track/')[1]
+      : `RIDE_${bookingId}_${Date.now().toString(36)}`;
+
   // FIX: Removed the trailing slash from the URL to stop the double slash "//" error!
   const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app";
   const shareLink = `${FRONTEND_URL}/track/${linkId}`;
-  
+
   fetch(`${PYTHON_API}/api/location/share`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -599,18 +603,33 @@ const BookRide = () => {
       createdAt: new Date().toISOString()
     })
   })
-  .then(res => res.json())
+  .then(res => {
+    if (!res.ok) throw new Error(`Server responded with ${res.status}`);
+    return res.json();
+  })
   .then(data => {
     console.log("✅ Shareable link created successfully:", data);
     setShareableLocationLink(shareLink);
-    // Copy silently — no popup, no auto-WhatsApp. The share sheet below
-    // gives the rider the choice of which app to use.
     try { navigator.clipboard.writeText(shareLink); } catch (e) { /* clipboard may be blocked */ }
   })
   .catch(err => {
     console.error("Link creation failed:", err);
-    setShareableLocationLink(shareLink);
-    try { navigator.clipboard.writeText(shareLink); } catch (e) { /* same */ }
+    if (!isRetry) {
+      // The backend may have just been asleep (Render free tier cold
+      // start). Wait 4s for it to fully wake up, then try ONE more time
+      // before telling the rider anything is wrong.
+      console.log("Retrying in 4s — backend may have been waking up...");
+      setTimeout(() => generateShareableLink(true), 4000);
+      return;
+    }
+    // Both attempts failed — be honest about it instead of pretending
+    // the link works. A rider needs to know NOT to trust this link.
+    alert(
+      "⚠️ Couldn't create your live tracking link — the security server " +
+      "didn't respond. Please check your internet connection and tap " +
+      "'Share Live Location' again. Do not send this link to family until " +
+      "you see a confirmation that it was created."
+    );
   });
 };
 
@@ -1454,20 +1473,19 @@ const BookRide = () => {
                 {shareableLocationLink && (
                   <div className="bg-blue-50 border-2 border-blue-500 rounded-xl p-4">
                     <p className="text-xs font-bold text-blue-700 mb-2 uppercase">Live Tracking Link</p>
-                    <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                    <div className="flex items-center gap-2">
                       <input
                         type="text"
                         value={shareableLocationLink}
                         readOnly
-                        onClick={(e) => e.target.select()}
-                        className="flex-1 bg-white border border-blue-300 rounded-lg px-3 py-2 text-xs font-mono min-w-0"
+                        className="flex-1 bg-white border border-blue-300 rounded-lg px-3 py-2 text-sm font-mono"
                       />
                       <button
                         onClick={() => {
                           navigator.clipboard.writeText(shareableLocationLink);
                           alert("✅ Link copied again!");
                         }}
-                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 text-sm whitespace-nowrap"
+                        className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 text-sm"
                       >
                         Copy
                       </button>
