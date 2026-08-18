@@ -90,9 +90,7 @@ const TrackRide = () => {
         <p className="text-xs text-gray-400 mt-2">Verifying link: {linkId}</p>
       </div>
     );
-  }
-
-  const currentLat = trackingData?.currentLocation?.lat || 23.0225;
+  }  const currentLat = trackingData?.currentLocation?.lat || 23.0225;
   const currentLng = trackingData?.currentLocation?.lng || 72.5714;
 
   return (
