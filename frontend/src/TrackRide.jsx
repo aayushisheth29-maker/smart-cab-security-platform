@@ -2,7 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
-import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle } from 'lucide-react';
+import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video } from 'lucide-react';
+import { API_BASE } from './api';
 
 const carIcon = new L.DivIcon({
   className: 'custom-map-icon',
@@ -15,6 +16,12 @@ const TrackRide = () => {
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // 📹 Live cabin camera — the rider's Live Guard uploads ~5s webm chunks
+  // under this same linkId; we poll /latest every 5s and render the newest
+  // frame. videoMeta tells us how much footage is buffered (last ~2-3 min).
+  const [videoUrl, setVideoUrl] = useState(null);
+  const [videoMeta, setVideoMeta] = useState(null);
+
   // No hardcoded mock data — the TrackRide page must NEVER show fake
   // rider/driver/route info to a real family member. If the backend has
   // no record of this link, we show "Waiting for rider" with em-dashes.
@@ -22,10 +29,9 @@ const TrackRide = () => {
   useEffect(() => {
     const fetchTracking = async () => {
       try {
-        // The Java service is dead, all calls go to the live Python backend.
-        // The URL must include the "-1" suffix to point to the active service.
-        const PYTHON_API = "https://smart-cab-security-platform-1.onrender.com";
-        const response = await fetch(`${PYTHON_API}/api/location/track/${linkId}`);
+        // The Java service is dead — all calls go to the live Python
+        // backend, configured in one place (./api.js).
+        const response = await fetch(`${API_BASE}/api/location/track/${linkId}`);
 
         const data = await response.json();
         console.log("📡 Track data received:", data);
@@ -80,6 +86,51 @@ const TrackRide = () => {
     // Refresh every 5 seconds to update GPS location in real time
     const interval = setInterval(fetchTracking, 5000);
     return () => clearInterval(interval);
+  }, [linkId]);
+
+  // 📹 Poll the live camera feed. The backend returns video/webm bytes
+  // when a chunk exists (render it), or a small JSON "empty" message
+  // when the rider hasn't started Live Guard yet. Also fetch /meta so
+  // we can show how many seconds of footage are buffered.
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchVideo = async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/video/stream/${linkId}/latest`, { cache: 'no-store' });
+        const contentType = res.headers.get('content-type') || '';
+        if (res.ok && contentType.includes('video/webm')) {
+          const blob = await res.blob();
+          if (cancelled || !blob.size) return;
+          setVideoUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev); // free the old frame
+            return URL.createObjectURL(blob);
+          });
+        }
+      } catch (err) {
+        // Backend still waking up or offline — keep showing the last frame
+      }
+      try {
+        const metaRes = await fetch(`${API_BASE}/api/video/stream/${linkId}/meta`, { cache: 'no-store' });
+        if (metaRes.ok && !cancelled) {
+          const meta = await metaRes.json();
+          if (meta && meta.status === 'ok') setVideoMeta(meta);
+        }
+      } catch (err) {
+        // ignore
+      }
+    };
+
+    fetchVideo();
+    const videoInterval = setInterval(fetchVideo, 5000);
+    return () => {
+      cancelled = true;
+      clearInterval(videoInterval);
+      setVideoUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
   }, [linkId]);
 
   if (loading) {
@@ -149,7 +200,7 @@ const TrackRide = () => {
                 <button
                   onClick={async () => {
                     try {
-                      const res = await fetch('https://smart-cab-security-platform-1.onrender.com/api/debug/create_test_link', { method: 'POST' });
+                      const res = await fetch(`${API_BASE}/api/debug/create_test_link`, { method: 'POST' });
                       const data = await res.json();
                       if (data && data.linkId) {
                         window.open(`${window.location.origin}/track/${data.linkId}`, '_blank');
@@ -232,6 +283,49 @@ const TrackRide = () => {
               </span>
             </div>
           </div>
+        </div>
+
+        {/* 📹 Live Cabin Camera — latest 5s frame from the rider's Live Guard.
+            Shows a waiting state until the rider starts the camera; the
+            feed then updates automatically every 5 seconds. */}
+        <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-200">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center space-x-2">
+              <Video className="h-6 w-6 text-blue-600" />
+              <h3 className="text-xl font-bold text-gray-900">Live Cabin Camera</h3>
+              {videoMeta && videoMeta.chunkCount > 0 && (
+                <span className="text-xs font-bold bg-green-100 text-green-800 px-2.5 py-1 rounded-full border border-green-300">
+                  ● LIVE · {videoMeta.chunkCount} clips buffered
+                </span>
+              )}
+            </div>
+            {videoMeta && videoMeta.chunkCount > 0 && (
+              <span className="text-xs text-gray-500 font-bold">
+                updated every 5s · last {videoMeta.lastTs ? new Date(videoMeta.lastTs).toLocaleTimeString() : '—'}
+              </span>
+            )}
+          </div>
+          {videoUrl ? (
+            <video
+              src={videoUrl}
+              autoPlay
+              muted
+              loop
+              playsInline
+              controls
+              className="w-full aspect-video rounded-2xl bg-black object-cover"
+            />
+          ) : (
+            <div className="w-full aspect-video rounded-2xl bg-gray-900 flex flex-col items-center justify-center text-center p-6 border border-gray-800">
+              <Video className="h-12 w-12 text-gray-600 mb-3" />
+              <p className="text-sm font-bold text-gray-400">Camera feed not active yet</p>
+              <p className="text-xs text-gray-500 mt-1 max-w-sm">
+                {trackingData?.isWaiting
+                  ? 'Waiting for the rider to start their ride and enable Live Guard.'
+                  : 'The rider can switch on Live Guard from their Live Guard panel — the feed will appear here automatically.'}
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Live GPS Map */}
