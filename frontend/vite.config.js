@@ -5,6 +5,8 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    allowedHosts: ['retaliate-donation-drippy.ngrok-free.dev'],
+    // Allow any host so dev previews (ngrok, Arena, tunnels) work —
+    // production on Vercel is unaffected by this dev-server-only setting.
+    allowedHosts: true,
   },
 })

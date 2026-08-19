@@ -11,6 +11,8 @@ import {
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
+import { API_BASE } from './api';
+
 // --- CUSTOM MAP ICONS ---
 // Small pickup dot — just a black circle so the car isn't covered
 // by a giant label. The actual "Pickup: <address>" text is shown
@@ -73,8 +75,9 @@ const BookRide = () => {
   
   const [assignedDriver, setAssignedDriver] = useState(DRIVERS[0]);
 
-  // Java backend retired — everything now lives on the Python (FastAPI) backend.
-  const PYTHON_API = "https://smart-cab-security-platform-1.onrender.com";
+  // Java backend retired — everything now lives on the Python (FastAPI)
+  // backend, whose URL is configured in one place (./api.js).
+  const PYTHON_API = API_BASE;
 
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
@@ -466,9 +469,14 @@ const BookRide = () => {
     }
     if (isLiveStreaming) return;
 
-    // The stream key matches the share-link key so the TrackRide page
-    // can fetch chunks for the same link the rider shared.
-    const linkKey = `RIDE_${currentBookingId}_${Date.now().toString(36)}`;
+    // The stream key MUST match the share-link key, otherwise the
+    // TrackRide page polls a different ID and never sees the camera.
+    // FIX: reuse the already-shared link ID when one exists (or the
+    // previously generated stream ID), instead of minting a new random
+    // key every time — that mismatch was breaking live video streaming.
+    const linkKey = shareableLocationLink
+      ? shareableLocationLink.split('/track/')[1]
+      : (streamLinkId || `RIDE_${currentBookingId}_${Date.now().toString(36)}`);
     setStreamLinkId(linkKey);
 
     const stream = videoRef.current.srcObject;
@@ -578,12 +586,16 @@ const BookRide = () => {
 
     // Keep the SAME linkId across a retry — otherwise a retry would create
     // a second, different link instead of actually fixing the first one.
+    // Also reuse the live-stream key if the camera stream started first,
+    // so the video chunks and the shared link always share ONE ID.
     const linkId = shareableLocationLink
       ? shareableLocationLink.split('/track/')[1]
-      : `RIDE_${bookingId}_${Date.now().toString(36)}`;
+      : (streamLinkId || `RIDE_${bookingId}_${Date.now().toString(36)}`);
+    setStreamLinkId(linkId);
 
-  // FIX: Removed the trailing slash from the URL to stop the double slash "//" error!
-  const FRONTEND_URL = "https://smart-cab-security-platform.vercel.app";
+  // Use the rider's own origin so the link works on Vercel AND in local
+  // dev / previews (a hardcoded Vercel URL broke testing locally).
+  const FRONTEND_URL = window.location.origin;
   const shareLink = `${FRONTEND_URL}/track/${linkId}`;
 
   fetch(`${PYTHON_API}/api/location/share`, {
@@ -787,7 +799,7 @@ const BookRide = () => {
 
   const triggerBackendSOS = async () => {
     if (!currentBookingId) {
-      console.warn("No booking ID yet — book a ride first so Java has a row to update");
+      console.warn("No booking ID yet — book a ride first so the backend has a row to update");
       return;
     }
     try {
@@ -799,7 +811,7 @@ const BookRide = () => {
         console.log("✅ SOS updated to DANGER:", updated);
       }
     } catch (err) {
-      console.error("Java SOS failed:", err);
+      console.error("Backend SOS failed:", err);
     }
   };
 

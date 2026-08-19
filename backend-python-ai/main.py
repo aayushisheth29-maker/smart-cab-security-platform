@@ -24,6 +24,9 @@ GET  /api/trips                           -> list trips
 POST /api/trips                           -> create trip / booking
 GET  /api/trips/{trip_id}                 -> get a single trip
 PUT  /api/trips/{trip_id}/sos             -> mark trip as DANGER (SOS)
+GET  /api/bookings                        -> list trips (Java-compatible alias)
+POST /api/bookings                        -> create trip (Java-compatible alias)
+PUT  /api/bookings/{trip_id}/sos          -> mark trip as DANGER (alias)
 POST /api/location/share                  -> create a share link
 GET  /api/location/track/{link_id}        -> fetch the share link + last ping
 POST /api/location/track/{link_id}/ping   -> update car location
@@ -89,15 +92,21 @@ import os.path
 import tempfile
 
 # Candidate paths in priority order. First one that passes the
-# write+read test at startup wins.
+# write+read test at startup wins. De-duplicated afterwards because
+# tempfile.gettempdir() is usually the same directory as /tmp — the
+# duplicate caused double writes and misleading log lines.
 import tempfile
-PERSIST_CANDIDATES = [
+_candidates = [
     os.environ.get("PERSIST_DIR"),
     "/opt/render/project/data",   # Render free tier persistent
     "/var/data",                  # Render alternative
     tempfile.gettempdir(),        # Always-writable system temp
     "/tmp",                       # Always available
 ]
+PERSIST_CANDIDATES = []
+for _c in _candidates:
+    if _c and _c not in PERSIST_CANDIDATES:
+        PERSIST_CANDIDATES.append(_c)
 
 SHARE_LINKS_FILE = None
 PERSIST_DIR = None
@@ -124,19 +133,31 @@ for cand in PERSIST_CANDIDATES:
         os.remove(real_test)
         PERSIST_DIR = abs_cand
         SHARE_LINKS_FILE = os.path.abspath(os.path.join(abs_cand, "share_links.json"))
-        # Pre-create the share_links.json file so the directory definitely
-        # has it owned by the running process (avoids permission issues
-        # at runtime when the FastAPI handler tries to create the file
-        # from a different process state).
-        with open(SHARE_LINKS_FILE, "w") as f:
-            json.dump({}, f)
-        log.info("💾 Persistence dir selected: %s (writable + readback ok, pre-created file)", abs_cand)
+        # Only create the file when it does NOT already exist. The old
+        # code overwrote it with {} on every boot, which wiped every
+        # saved share link the moment Render restarted the service —
+        # that was the bug that broke live-tracking links after each
+        # sleep/restart.
+        if not os.path.exists(SHARE_LINKS_FILE):
+            with open(SHARE_LINKS_FILE, "w") as f:
+                json.dump({}, f)
+        log.info("💾 Persistence dir selected: %s (writable + readback ok)", abs_cand)
         break
     except Exception as e:
         log.warning("⚠️ Candidate %s failed write+read test: %s", cand, e)
 
 if not SHARE_LINKS_FILE:
     log.error("💾 NO WRITABLE PERSIST DIR FOUND — links will be in-memory only")
+
+# Directory for persisted live-video chunks (the Live Guard stream).
+# Previously every chunk lived only in RAM, so the whole camera feed
+# disappeared the moment Render restarted the service. Now chunks are
+# written through to <PERSIST_DIR>/video_chunks/<linkId>/chunk_XXXXXX.webm
+# + index.json and rehydrated after a restart.
+VIDEO_CHUNKS_DIR = None
+if PERSIST_DIR:
+    VIDEO_CHUNKS_DIR = os.path.join(PERSIST_DIR, "video_chunks")
+    os.makedirs(VIDEO_CHUNKS_DIR, exist_ok=True)
 
 
 def _all_persist_files() -> list[str]:
@@ -258,14 +279,12 @@ def _save_share_links_to_disk() -> None:
         for link_id, link in SHARE_LINKS.items():
             serializable[link_id] = {k: v for k, v in link.items() if k != "videoBytes"}
         json_str = json.dumps(serializable, default=str)
-        # Use absolute paths everywhere — never rely on cwd
-        for cand in PERSIST_CANDIDATES:
-            if not cand:
-                continue
+        # Use absolute paths everywhere — never rely on cwd.
+        # _all_persist_files() is de-duplicated, so we never write the
+        # same file twice when /tmp == tempfile.gettempdir().
+        for path in _all_persist_files():
             try:
-                abs_cand = os.path.abspath(cand)
-                os.makedirs(abs_cand, exist_ok=True)
-                path = os.path.abspath(os.path.join(abs_cand, "share_links.json"))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
                 # Use absolute path with mode=0o644 explicitly
                 with open(path, "w", buffering=8192) as f:
                     f.write(json_str)
@@ -278,18 +297,118 @@ def _save_share_links_to_disk() -> None:
                 if os.path.exists(path) and os.path.getsize(path) > 0:
                     saved_paths.append(path)
                 else:
-                    failed_paths.append((cand, "file not present after write"))
+                    failed_paths.append((path, "file not present after write"))
             except Exception as e:
-                failed_paths.append((cand, str(e)))
-                log.warning("⚠️ Could not save to %s: %s", cand, e)
+                failed_paths.append((path, str(e)))
+                log.warning("⚠️ Could not save to %s: %s", path, e)
         log.info("💾 _save_share_links_to_disk: saved to %d path(s): %s; failed: %s",
                  len(saved_paths), saved_paths, failed_paths)
     except Exception as e:
         log.error("💾 _save_share_links_to_disk: outer exception: %s", e)
 
 
-# Load any links from a previous session BEFORE we accept any traffic
-_load_share_links_from_disk()
+# ---------------------------------------------------------------------------
+# Live video chunk persistence (Live Guard stream)
+# ---------------------------------------------------------------------------
+MAX_VIDEO_CHUNKS = 30
+MAX_CHUNK_BYTES = 10 * 1024 * 1024  # 10 MB sanity cap per 3-5s webm chunk
+
+
+def _video_link_dir(link_id: str) -> str:
+    return os.path.join(VIDEO_CHUNKS_DIR, link_id)
+
+
+def _video_chunk_path(link_id: str, chunk_id: int) -> str:
+    return os.path.join(_video_link_dir(link_id), f"chunk_{chunk_id:06d}.webm")
+
+
+def _video_index_path(link_id: str) -> str:
+    return os.path.join(_video_link_dir(link_id), "index.json")
+
+
+def _read_video_index(link_id: str) -> List[Dict[str, Any]]:
+    try:
+        with open(_video_index_path(link_id), "r") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
+def _persist_video_chunk(link_id: str, chunk: Dict[str, Any]) -> None:
+    """Write one chunk to disk and rebuild that link's on-disk index from
+    the current in-memory bucket (which is already rolling-buffer-trimmed).
+    Old chunk files that fell out of the buffer are deleted from disk too,
+    so disk and memory stay in sync."""
+    if not VIDEO_CHUNKS_DIR:
+        return
+    try:
+        link_dir = _video_link_dir(link_id)
+        os.makedirs(link_dir, exist_ok=True)
+        with open(_video_chunk_path(link_id, chunk["id"]), "wb") as f:
+            f.write(chunk["data"])
+        bucket = VIDEO_CHUNKS.get(link_id, [])
+        index = [{k: v for k, v in c.items() if k != "data"} for c in bucket]
+        keep_files = {f"chunk_{c['id']:06d}.webm" for c in bucket}
+        # Remove chunk files that are no longer in the rolling buffer
+        for name in os.listdir(link_dir):
+            if name.endswith(".webm") and name not in keep_files:
+                try:
+                    os.remove(os.path.join(link_dir, name))
+                except Exception:
+                    pass
+        with open(_video_index_path(link_id), "w") as f:
+            json.dump(index, f)
+    except Exception as e:
+        log.warning("⚠️ Could not persist video chunk %s for %s: %s", chunk["id"], link_id, e)
+
+
+def _load_video_bucket_from_disk(link_id: str) -> List[Dict[str, Any]]:
+    """Rebuild a link's chunk list (including bytes) from disk. Used after
+    a restart when the in-memory VIDEO_CHUNKS cache is empty."""
+    bucket = []
+    for meta in _read_video_index(link_id):
+        path = _video_chunk_path(link_id, meta["id"])
+        if not os.path.exists(path):
+            continue
+        try:
+            with open(path, "rb") as f:
+                data = f.read()
+        except Exception:
+            continue
+        chunk = dict(meta)
+        chunk["data"] = data
+        bucket.append(chunk)
+    if bucket:
+        log.info("🎥 Rehydrated %d video chunk(s) for %s from disk", len(bucket), link_id)
+    return bucket
+
+
+def _get_video_bucket(link_id: str) -> List[Dict[str, Any]]:
+    """Return the chunk list for a link, hydrating from disk when the
+    in-memory cache is empty (fresh process after a Render restart)."""
+    bucket = VIDEO_CHUNKS.get(link_id)
+    if bucket is None:
+        bucket = _load_video_bucket_from_disk(link_id)
+        VIDEO_CHUNKS[link_id] = bucket
+    return bucket
+
+
+def _init_video_chunk_id_counter() -> None:
+    """After a restart, bump the global chunk-ID counter past every ID
+    already stored on disk so new uploads can never overwrite old
+    footage (a fresh process would otherwise restart IDs at 1)."""
+    max_seen = 0
+    if VIDEO_CHUNKS_DIR and os.path.isdir(VIDEO_CHUNKS_DIR):
+        for link_dir in os.listdir(VIDEO_CHUNKS_DIR):
+            for meta in _read_video_index(link_dir):
+                if isinstance(meta.get("id"), int):
+                    max_seen = max(max_seen, meta["id"])
+    if max_seen:
+        _next_id["video_chunk"] = max_seen + 1
+        log.info("🎥 Video chunk ID counter resumed at %d (found %d on disk)",
+                 _next_id["video_chunk"], max_seen)
+
 
 # ---------------------------------------------------------------------------
 SHARE_LINKS: Dict[str, Dict[str, Any]] = {}
@@ -298,11 +417,26 @@ DRIVERS: List[Dict[str, Any]] = []
 USERS: List[Dict[str, Any]] = []
 EVIDENCE: List[Dict[str, Any]] = []
 EMERGENCIES: List[Dict[str, Any]] = []
-# Live video chunks: VIDEO_CHUNKS[linkId] is a list of {"ts": ..., "data": <bytes>, "lat": ..., "lng": ...}
-# Each chunk is a small (~3-5 sec) webm blob uploaded by the rider while Live Guard is on.
-# We keep the last 30 chunks per link (~2-3 minutes of footage) for the recipient to scrub through.
+# Live video chunks: VIDEO_CHUNKS[linkId] is a list of
+# {"id": ..., "ts": ..., "data": <bytes>, "lat": ..., "lng": ...}
+# Each chunk is a small (~3-5 sec) webm blob uploaded by the rider while
+# Live Guard is on. We keep the last MAX_VIDEO_CHUNKS chunks per link
+# (~2-3 minutes of footage) for the recipient to scrub through. Chunks
+# are written through to disk (VIDEO_CHUNKS_DIR) so the feed survives
+# Render restarts.
 VIDEO_CHUNKS: Dict[str, List[Dict[str, Any]]] = {}
 _next_id = {"trip": 1, "driver": 1, "user": 1, "evidence": 1, "emergency": 1, "video_chunk": 1}
+
+# Rehydrate share links from the previous session. MUST run AFTER the
+# SHARE_LINKS dict above is defined — the old call site ran before the
+# dict existed, so the load always failed silently (NameError swallowed
+# by the try/except) and every link was lost on restart. That was the
+# live-tracking-killing bug.
+_load_share_links_from_disk()
+
+# Make sure new video chunk IDs can never collide with chunks already
+# persisted on disk from a previous session.
+_init_video_chunk_id_counter()
 
 
 def _now_iso() -> str:
@@ -565,7 +699,7 @@ def home():
         "database": "connected" if db_enabled else "in-memory",
         "endpoints": [
             "/api/health", "/api/admin/seed", "/api/drivers", "/api/drivers/random",
-            "/api/users", "/api/trips", "/api/location/share",
+            "/api/users", "/api/trips", "/api/bookings", "/api/location/share",
             "/api/location/track/{linkId}", "/api/location/track/{linkId}/ping",
             "/api/evidence/upload", "/api/emergency", "/api/ai/check-route",
             "/api/pricing/estimate", "/api/video/stream/{linkId}/chunk",
@@ -919,6 +1053,35 @@ def delete_emergency_contact(user_id: int, phone: str):
 # features the most).
 # ---------------------------------------------------------------------------
 
+# Peak-hour surge must follow INDIAN wall-clock time as documented above
+# (7-10am, 5-9pm, 10pm-6am IST). The old code used UTC, so peaks fired at
+# 12:30pm-3:30pm IST and off-peak pricing applied during actual rush hour.
+try:
+    from zoneinfo import ZoneInfo
+    IST = ZoneInfo("Asia/Kolkata")
+except Exception:
+    IST = None
+
+
+def _now_local() -> datetime:
+    """Local (IST) wall-clock time used for surge calculations."""
+    return datetime.now(IST) if IST else datetime.now(timezone.utc)
+
+
+def _parse_booking_time(value: str) -> datetime:
+    """Parse a client-supplied booking time and normalize it to IST.
+    Naive timestamps are assumed to be UTC; aware ones are converted."""
+    when = _now_local()
+    if value:
+        try:
+            when = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        except Exception:
+            return when
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+    return when.astimezone(IST) if IST else when.astimezone(timezone.utc)
+
+
 # Per-car-type pricing: (base_fare_inr, per_km_rate_inr)
 PRICING_TABLE = {
     "SmartBike":  {"base": 20,  "perKm": 6,  "displayName": "SmartBike",  "icon": "🏍️", "capacity": 1, "etaMin": 3},
@@ -968,12 +1131,7 @@ def pricing_estimate(payload: PricingEstimateRequest):
     if payload.distanceKm is None or payload.distanceKm <= 0:
         raise HTTPException(status_code=400, detail="distanceKm must be > 0")
 
-    when = datetime.now(timezone.utc)
-    if payload.bookingTime:
-        try:
-            when = datetime.fromisoformat(payload.bookingTime.replace("Z", "+00:00"))
-        except Exception:
-            pass
+    when = _parse_booking_time(payload.bookingTime)
 
     primary = _estimate_fare(payload.distanceKm, payload.selectedCar or "SmartMini", when)
 
@@ -1041,12 +1199,7 @@ def create_trip(payload: TripCreate):
     # This prevents the rider app from accidentally storing a hardcoded
     # "232" or any other fake value — the backend is the source of truth.
     if not trip.get("fare") or trip.get("fare") == 0:
-        when = datetime.now(timezone.utc)
-        if trip.get("bookingTime"):
-            try:
-                when = datetime.fromisoformat(trip["bookingTime"].replace("Z", "+00:00"))
-            except Exception:
-                pass
+        when = _parse_booking_time(trip.get("bookingTime"))
         estimate = _estimate_fare(
             float(trip.get("distanceKm", 10.0)),
             trip.get("selectedCar", "SmartMini"),
@@ -1074,6 +1227,14 @@ def create_trip(payload: TripCreate):
         trip.get("distanceKm", 0), trip["fare"], trip["surgeMultiplier"],
     )
     return trip
+
+
+# The retired Java backend served POST /api/bookings for the Dashboard's
+# booking form. This alias keeps the exact same contract on the Python
+# API so /dashboard works without the dead localhost:8080 Java box.
+@app.post("/api/bookings")
+def create_booking_alias(payload: TripCreate):
+    return create_trip(payload)
 
 
 @app.put("/api/trips/{trip_id}/sos")
@@ -1124,23 +1285,10 @@ def create_share_link(payload: ShareLinkCreate):
         "expiresAt": (datetime.now(timezone.utc).replace(microsecond=0) + __import__('datetime').timedelta(hours=24)).isoformat(),
     }
     SHARE_LINKS[link_id] = link
-    # DIRECT disk write — no abstraction, no helper, no nested try/catch.
-    # If this fails we WANT to know, but the link is still in memory.
-    persist_data = json.dumps(
-        {lid: {k: v for k, v in l.items() if k != "videoBytes"} for lid, l in SHARE_LINKS.items()},
-        default=str,
-    )
-    for path in ["/opt/render/project/data/share_links.json", "/tmp/share_links.json"]:
-        try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
-            with open(path, "w") as f:
-                f.write(persist_data)
-                f.flush()
-                try: os.fsync(f.fileno())
-                except: pass
-            log.info("💾 DIRECT SAVE: wrote %d bytes to %s (link %s)", len(persist_data), path, link_id)
-        except Exception as e:
-            log.error("💾 DIRECT SAVE FAILED for %s: %s", path, e)
+    # Single persist path: _persist_share_link writes to every candidate
+    # dir (disk first, then Supabase when configured). The old code also
+    # had a hardcoded "DIRECT SAVE" block that only wrote to two fixed
+    # paths — redundant now, and it silently failed on the Render disk.
     _persist_share_link(link)
     log.info("📡 Share link created: %s (expires %s)", link_id, link["expiresAt"])
     return link
@@ -1280,13 +1428,22 @@ def ping_link(link_id: str, payload: PingUpdate):
 # ---------------------------------------------------------------------------
 # Evidence
 # ---------------------------------------------------------------------------
-os.makedirs("secure_evidence_vault", exist_ok=True)
+# Store evidence under an absolute path inside the persistence dir so
+# uploads don't depend on the process cwd (which differs between local
+# dev and Render) and survive restarts wherever the disk allows.
+EVIDENCE_VAULT_DIR = os.environ.get("EVIDENCE_DIR") or (
+    os.path.join(PERSIST_DIR, "secure_evidence_vault") if PERSIST_DIR else os.path.abspath("secure_evidence_vault")
+)
+os.makedirs(EVIDENCE_VAULT_DIR, exist_ok=True)
 
 
 @app.post("/api/evidence/upload")
 async def upload_evidence(file: UploadFile = File(...), bookingId: str = Form(""), linkId: str = Form("")):
-    safe_name = f"{int(time.time())}_{file.filename or 'evidence.bin'}"
-    out_path = os.path.join("secure_evidence_vault", safe_name)
+    # basename() strips any client-supplied path so a malicious filename
+    # like "../../etc/passwd" can't escape the vault directory.
+    raw_name = os.path.basename(file.filename or "evidence.bin") or "evidence.bin"
+    safe_name = f"{int(time.time())}_{raw_name}"
+    out_path = os.path.join(EVIDENCE_VAULT_DIR, safe_name)
     with open(out_path, "wb") as f:
         shutil.copyfileobj(file.file, f)
 
@@ -1360,9 +1517,8 @@ def check_route(driver_id: str, current_lat: float, current_lng: float):
 # recipient's track page polls /api/video/stream/{link_id}/latest to show
 # the most recent chunk. We keep the last MAX_VIDEO_CHUNKS chunks per link
 # so the recipient can also scrub back through the last ~2-3 minutes.
-MAX_VIDEO_CHUNKS = 30
-
-
+# Chunks are persisted to disk (VIDEO_CHUNKS_DIR) so the feed survives
+# restarts — see the helper functions defined near the top of this file.
 @app.post("/api/video/stream/{link_id}/chunk")
 async def upload_video_chunk(
     link_id: str,
@@ -1380,6 +1536,8 @@ async def upload_video_chunk(
     data = await file.read()
     if not data or len(data) < 100:
         return {"status": "skipped", "reason": "chunk too small"}
+    if len(data) > MAX_CHUNK_BYTES:
+        return {"status": "skipped", "reason": "chunk too large"}
 
     chunk = {
         "id": _next_id["video_chunk"],
@@ -1392,11 +1550,17 @@ async def upload_video_chunk(
     }
     _next_id["video_chunk"] += 1
 
-    bucket = VIDEO_CHUNKS.setdefault(link_id, [])
+    # _get_video_bucket hydrates from disk when this process just started,
+    # so a rider reconnecting after a Render restart continues the SAME
+    # rolling buffer instead of starting a fresh, empty one.
+    bucket = _get_video_bucket(link_id)
     bucket.append(chunk)
     # Roll the buffer: keep only the last MAX_VIDEO_CHUNKS
     if len(bucket) > MAX_VIDEO_CHUNKS:
         del bucket[: len(bucket) - MAX_VIDEO_CHUNKS]
+
+    # Persist to disk so the feed survives Render restarts.
+    _persist_video_chunk(link_id, chunk)
 
     log.info(
         "🎥 Video chunk #%d for %s: %d bytes, lat=%s lng=%s",
@@ -1416,7 +1580,7 @@ async def get_latest_video_chunk(link_id: str):
     Returns the most recent video chunk (webm bytes) for the recipient's
     live feed. Polled every 5s by TrackRide.jsx.
     """
-    bucket = VIDEO_CHUNKS.get(link_id, [])
+    bucket = _get_video_bucket(link_id)
     if not bucket:
         # No chunks yet — return a friendly JSON 204 so the frontend knows
         return {"status": "empty", "message": "Waiting for rider camera..."}
@@ -1442,7 +1606,7 @@ async def get_video_meta(link_id: str):
     Returns metadata (timestamps, sizes) about the buffered chunks so the
     recipient page can show a count + scrub bar without downloading bytes.
     """
-    bucket = VIDEO_CHUNKS.get(link_id, [])
+    bucket = _get_video_bucket(link_id)
     return {
         "status": "ok",
         "chunkCount": len(bucket),
@@ -1466,7 +1630,7 @@ async def get_video_chunk_by_id(link_id: str, chunk_id: int):
     """
     Returns a specific historical chunk by ID — for the recipient's scrub bar.
     """
-    bucket = VIDEO_CHUNKS.get(link_id, [])
+    bucket = _get_video_bucket(link_id)
     target = next((c for c in bucket if c["id"] == chunk_id), None)
     if not target:
         raise HTTPException(status_code=404, detail="chunk not found")
@@ -1494,7 +1658,8 @@ async def upload_video_evidence(
     if api_key != "sk_test_smartcab_vault_9982":
         return {"error": "Invalid Authentication Key"}
 
-    file_location = f"secure_evidence_vault/{driver_id}_{int(time.time())}_{file.filename}"
+    raw_name = os.path.basename(file.filename or "evidence.webm") or "evidence.webm"
+    file_location = os.path.join(EVIDENCE_VAULT_DIR, f"{driver_id}_{int(time.time())}_{raw_name}")
     with open(file_location, "wb+") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
