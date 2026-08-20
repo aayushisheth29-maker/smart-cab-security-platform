@@ -106,11 +106,21 @@ See: [SOS Emergency](docs/SOS_Emergency.md)
 ### Frontend
 See: [Frontend Source Code](frontend/)
 
-### Backend (Java)
+### Backend (Python — FastAPI) ✅ ACTIVE
+The Python FastAPI service in [`backend-python-ai/`](backend-python-ai/) is the **single backend for the whole app**:
+bookings (`/api/bookings` + `/api/trips`), SOS, live GPS tracking (`/api/location/*`),
+live cabin video streaming (`/api/video/stream/*`), auth, pricing, evidence and emergency logging.
+
+- Share links and live video chunks are persisted to disk, so they survive service restarts (Render free-tier sleeps).
+- The frontend points at this backend via one config file: [`frontend/src/api.js`](frontend/src/api.js).
+
+### Backend (Java — Spring Boot) ⚠️ RETIRED
 See: [Java Backend](backend-java-core/)
 
-### AI Backend (Python)
-See: [Python AI Backend](backend-python-ai/)
+The Java backend is **retired** — the app no longer calls it. Its endpoint contract
+(`POST /api/bookings`, `GET /api/bookings`, `PUT /api/bookings/{id}/sos`) is fully
+re-implemented in the Python backend so nothing depends on it. The folder is kept
+only for reference and can be deleted safely.
 
 ### Database
 See: [Database Files](database/)

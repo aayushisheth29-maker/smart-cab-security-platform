@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE } from './api';
 
 function Dashboard() {
   // State for the list of cabs
@@ -12,9 +13,9 @@ function Dashboard() {
     distanceKm: ''
   });
 
-  // Function to get data from Java
+  // Function to get data from the Python backend (the Java service is retired)
   const fetchBookings = () => {
-    fetch('http://localhost:8080/api/bookings')
+    fetch(`${API_BASE}/api/bookings`)
       .then(response => response.json())
       .then(data => setBookings(data))
       .catch(error => console.error("Error fetching:", error));
@@ -37,7 +38,8 @@ function Dashboard() {
     // Make the cab "smart" - calculate fare automatically (₹15 per km)
     const calculatedFare = parseFloat(formData.distanceKm) * 15;
 
-    // Package the data exactly how our Java backend expects it
+    // Package the data exactly how the Python backend expects it
+    // (same contract the retired Java backend used)
     const newBooking = {
       riderName: formData.riderName,
       pickupLocation: formData.pickupLocation,
@@ -47,8 +49,8 @@ function Dashboard() {
       status: "PENDING"
     };
 
-    // Send it to Java via POST!
-    fetch('http://localhost:8080/api/bookings', {
+    // Send it to the Python backend via POST!
+    fetch(`${API_BASE}/api/bookings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(newBooking)
@@ -58,7 +60,7 @@ function Dashboard() {
         alert("Cab Booked Successfully! 🚕💨");
         // Clear the form boxes
         setFormData({ riderName: '', pickupLocation: '', dropoffLocation: '', distanceKm: '' });
-        // Fetch the updated list from Java instantly!
+        // Fetch the updated list instantly!
         fetchBookings();
       }
     })
@@ -67,7 +69,7 @@ function Dashboard() {
 
   // 🚨 Function to trigger SOS!
   const triggerSOS = (id) => {
-    fetch(`http://localhost:8080/api/bookings/${id}/sos`, {
+    fetch(`${API_BASE}/api/bookings/${id}/sos`, {
       method: 'PUT'
     })
     .then(response => {

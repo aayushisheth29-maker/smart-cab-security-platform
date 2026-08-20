@@ -1,0 +1,14 @@
+name: Keep Python backend awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          curl -sS -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" "https://smart-cab-security-platform-1.onrender.com/api/health" || echo "Ping failed, will retry next cycle"

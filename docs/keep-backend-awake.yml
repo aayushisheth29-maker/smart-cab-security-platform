@@ -1,0 +1,28 @@
+name: Keep Python backend awake
+
+# Render's free tier puts a web service to sleep after ~15 minutes with
+# no incoming traffic, and the next request then has to "cold start" it
+# (can take 30-60+ seconds). That's especially bad for a live tracking
+# link — if a family member opens it and the backend is asleep, they'll
+# see nothing for up to a minute.
+#
+# This workflow runs on GitHub's free scheduler and just pings /api/health
+# every 10 minutes, 24/7, so Render never sees a long enough gap to sleep
+# the service. It costs nothing (GitHub Actions free tier is generous
+# for public repos) and needs no separate account or sign-up.
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 minutes
+  workflow_dispatch:          # lets you also trigger it manually from the Actions tab
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping backend health endpoint
+        run: |
+          echo "Pinging backend..."
+          curl -sS -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" \
+            "https://smart-cab-security-platform-1.onrender.com/api/health" \
+            || echo "Ping failed (backend may have been cold-starting) — will retry next cycle"
