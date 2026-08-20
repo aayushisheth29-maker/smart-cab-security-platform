@@ -331,6 +331,12 @@ const BookRide = () => {
   const [streamLinkId, setStreamLinkId] = useState(null);
   const streamRecorderRef = useRef(null);
   const streamChunksRef = useRef([]);
+  // A MediaRecorder timeslice is not guaranteed to be a standalone WebM
+  // file: only its first slice may contain the container header. Keep a
+  // separate recorder for each clip instead, so every upload is playable
+  // by a receiver who joins the live feed at any point.
+  const liveStreamActiveRef = useRef(false);
+  const liveStreamTimerRef = useRef(null);
 
   const locationSuggestions = [
     { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
@@ -480,42 +486,71 @@ const BookRide = () => {
     setStreamLinkId(linkKey);
 
     const stream = videoRef.current.srcObject;
-    let recorder;
-    try {
-      recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
-    } catch (e) {
+    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported('video/webm')) {
       alert("❌ Your browser doesn't support live video recording.");
       return;
     }
 
-    streamChunksRef.current = [];
-    recorder.ondataavailable = async (event) => {
-      if (event.data && event.data.size > 100) {
-        // Upload this chunk to the backend in the background. The TrackRide
-        // page will pick it up on its next 5-second poll.
-        const fd = new FormData();
-        fd.append('file', event.data, `chunk_${Date.now()}.webm`);
-        if (pickupCoords) { fd.append('lat', String(pickupCoords[0])); }
-        if (pickupCoords) { fd.append('lng', String(pickupCoords[1])); }
-        try {
-          await fetch(`${PYTHON_API}/api/video/stream/${linkKey}/chunk`, {
-            method: 'POST',
-            body: fd,
-          });
-        } catch (err) {
-          console.warn("Chunk upload failed:", err);
-        }
+    // Do NOT use recorder.start(5000). Browser timeslices are fragments of
+    // one WebM stream, and Chrome commonly omits the EBML header from all
+    // but the first fragment. The tracker then receives the newest fragment
+    // and stays at 0:00 with a black spinner. A fresh recorder per clip
+    // produces a complete, independently decodable WebM file every time.
+    const uploadClip = async (blob) => {
+      if (!blob || blob.size <= 100) return;
+      const fd = new FormData();
+      fd.append('file', blob, `chunk_${Date.now()}.webm`);
+      if (pickupCoords) { fd.append('lat', String(pickupCoords[0])); }
+      if (pickupCoords) { fd.append('lng', String(pickupCoords[1])); }
+      try {
+        await fetch(`${PYTHON_API}/api/video/stream/${linkKey}/chunk`, {
+          method: 'POST', body: fd,
+        });
+      } catch (err) {
+        console.warn("Chunk upload failed:", err);
       }
     };
 
-    streamRecorderRef.current = recorder;
-    // Record in 5-second slices so the family sees fresh footage every 5s
-    recorder.start(5000);
+    liveStreamActiveRef.current = true;
+    const recordOneCompleteClip = () => {
+      if (!liveStreamActiveRef.current) return;
+      let clipRecorder;
+      try {
+        clipRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+      } catch (err) {
+        console.warn("Unable to create live video clip:", err);
+        liveStreamActiveRef.current = false;
+        setIsLiveStreaming(false);
+        return;
+      }
+      const clipParts = [];
+      clipRecorder.ondataavailable = (event) => {
+        if (event.data && event.data.size > 0) clipParts.push(event.data);
+      };
+      clipRecorder.onstop = () => {
+        // onstop fires only after the final dataavailable event, so this
+        // Blob contains the WebM header and all frames for this clip.
+        void uploadClip(new Blob(clipParts, { type: 'video/webm' }));
+        if (liveStreamActiveRef.current) recordOneCompleteClip();
+      };
+      streamRecorderRef.current = clipRecorder;
+      clipRecorder.start();
+      liveStreamTimerRef.current = window.setTimeout(() => {
+        if (clipRecorder.state === 'recording') clipRecorder.stop();
+      }, 5000);
+    };
+
+    recordOneCompleteClip();
     setIsLiveStreaming(true);
     console.log("📹 Live stream started for", linkKey);
   };
 
   const stopLiveStream = () => {
+    liveStreamActiveRef.current = false;
+    if (liveStreamTimerRef.current) {
+      clearTimeout(liveStreamTimerRef.current);
+      liveStreamTimerRef.current = null;
+    }
     if (streamRecorderRef.current && streamRecorderRef.current.state !== 'inactive') {
       try { streamRecorderRef.current.stop(); } catch (e) { /* ignore */ }
     }
