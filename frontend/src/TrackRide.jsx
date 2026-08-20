@@ -34,10 +34,25 @@ const TrackRide = () => {
   const mapRef = useRef(null);
 
   // 📹 Live cabin camera — the rider's Live Guard uploads ~5s webm chunks
-  // under this same linkId; we poll /latest every 5s and render the newest
-  // frame. videoMeta tells us how much footage is buffered (last ~2-3 min).
+  // under this same linkId; we poll /latest every 3s and render the newest
+  // frame. (Polling is cheap when nothing changed — same chunk ID skips the
+  // body download — so faster polling just means fresher footage.)
+  // videoMeta tells us how much footage is buffered (last ~2-3 min).
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoMeta, setVideoMeta] = useState(null);
+  // ID (X-Chunk-Id header) of the clip currently on screen. Used to skip
+  // re-loading/re-playing the SAME clip when a poll returns no new footage.
+  const loadedChunkIdRef = useRef(null);
+  // Chunk IDs that failed to play (corrupt slice etc.) — polls skip them
+  // so the viewer keeps showing the last GOOD clip instead of flashing
+  // black on every 3s poll.
+  const badChunkIdsRef = useRef(new Set());
+  // Mirror of videoMeta for use inside the playback effect without
+  // re-running it on every meta update.
+  const videoMetaRef = useRef(null);
+  useEffect(() => {
+    videoMetaRef.current = videoMeta;
+  }, [videoMeta]);
 
   // No hardcoded mock data — the TrackRide page must NEVER show fake
   // rider/driver/route info to a real family member. If the backend has
@@ -109,20 +124,43 @@ const TrackRide = () => {
   // when a chunk exists (render it), or a small JSON "empty" message
   // when the rider hasn't started Live Guard yet. Also fetch /meta so
   // we can show how many seconds of footage are buffered.
+  //
+  // IMPORTANT: only swap the <video> src when the chunk ID actually
+  // changed (X-Chunk-Id header). The rider uploads one ~5s clip every
+  // few seconds, but polls can race the upload and get back the SAME
+  // clip twice. Re-setting the src for an unchanged clip restarts
+  // playback from frame 0 (visible jump) and needlessly re-downloads
+  // the bytes. If we skip it, the current clip just keeps looping in
+  // place until genuinely new footage arrives.
   useEffect(() => {
     let cancelled = false;
+    // Fresh link = nothing on screen yet (also covers navigating between
+    // two /track/:linkId pages without a full remount).
+    loadedChunkIdRef.current = null;
 
     const fetchVideo = async () => {
       try {
         const res = await fetch(`${API_BASE}/api/video/stream/${linkId}/latest`, { cache: 'no-store' });
         const contentType = res.headers.get('content-type') || '';
+        const chunkId = res.headers.get('X-Chunk-Id');
         if (res.ok && contentType.includes('video/webm')) {
-          const blob = await res.blob();
-          if (cancelled || !blob.size) return;
-          setVideoUrl((prev) => {
-            if (prev) URL.revokeObjectURL(prev); // free the old frame
-            return URL.createObjectURL(blob);
-          });
+          const sameChunk = chunkId && chunkId === loadedChunkIdRef.current;
+          const knownBad = chunkId && badChunkIdsRef.current.has(Number(chunkId));
+          if (sameChunk || knownBad) {
+            // Already on screen — or this clip proved unplayable and we
+            // fell back to an earlier one. Either way: don't swap to it,
+            // just let the current clip keep looping.
+            if (res.body && res.body.cancel) res.body.cancel();
+          } else {
+            const blob = await res.blob();
+            if (cancelled || !blob.size) return;
+            loadedChunkIdRef.current = chunkId || `blob-${Date.now()}`;
+            const newUrl = URL.createObjectURL(blob);
+            setVideoUrl((prev) => {
+              if (prev) URL.revokeObjectURL(prev); // free the old frame
+              return newUrl;
+            });
+          }
         }
       } catch (err) {
         // Backend still waking up or offline — keep showing the last frame
@@ -139,7 +177,9 @@ const TrackRide = () => {
     };
 
     fetchVideo();
-    const videoInterval = setInterval(fetchVideo, 5000);
+    // 3s for video (newer footage shows up faster); tracking data still
+    // polls every 5s above. Cheap: unchanged chunks are header-only.
+    const videoInterval = setInterval(fetchVideo, 3000);
     return () => {
       cancelled = true;
       clearInterval(videoInterval);
@@ -155,20 +195,146 @@ const TrackRide = () => {
   // playback just because `src` changed via React; `autoPlay` only fires
   // on the element's very first mount. Without this, chunk 1 plays fine,
   // then every chunk after it loads but sits paused at frame 0 (black
-  // screen), which is exactly the "plays a few seconds then goes black"
-  // symptom. Explicitly reloading + playing on every change fixes it.
+  // screen). Explicitly reloading + playing on every change fixes that.
+  //
+  // WHY THE FEED STILL WENT BLACK AFTER ~3s OF PLAYBACK: the rider's
+  // clips are MediaRecorder webm blobs, which carry NO duration metadata
+  // (video.duration === Infinity). Browsers refuse to honor `loop` on
+  // infinite-length media, so each clip played once and then the player
+  // stalled on a black frame until the next poll. We loop manually:
+  //   1. loadedmetadata — if duration is still Infinity, seek to a huge
+  //      time (Chrome/Edge trick) to force the demuxer to resolve the
+  //      real (finite) duration; after that `loop` works natively.
+  //   2. ended — restart from frame 0.
+  //   3. stall watchdog — if the browser fires neither `ended` nor a
+  //      finite duration, playback "freezes" at the end of the data;
+  //      ~1.5s of no time progress means we've hit the end, so restart.
   useEffect(() => {
     const videoEl = videoRef.current;
-    if (videoEl && videoUrl) {
-      videoEl.load();
+    if (!videoEl || !videoUrl) return;
+
+    let disposed = false;
+    let everPlayed = false;   // has this clip ever rendered a frame?
+    let fellBack = false;     // only one fallback hop per loaded clip
+    let stallRestarts = 0;
+
+    const play = () => {
       const playPromise = videoEl.play();
       if (playPromise && playPromise.catch) {
-        // Autoplay can be blocked by the browser until the user interacts
-        // with the page at least once — that's fine, the poster/first
-        // frame still shows and controls let them press play manually.
+        // Autoplay can be blocked by the browser (page backgrounded,
+        // media blocked for the site, ...). We keep retrying below
+        // until the first frame actually renders.
         playPromise.catch(() => {});
       }
-    }
+    };
+
+    // The clip is unplayable (corrupt slice, undecodable blob, ...).
+    // Mark its ID so polls stop trying it, then load the PREVIOUS
+    // buffered clip so the viewer keeps watching footage instead of a
+    // black box.
+    const markBadAndFallBack = () => {
+      if (disposed || fellBack) return;
+      fellBack = true;
+      const id = loadedChunkIdRef.current;
+      if (id && !String(id).startsWith('blob-')) {
+        badChunkIdsRef.current.add(Number(id));
+      }
+      const meta = videoMetaRef.current;
+      const ids = (meta && meta.chunks ? meta.chunks : []).map(c => c.id);
+      let prevId = null;
+      if (id && !String(id).startsWith('blob-') && ids.length) {
+        const idx = ids.indexOf(Number(id));
+        if (idx > 0) prevId = ids[idx - 1];
+      } else if (ids.length > 1) {
+        prevId = ids[ids.length - 2];
+      }
+      if (prevId == null) return;
+      fetch(`${API_BASE}/api/video/stream/${linkId}/chunk/${prevId}`, { cache: 'no-store' })
+        .then(r => (r.ok ? r.blob() : null))
+        .then(blob => {
+          if (disposed) return;
+          if (!blob || !blob.size) return;
+          const url = URL.createObjectURL(blob);
+          if (disposed) { URL.revokeObjectURL(url); return; }
+          loadedChunkIdRef.current = String(prevId);
+          setVideoUrl(prev => {
+            if (prev) URL.revokeObjectURL(prev);
+            return url;
+          });
+        })
+        .catch(() => {});
+    };
+
+    videoEl.load();
+    play();
+
+    const restart = () => {
+      try { videoEl.currentTime = 0; } catch (e) { /* ignore */ }
+      play();
+    };
+    const onLoadedMetadata = () => {
+      if (videoEl.duration === Infinity) {
+        try { videoEl.currentTime = 1e101; } catch (e) { /* ignore */ }
+      }
+    };
+    const onPlaying = () => { everPlayed = true; };
+    const onEnded = () => { everPlayed = true; restart(); };
+    const onError = () => { markBadAndFallBack(); };
+    videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
+    videoEl.addEventListener('playing', onPlaying);
+    videoEl.addEventListener('ended', onEnded);
+    videoEl.addEventListener('error', onError);
+
+    // Autoplay retry: muted autoplay is normally allowed, but if the
+    // first play() is rejected the element sits paused at 0:00 on a
+    // BLACK frame (the exact "black box with a play button" state).
+    // Retry once a second until a frame actually renders, then stop.
+    let playRetries = 0;
+    const playRetry = setInterval(() => {
+      if (disposed || everPlayed) return;
+      if (!videoEl.paused) return; // already going — wait for 'playing'
+      if (++playRetries > 60) { clearInterval(playRetry); return; }
+      play();
+    }, 1000);
+
+    // Stall watchdog: once a clip's real data is exhausted, playback
+    // "freezes" with no progress and no `ended` event. ~1.5s of no
+    // movement = hit the end → restart from 0. If the clip NEVER
+    // rendered a frame and keeps stalling, it's corrupt → fall back
+    // to the previous clip.
+    let lastTime = videoEl.currentTime;
+    let stalledSince = null;
+    const watchdog = setInterval(() => {
+      if (disposed || videoEl.paused || videoEl.seeking || videoEl.readyState < 2) return;
+      const t = videoEl.currentTime;
+      if (Math.abs(t - lastTime) < 0.05) {
+        stalledSince = stalledSince || Date.now();
+        if (Date.now() - stalledSince > 1500) {
+          stalledSince = null;
+          if (!everPlayed) {
+            if (++stallRestarts >= 3) {
+              clearInterval(watchdog);
+              markBadAndFallBack();
+              return;
+            }
+          }
+          restart(); // hit the (unknown) end of the clip's data
+        }
+      } else {
+        stalledSince = null;
+      }
+      lastTime = t;
+    }, 500);
+
+    return () => {
+      disposed = true;
+      videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+      videoEl.removeEventListener('playing', onPlaying);
+      videoEl.removeEventListener('ended', onEnded);
+      videoEl.removeEventListener('error', onError);
+      clearInterval(playRetry);
+      clearInterval(watchdog);
+    };
   }, [videoUrl]);
 
   if (loading) {
@@ -325,7 +491,7 @@ const TrackRide = () => {
 
         {/* 📹 Live Cabin Camera — latest 5s frame from the rider's Live Guard.
             Shows a waiting state until the rider starts the camera; the
-            feed then updates automatically every 5 seconds. */}
+            feed then updates automatically every 3 seconds. */}
         <div className="bg-white rounded-3xl p-6 shadow-xl border border-gray-200">
           <div className="flex items-center justify-between mb-4">
             <div className="flex items-center space-x-2">
@@ -339,7 +505,7 @@ const TrackRide = () => {
             </div>
             {videoMeta && videoMeta.chunkCount > 0 && (
               <span className="text-xs text-gray-500 font-bold">
-                updated every 5s · last {videoMeta.lastTs ? new Date(videoMeta.lastTs).toLocaleTimeString() : '—'}
+                updated every 3s · last {videoMeta.lastTs ? new Date(videoMeta.lastTs).toLocaleTimeString() : '—'}
               </span>
             )}
           </div>
