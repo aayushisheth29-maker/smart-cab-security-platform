@@ -878,6 +878,40 @@ const BookRide = () => {
     jaipur:    { name: 'Jaipur',    center: [26.9124, 75.7873], viewbox: '75.55,27.10,76.05,26.65' }, // fixed: was previously pointing at Chhattisgarh!
   };
 
+  // 📖 OFFLINE AHMEDABAD GAZETTEER — last resort when the map API is
+  // unreachable (ad-blockers / flaky networks were exactly what triggered
+  // the old random-central-India fallback). Coordinates are approximate
+  // locality centres — good enough for a demo ride estimate, and the
+  // city-scoped Nominatim search above remains the primary source.
+  const AHMEDABAD_GAZETTEER = [
+    ['new ranip', [23.0906, 72.5702]], ['ranip', [23.0862, 72.5715]],
+    ['chandlodia', [23.0728, 72.5459]], ['chandlodiya', [23.0728, 72.5459]],
+    ['gota', [23.0722, 72.5409]],
+    ['saraspur', [23.0252, 72.5990]],
+    ['kalupur railway station', [23.0253, 72.6012]], ['kalupur', [23.0280, 72.5997]],
+    ['ahmedabad junction', [23.0253, 72.6012]],
+    ['sabarmati', [23.0701, 72.5908]], ['ashram road', [23.0325, 72.5710]],
+    ['navrangpura', [23.0317, 72.5628]], ['naranpura', [23.0552, 72.5670]],
+    ['maninagar', [22.9997, 72.6010]], ['bopal', [22.9928, 72.4680]],
+    ['satellite', [23.0155, 72.5270]], ['vastrapur', [23.0366, 72.5270]],
+    ['paldi', [23.0101, 72.5685]], ['ellis bridge', [23.0225, 72.5650]],
+    ['thaltej', [23.0502, 72.5143]], ['motera', [23.0914, 72.5974]],
+    ['narendra modi stadium', [23.0914, 72.5974]],
+    ['shahibaug', [23.0547, 72.5959]], ['naroda', [23.0730, 72.6530]],
+    ['vastral', [22.9600, 72.6620]], ['sarkhej', [22.9868, 72.5050]],
+    ['sg highway', [23.0265, 72.5084]], ['sola', [23.0730, 72.5162]],
+    ['nirma university', [23.0301, 72.5177]],
+    ['airport', [23.0772, 72.6347]],
+  ];
+
+  const gazetteerLookup = (addrLower) => {
+    // Longest-name first so "New Ranip" wins over "Ranip", and
+    // "Kalupur Railway Station" over "Kalupur".
+    const sorted = [...AHMEDABAD_GAZETTEER].sort((a, b) => b[0].length - a[0].length);
+    const hit = sorted.find(([name]) => addrLower.includes(name));
+    return hit ? hit[1] : null;
+  };
+
   const detectCityKey = (addrLower) => {
     if (addrLower.includes('mumbai')) return 'mumbai';
     if (addrLower.includes('delhi')) return 'delhi';
@@ -927,8 +961,14 @@ const BookRide = () => {
       }
     }
 
-    // 🛡️ THE BACKUP PLAN — only for addresses that explicitly name a known
-    // city (e.g. "Surat"). NEVER a random point in the middle of India.
+    // 🛡️ THE BACKUP PLAN — map API unreachable or no valid hit:
+    // a) if it's a known Ahmedabad locality, use the offline gazetteer
+    if (cityKey === 'ahmedabad') {
+      const gazHit = gazetteerLookup(lowerAddress);
+      if (gazHit) return gazHit;
+    }
+    // b) only addresses that explicitly name a known city fall back to a
+    //    city CENTRE. NEVER a random point in the middle of India.
     if (mentionsCity) return city.center;
     if (lowerAddress.includes('ahmedabad')) return CITY_GEO.ahmedabad.center;
 
