@@ -154,8 +154,8 @@ const BookRide = () => {
   const [rideProgress, setRideProgress] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
   
-  const [mapCenter, setMapCenter] = useState([20.5937, 78.9629]);
-  const [mapZoom, setMapZoom] = useState(5);
+  const [mapCenter, setMapCenter] = useState([23.0225, 72.5714]); // Ahmedabad
+  const [mapZoom, setMapZoom] = useState(11);
 
   // 📍 User's live GPS location (lat, lng) — populated when they tap
   // "Use my location" so the map can show their actual position.
@@ -164,6 +164,7 @@ const BookRide = () => {
 
   const [pickupCoords, setPickupCoords] = useState(null);
   const [dropoffCoords, setDropoffCoords] = useState(null);
+  const [pricingLoading, setPricingLoading] = useState(false);
 
   const [currentBookingId, setCurrentBookingId] = useState(null);
   const [dashboardBookings, setDashboardBookings] = useState([]);
@@ -782,53 +783,211 @@ const BookRide = () => {
   }, [isRecordingVideo, recordingTimer]);
 
   // 💰 Compute the displayed fare for a car type from the actual
-  // Haversine distance between pickup and dropoff. Uses the same
-  // ₹40 base + ₹10/km formula as the backend's _estimate_fare.
-  // Peak hours (7-10am, 5-9pm) get 1.5x surge.
+  // Haversine distance (km) between two [lat, lng] points.
+  const haversineKm = (a, b) => {
+    const R = 6371;
+    const dLat = (b[0] - a[0]) * Math.PI / 180;
+    const dLng = (b[1] - a[1]) * Math.PI / 180;
+    const x = Math.sin(dLat/2) ** 2 +
+               Math.cos(a[0] * Math.PI / 180) * Math.cos(b[0] * Math.PI / 180) *
+               Math.sin(dLng/2) ** 2;
+    return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  };
+
+  // Wall-clock hour in India. Surge bands follow IST (like the backend's
+  // _calc_surge), even if the rider's device clock is in another timezone.
+  const getIstHour = () => {
+    try {
+      return parseInt(new Date().toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }), 10);
+    } catch (e) {
+      return new Date().getHours();
+    }
+  };
+
+  // Same surge bands as the backend pricing engine.
+  const currentSurge = () => {
+    const h = getIstHour();
+    if ((h >= 7 && h < 10) || (h >= 17 && h < 21)) {
+      return { surge: 1.5, reason: h < 12 ? 'Morning peak (7-10am)' : 'Evening peak (5-9pm)' };
+    }
+    if (h >= 22 || h < 6) return { surge: 1.2, reason: 'Late-night safety premium (10pm-6am)' };
+    return { surge: 1.0, reason: 'Off-peak: standard rates' };
+  };
+
+  // Per-car pricing — MUST mirror the backend PRICING_TABLE in main.py.
+  const CAR_PRICING = {
+    SmartBike:  { base: 20, perKm: 6 },
+    SmartMini:  { base: 40, perKm: 10 },
+    SmartSedan: { base: 50, perKm: 14 },
+    SmartSUV:   { base: 80, perKm: 20 },
+  };
+
+  // Local replica of the backend's _estimate_fare — used ONLY when the
+  // backend's /api/pricing/estimate is unreachable, so the rider still sees
+  // the correct per-car, surge-aware price.
+  const localFareEstimate = (distKm, carType) => {
+    const cfg = CAR_PRICING[carType] || CAR_PRICING.SmartMini;
+    const { surge, reason } = currentSurge();
+    const baseFare = cfg.base;
+    const distanceFare = Math.round(distKm * cfg.perKm * 100) / 100;
+    return {
+      baseFare,
+      distanceFare,
+      surgeMultiplier: surge,
+      surgeReason: reason,
+      totalFare: Math.round(Math.max(baseFare, baseFare + distanceFare) * surge * 100) / 100,
+      bookingTime: new Date().toISOString(),
+    };
+  };
+
+  // Haversine distance between pickup and dropoff for the price cards.
+  // NOW surge-aware (peak 1.5x, late-night 1.2x) so the card price matches
+  // the price that is actually charged at booking time.
   const displayFare = (base, perKm) => {
     let distKm = 0;
     if (pickupCoords && dropoffCoords) {
-      const R = 6371;
-      const dLat = (dropoffCoords[0] - pickupCoords[0]) * Math.PI / 180;
-      const dLng = (dropoffCoords[1] - pickupCoords[1]) * Math.PI / 180;
-      const a = Math.sin(dLat/2) ** 2 +
-                 Math.cos(pickupCoords[0] * Math.PI / 180) * Math.cos(dropoffCoords[0] * Math.PI / 180) *
-                 Math.sin(dLng/2) ** 2;
-      distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      distKm = haversineKm(pickupCoords, dropoffCoords);
     }
-    const hour = new Date().getHours();
-    const isPeak = (hour >= 7 && hour < 10) || (hour >= 17 && hour < 21);
-    const surge = isPeak ? 1.5 : 1.0;
+    const { surge } = currentSurge();
     return Math.round((base + distKm * perKm) * surge);
   };
 
+  // 🗺️ CITY-SCOPED GEOCODING
+  // The old version searched Nominatim for "<address>, India" with limit=1
+  // and NO geographic constraint — so "Saraspur" (a locality in Ahmedabad)
+  // could match a same-named place hundreds of km away. If the map API was
+  // unreachable it was even worse: the "backup plan" dropped the pin at a
+  // RANDOM point in central India (20.59, 78.96). A Ranip → Saraspur ride
+  // (9.7 km, ~₹165) once rendered as 718.8 km / ₹7,228 because of this.
+  //
+  // Now: every search is biased + bounded to the detected city, and results
+  // are distance-validated against the city centre. On failure we return
+  // null so the rider gets a clear "couldn't find that place" message —
+  // the app NEVER invents a random location again.
+  const CITY_GEO = {
+    // viewbox for Nominatim: left(minLon), top(maxLat), right(maxLon), bottom(minLat)
+    ahmedabad: { name: 'Ahmedabad', center: [23.0225, 72.5714], viewbox: '72.30,23.40,72.90,22.65' },
+    mumbai:    { name: 'Mumbai',    center: [19.0760, 72.8777], viewbox: '72.70,19.35,73.05,18.85' },
+    delhi:     { name: 'Delhi',     center: [28.7041, 77.1025], viewbox: '76.80,28.90,77.40,28.35' },
+    bangalore: { name: 'Bengaluru', center: [12.9716, 77.5946], viewbox: '77.35,13.20,77.85,12.75' },
+    pune:      { name: 'Pune',      center: [18.5204, 73.8567], viewbox: '73.60,18.75,74.10,18.30' },
+    chennai:   { name: 'Chennai',   center: [13.0827, 80.2707], viewbox: '80.00,13.30,80.45,12.80' },
+    kolkata:   { name: 'Kolkata',   center: [22.5726, 88.3639], viewbox: '88.15,22.80,88.60,22.35' },
+    hyderabad: { name: 'Hyderabad', center: [17.3850, 78.4867], viewbox: '78.20,17.65,78.75,17.15' },
+    surat:     { name: 'Surat',     center: [21.1702, 72.8311], viewbox: '72.60,21.40,73.05,20.95' },
+    jaipur:    { name: 'Jaipur',    center: [26.9124, 75.7873], viewbox: '75.55,27.10,76.05,26.65' }, // fixed: was previously pointing at Chhattisgarh!
+  };
+
+  // 📖 OFFLINE AHMEDABAD GAZETTEER — last resort when the map API is
+  // unreachable (ad-blockers / flaky networks were exactly what triggered
+  // the old random-central-India fallback). Coordinates are approximate
+  // locality centres — good enough for a demo ride estimate, and the
+  // city-scoped Nominatim search above remains the primary source.
+  const AHMEDABAD_GAZETTEER = [
+    ['new ranip', [23.0906, 72.5702]], ['ranip', [23.0862, 72.5715]],
+    ['chandlodia', [23.0728, 72.5459]], ['chandlodiya', [23.0728, 72.5459]],
+    ['gota', [23.0722, 72.5409]],
+    ['saraspur', [23.0252, 72.5990]],
+    ['kalupur railway station', [23.0253, 72.6012]], ['kalupur', [23.0280, 72.5997]],
+    ['ahmedabad junction', [23.0253, 72.6012]],
+    ['sabarmati', [23.0701, 72.5908]], ['ashram road', [23.0325, 72.5710]],
+    ['navrangpura', [23.0317, 72.5628]], ['naranpura', [23.0552, 72.5670]],
+    ['maninagar', [22.9997, 72.6010]], ['bopal', [22.9928, 72.4680]],
+    ['satellite', [23.0155, 72.5270]], ['vastrapur', [23.0366, 72.5270]],
+    ['paldi', [23.0101, 72.5685]], ['ellis bridge', [23.0225, 72.5650]],
+    ['thaltej', [23.0502, 72.5143]], ['motera', [23.0914, 72.5974]],
+    ['narendra modi stadium', [23.0914, 72.5974]],
+    ['shahibaug', [23.0547, 72.5959]], ['naroda', [23.0730, 72.6530]],
+    ['vastral', [22.9600, 72.6620]], ['sarkhej', [22.9868, 72.5050]],
+    ['sg highway', [23.0265, 72.5084]], ['sola', [23.0730, 72.5162]],
+    ['nirma university', [23.0301, 72.5177]],
+    ['airport', [23.0772, 72.6347]],
+  ];
+
+  const gazetteerLookup = (addrLower) => {
+    // Longest-name first so "New Ranip" wins over "Ranip", and
+    // "Kalupur Railway Station" over "Kalupur".
+    const sorted = [...AHMEDABAD_GAZETTEER].sort((a, b) => b[0].length - a[0].length);
+    const hit = sorted.find(([name]) => addrLower.includes(name));
+    return hit ? hit[1] : null;
+  };
+
+  const detectCityKey = (addrLower) => {
+    if (addrLower.includes('mumbai')) return 'mumbai';
+    if (addrLower.includes('delhi')) return 'delhi';
+    if (addrLower.includes('bangalore') || addrLower.includes('bengaluru')) return 'bangalore';
+    if (addrLower.includes('pune')) return 'pune';
+    if (addrLower.includes('chennai')) return 'chennai';
+    if (addrLower.includes('kolkata')) return 'kolkata';
+    if (addrLower.includes('hyderabad')) return 'hyderabad';
+    if (addrLower.includes('jaipur')) return 'jaipur';
+    if (addrLower.includes('surat') && !addrLower.includes('ahmedabad')) return 'surat';
+    return 'ahmedabad'; // SmartCab's home city — the safe default
+  };
+
   const geocodeLocation = async (address) => {
-    try {
-      const searchQuery = encodeURIComponent(address + ", India"); 
-      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${searchQuery}&limit=1`);
-      const data = await response.json();
-      
-      if (data && data.length > 0) {
-        return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+    const lowerAddress = address.toLowerCase();
+    const cityKey = detectCityKey(lowerAddress);
+    const city = CITY_GEO[cityKey];
+
+    // Sanity check: a valid result must be within ~100 km of the city.
+    // Anything farther away means the geocoder resolved the wrong
+    // same-named place — reject it rather than drawing a wrong route.
+    const withinCity = (coords) => haversineKm(coords, city.center) <= 100;
+
+    const mentionsCity = lowerAddress.includes(cityKey) ||
+      (cityKey === 'bangalore' && lowerAddress.includes('bengaluru'));
+    const namedQuery = mentionsCity ? address : `${address}, ${city.name}`;
+
+    // Pass 1: bounded to the city viewbox (precise for local areas).
+    // Pass 2: unbounded but city-qualified, still distance-validated.
+    const attempts = [
+      { q: `${namedQuery}, India`, viewbox: `&viewbox=${city.viewbox}&bounded=1` },
+      { q: `${address}, ${city.name}, India`, viewbox: '' },
+    ];
+    for (const attempt of attempts) {
+      try {
+        const searchQuery = encodeURIComponent(attempt.q);
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${searchQuery}&limit=4&countrycodes=in${attempt.viewbox}`
+        );
+        const data = await response.json();
+        const hit = (data || [])
+          .map(r => [parseFloat(r.lat), parseFloat(r.lon)])
+          .find(withinCity);
+        if (hit) return hit;
+      } catch (error) {
+        console.warn("Map API blocked the request, trying backup coordinates...");
       }
-    } catch (error) {
-      console.warn("Map API blocked the request, using backup coordinates...");
     }
 
-    // 🛡️ THE BACKUP PLAN
-    const lowerAddress = address.toLowerCase();
-    if (lowerAddress.includes('mumbai')) return [19.0760, 72.8777];
-    if (lowerAddress.includes('delhi')) return [28.7041, 77.1025];
-    if (lowerAddress.includes('bangalore') || lowerAddress.includes('bengaluru')) return [12.9716, 77.5946];
-    if (lowerAddress.includes('ahmedabad')) return [23.0225, 72.5714];
-    if (lowerAddress.includes('pune')) return [18.5204, 73.8567];
-    if (lowerAddress.includes('chennai')) return [13.0827, 80.2707];
-    if (lowerAddress.includes('kolkata')) return [22.5726, 88.3639];
-    if (lowerAddress.includes('hyderabad')) return [17.3850, 78.4867];
-    if (lowerAddress.includes('surat')) return [21.1702, 72.8311];
-    if (lowerAddress.includes('jaipur')) return [21.251384, 81.629641];
-    
-    return [20.5937 + (Math.random() * 2), 78.9629 + (Math.random() * 2)];
+    // 🛡️ THE BACKUP PLAN — map API unreachable or no valid hit:
+    // a) if it's a known Ahmedabad locality, use the offline gazetteer
+    if (cityKey === 'ahmedabad') {
+      const gazHit = gazetteerLookup(lowerAddress);
+      if (gazHit) return gazHit;
+    }
+    // b) only addresses that explicitly name a known city fall back to a
+    //    city CENTRE. NEVER a random point in the middle of India.
+    if (mentionsCity) return city.center;
+    if (lowerAddress.includes('ahmedabad')) return CITY_GEO.ahmedabad.center;
+
+    return null; // caller shows the friendly "couldn't find it" message
+  };
+
+  // How far apart the two resolved points currently are (null if unknown).
+  const resolvedDistanceKm = (pickupCoords && dropoffCoords)
+    ? haversineKm(pickupCoords, dropoffCoords)
+    : null;
+
+  // A trip is "suspicious" when both fields look like LOCAL addresses (no
+  // other city named — outstation is allowed) but the map says >150 km.
+  // That's the signature of a same-name geocoding mix-up; never let it
+  // turn into a booking with a ₹7000 fare.
+  const isSuspiciousLocalTrip = (distKm, pickupText, dropoffText) => {
+    if (distKm == null || distKm <= 150) return false;
+    const outstationHint = /(mumbai|delhi|bangalore|bengaluru|pune|chennai|kolkata|hyderabad|surat|jaipur|vadodara|baroda|rajkot|udaipur|outstation)/i;
+    return !outstationHint.test(`${pickupText} ${dropoffText}`);
   };
 
   // 📍 USE MY LOCATION — asks the browser for the rider's real GPS
@@ -906,6 +1065,40 @@ const BookRide = () => {
     }
   };
 
+  // 🔍 SEARCH PRICES — geocode BOTH points up front so the ride cards
+  // show the REAL distance-based fare (not just base rates), and so a
+  // same-name geocoding mix-up (e.g. the wrong "Saraspur") is caught
+  // BEFORE the rider ever sees a price.
+  const handleSearchPrices = async () => {
+    setShowPrices(true);
+    setPricingLoading(true);
+    const [p, d] = await Promise.all([geocodeLocation(pickup), geocodeLocation(dropoff)]);
+    setPricingLoading(false);
+    if (p && d) {
+      const distKm = haversineKm(p, d);
+      if (isSuspiciousLocalTrip(distKm, pickup, dropoff)) {
+        alert(
+          `\u26a0\ufe0f These places look like a LOCAL ride, but the map found them ${distKm.toFixed(0)} km apart.\n\n` +
+          `Please re-enter the addresses with the area + city (e.g. "Saraspur, Ahmedabad") so prices are correct.`
+        );
+        setPickupCoords(null);
+        setDropoffCoords(null);
+        setShowPrices(false);
+        setActiveTab('request');
+        return;
+      }
+      setPickupCoords(p);
+      setDropoffCoords(d);
+      setMapCenter(p);
+      setMapZoom(12);
+    } else {
+      // One address did not resolve — cards fall back to base rates and
+      // booking will show the "couldn't find it" message if retried.
+      setPickupCoords(null);
+      setDropoffCoords(null);
+    }
+  };
+
   const handleConfirmRide = async () => {
     setIsSearching(true);
     const pCoords = await geocodeLocation(pickup);
@@ -925,21 +1118,44 @@ const BookRide = () => {
         console.error("Could not reach Python AI server");
       }
 
+      // Real distance between the two geocoded points
+      const distKm = haversineKm(pCoords, dCoords);
+
+      // 🛡️ SANITY GUARD — if two apparently-local addresses resolved to
+      // points >150 km apart, the geocoder almost certainly picked the
+      // wrong same-named place. Stop before creating a bogus booking
+      // (this exact mistake once produced a 718.8 km / ₹7,228 "ride").
+      if (isSuspiciousLocalTrip(distKm, pickup, dropoff)) {
+        alert(
+          `⚠️ These places look like a LOCAL ride, but the map found them ${distKm.toFixed(0)} km apart.\n\n` +
+          `Please re-enter the addresses with the area + city (e.g. "Saraspur, Ahmedabad") so the route is correct. No booking was made.`
+        );
+        return;
+      }
+
+      // 💰 FARE — ask the backend pricing engine (the same rates and IST
+      // surge the dashboard stores), with a local replica as fallback, so
+      // the price on screen ALWAYS matches the saved trip record.
+      let estimate;
       try {
-        // Compute real Haversine distance so the fare is correct
-        const R = 6371;
-        const dLat = (dCoords[0] - pCoords[0]) * Math.PI / 180;
-        const dLng = (dCoords[1] - pCoords[1]) * Math.PI / 180;
-        const a = Math.sin(dLat/2) ** 2 +
-                   Math.cos(pCoords[0] * Math.PI / 180) * Math.cos(dCoords[0] * Math.PI / 180) *
-                   Math.sin(dLng/2) ** 2;
-        const distKm = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const estRes = await fetch(`${PYTHON_API}/api/pricing/estimate`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            distanceKm: parseFloat(distKm.toFixed(2)),
+            selectedCar,
+            bookingTime: new Date().toISOString(),
+          }),
+        });
+        if (!estRes.ok) throw new Error(`estimate failed: ${estRes.status}`);
+        estimate = await estRes.json();
+      } catch (e) {
+        console.warn('Backend pricing unavailable, using local estimate:', e);
+        estimate = localFareEstimate(distKm, selectedCar);
+      }
+      const totalFare = estimate.totalFare;
 
-        // Same formula as the price cards: ₹40 base + ₹10/km for SmartMini
-        const baseFare = 40;
-        const perKmRate = 10;
-        const totalFare = Math.round((baseFare + distKm * perKmRate) * 100) / 100;
-
+      try {
         const bookingData = {
           userId: loggedInUser ? loggedInUser.id : null,
           riderName: loggedInUser ? loggedInUser.name : "Guest Rider",
@@ -947,6 +1163,11 @@ const BookRide = () => {
           dropoffLocation: dropoff,
           distanceKm: parseFloat(distKm.toFixed(2)),
           fare: totalFare,
+          baseFare: estimate.baseFare,
+          distanceFare: estimate.distanceFare,
+          surgeMultiplier: estimate.surgeMultiplier,
+          bookingTime: estimate.bookingTime,
+          selectedCar,
           status: "PENDING"
         };
 
@@ -972,14 +1193,17 @@ const BookRide = () => {
             console.log("✅ Booking saved to SmartCab Python backend:", savedBooking);
           }
         }
-        alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}\n\nTap 'Live Guard' to share your ride with family!`);
+        const surgeNote = estimate.surgeMultiplier > 1
+          ? ` (${estimate.surgeMultiplier}x — ${estimate.surgeReason || 'surge pricing'})`
+          : '';
+        alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}${surgeNote}\n\nTap 'Live Guard' to share your ride with family!`);
 
       } catch (error) {
         console.warn("Could not reach SmartCab Python backend:", error);
         // setCurrentBookingId is already set above (localId), so Share
         // Live Location will still work. The link will use the local
         // ID as a fallback if the backend doesn't have it.
-        alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹232.5\n\n(Booking saved locally — backend sync will retry)`);
+        alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}\n\n(Booking saved locally — backend sync will retry)`);
       }
 
       setPickupCoords(pCoords);
@@ -2676,11 +2900,11 @@ const BookRide = () => {
                       </div>
                       <div className="mt-auto pt-8">
                         <button
-                          onClick={() => setShowPrices(true)}
-                          disabled={!pickup || !dropoff} 
+                          onClick={handleSearchPrices}
+                          disabled={!pickup || !dropoff || pricingLoading} 
                           className="bg-black text-white text-lg font-bold py-4 px-6 rounded-lg w-full hover:bg-gray-800 transition shadow-lg disabled:bg-gray-300 hover:scale-[1.02] transform"
                         >
-                          Search route & see prices
+                          {pricingLoading ? 'Locating on map…' : 'Search route & see prices'}
                         </button>
                         {(!pickup || !dropoff) && (
                           <p className="text-xs text-gray-400 mt-2 text-center">
