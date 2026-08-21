@@ -309,10 +309,7 @@ const BookRide = () => {
   const [searchModalType, setSearchModalType] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const [emergencyContacts, setEmergencyContacts] = useState([
-    { name: 'Mom', phone: '+919876543210' },
-    { name: 'Dad', phone: '+919876543211' }
-  ]);
+    const [emergencyContacts, setEmergencyContacts] = useState([]);
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
