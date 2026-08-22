@@ -873,6 +873,12 @@ const BookRide = () => {
     hyderabad: { name: 'Hyderabad', center: [17.3850, 78.4867], viewbox: '78.20,17.65,78.75,17.15' },
     surat:     { name: 'Surat',     center: [21.1702, 72.8311], viewbox: '72.60,21.40,73.05,20.95' },
     jaipur:    { name: 'Jaipur',    center: [26.9124, 75.7873], viewbox: '75.55,27.10,76.05,26.65' }, // fixed: was previously pointing at Chhattisgarh!
+        rajkot:      { name: 'Rajkot',      center: [22.3039, 70.8022], viewbox: '70.60,22.50,71.05,22.10' },
+    vadodara:    { name: 'Vadodara',    center: [22.3072, 73.1812], viewbox: '73.00,22.50,73.35,22.10' },
+    gandhinagar: { name: 'Gandhinagar', center: [23.2156, 72.6369], viewbox: '72.45,23.40,72.80,23.05' },
+    bhavnagar:   { name: 'Bhavnagar',   center: [21.7645, 72.1519], viewbox: '71.95,21.95,72.35,21.60' },
+    jamnagar:    { name: 'Jamnagar',    center: [22.4707, 70.0577], viewbox: '69.85,22.65,70.30,22.30' },
+    udaipur:     { name: 'Udaipur',     center: [24.5854, 73.7125], viewbox: '73.50,24.80,73.95,24.40' },
   };
 
   // 📖 OFFLINE AHMEDABAD GAZETTEER — last resort when the map API is
@@ -919,6 +925,12 @@ const BookRide = () => {
     if (addrLower.includes('hyderabad')) return 'hyderabad';
     if (addrLower.includes('jaipur')) return 'jaipur';
     if (addrLower.includes('surat') && !addrLower.includes('ahmedabad')) return 'surat';
+    if (addrLower.includes('rajkot')) return 'rajkot';
+    if (addrLower.includes('vadodara') || addrLower.includes('baroda')) return 'vadodara';
+    if (addrLower.includes('gandhinagar') && !addrLower.includes('ahmedabad')) return 'gandhinagar';
+    if (addrLower.includes('bhavnagar')) return 'bhavnagar';
+    if (addrLower.includes('jamnagar')) return 'jamnagar';
+    if (addrLower.includes('udaipur')) return 'udaipur';
     return 'ahmedabad'; // SmartCab's home city — the safe default
   };
 
@@ -2027,6 +2039,7 @@ const BookRide = () => {
                 {[
                   { eng: 'Bangla', native: 'বাংলা', code: 'bn' },
                   { eng: 'English', native: 'English', code: 'en' },
+                  { eng: 'Gujarati', native: 'ગુજરાતી', code: 'gu' },
                   { eng: 'Hindi', native: 'हिन्दी', code: 'hi' },
                   { eng: 'Kannada', native: 'ಕನ್ನಡ', code: 'kn' },
                   { eng: 'Marathi', native: 'मराठी', code: 'mr' },
