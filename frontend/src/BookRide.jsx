@@ -310,7 +310,34 @@ const BookRide = () => {
   const [searchModalType, setSearchModalType] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
 
-    const [emergencyContacts, setEmergencyContacts] = useState([]);
+      // 🚨 EMERGENCY CONTACTS — NEVER hardcoded. The list belongs to the
+  // rider: logged-in users load their saved profile contacts from the
+  // backend; guests get whatever they saved locally (default: empty).
+  const readGuestContacts = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('smartcab_guest_contacts') || '[]');
+      return Array.isArray(saved) ? saved : [];
+    } catch (e) {
+      return [];
+    }
+  };
+  const [emergencyContacts, setEmergencyContacts] = useState(readGuestContacts);
+  useEffect(() => {
+    if (loggedInUser && loggedInUser.id) {
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`)
+        .then(res => (res.ok ? res.json() : []))
+        .then(contacts => setEmergencyContacts(Array.isArray(contacts) ? contacts : []))
+        .catch(() => { /* keep whatever is currently shown */ });
+    } else {
+      setEmergencyContacts(readGuestContacts());
+    }
+  }, [loggedInUser]);
+
+  const persistContactsLocally = (contacts) => {
+    try {
+      localStorage.setItem('smartcab_guest_contacts', JSON.stringify(contacts));
+    } catch (e) { /* storage may be unavailable — non-fatal */ }
+  };
   const [showAddContactModal, setShowAddContactModal] = useState(false);
   const [newContactName, setNewContactName] = useState('');
   const [newContactPhone, setNewContactPhone] = useState('');
@@ -411,12 +438,49 @@ const BookRide = () => {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
+ 
   const handleAddContact = () => {
     if(newContactName && newContactPhone) {
       setEmergencyContacts([...emergencyContacts, { name: newContactName, phone: newContactPhone }]);
       setNewContactName('');
       setNewContactPhone('');
       setShowAddContactModal(false);
+    }
+  };  const handleAddContact = () => {
+    const name = newContactName.trim();
+    const phone = newContactPhone.trim();
+    if (!name || phone.replace(/\D/g, '').length < 6) {
+      alert('Please enter a name and a valid phone number (6+ digits).');
+      return;
+    }
+    // Replace an entry with the same name instead of duplicating it
+    const next = [
+      ...emergencyContacts.filter(c => c.name.toLowerCase() !== name.toLowerCase()),
+      { name, phone },
+    ];
+    setEmergencyContacts(next);
+    persistContactsLocally(next);
+    // Save to the rider's profile so it's there on their next session/device
+    if (loggedInUser && loggedInUser.id) {
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, phone }),
+      }).catch(err => console.warn('Could not save contact to profile:', err.message));
+    }
+    setNewContactName('');
+    setNewContactPhone('');
+    setShowAddContactModal(false);
+  };
+
+  const handleRemoveContact = (phone) => {
+    const next = emergencyContacts.filter(c => c.phone !== phone);
+    setEmergencyContacts(next);
+    persistContactsLocally(next);
+    if (loggedInUser && loggedInUser.id) {
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts/${encodeURIComponent(phone)}`, {
+        method: 'DELETE',
+      }).catch(err => console.warn('Could not remove contact from profile:', err.message));
     }
   };
     // 🎥 START VIDEO RECORDING
@@ -645,6 +709,7 @@ const BookRide = () => {
       currentLocation: { lat: pickupCoords[0], lng: pickupCoords[1] },
       riderName: loggedInUser ? loggedInUser.name : userProfile.name,
       userId: loggedInUser ? loggedInUser.id : null,
+      emergencyContacts: emergencyContacts,
       createdAt: new Date().toISOString()
     })
   })
