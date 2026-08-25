@@ -5,7 +5,7 @@ import {
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
-  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw
+  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic 
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -150,6 +150,37 @@ const BookRide = () => {
   const [selectedCar, setSelectedCar] = useState('SmartMini');
   
   const [focusedInput, setFocusedInput] = useState(null);
+    // 🎤 VOICE TYPING — speak the place name instead of typing it.
+  // Uses the browser's built-in speech recognition (free, no dataset):
+  // listens in Gujarati / Hindi / Indian-English depending on the
+  // language the rider currently has the site in.
+  const [listeningInput, setListeningInput] = useState(null);
+  const startVoiceInput = (type) => {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) {
+      alert("🎤 Voice typing needs Chrome or Edge browser. Please type the address instead.");
+      return;
+    }
+    const langMatch = document.cookie.match(/googtrans=\/en\/([a-z]{2,3})/);
+    const siteLang = langMatch ? langMatch[1] : 'en';
+    const rec = new SR();
+    rec.lang = siteLang === 'gu' ? 'gu-IN' : siteLang === 'hi' ? 'hi-IN' : 'en-IN';
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+    setListeningInput(type);
+    rec.onresult = (e) => {
+      const text = (e.results[0][0].transcript || '').trim();
+      if (text) {
+        if (type === 'pickup') setPickup(text); else setDropoff(text);
+      }
+    };
+    rec.onerror = (e) => {
+      console.warn('Voice input error:', e.error);
+      if (e.error === 'not-allowed') alert('🎤 Please allow microphone permission to use voice typing.');
+    };
+    rec.onend = () => setListeningInput(null);
+    rec.start();
+  };
 
   const [rideProgress, setRideProgress] = useState(0);
   const [isSearching, setIsSearching] = useState(false);
@@ -398,8 +429,13 @@ const BookRide = () => {
           videoRef.current.srcObject.getTracks().forEach(track => track.stop());
         }
         
-        stream = await navigator.mediaDevices.getUserMedia({ 
-          video: { facingMode: facingMode } 
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: facingMode },
+          audio: true,
+        }).catch(async (err) => {
+          // No mic (or mic blocked) — fall back to silent video instead of failing
+          console.warn('Mic unavailable — continuing with silent video:', err);
+          return navigator.mediaDevices.getUserMedia({ video: { facingMode: facingMode } });
         });
         
         if (videoRef.current) {
@@ -784,7 +820,7 @@ const BookRide = () => {
   useEffect(() => {
     pingStateRef.current = {
       rideProgress, pickupCoords, dropoffCoords, pickup, dropoff,
-      assignedDriver, loggedInUser, userProfile,
+      assignedDriver, loggedInUser, userProfile, emergencyContacts,
     };
   });
 
@@ -796,7 +832,7 @@ const BookRide = () => {
     const sendPing = () => {
       const {
         rideProgress, pickupCoords, dropoffCoords, pickup, dropoff,
-        assignedDriver, loggedInUser, userProfile,
+        assignedDriver, loggedInUser, userProfile, emergencyContacts,
       } = pingStateRef.current;
       if (!pickupCoords || !dropoffCoords) return;
 
@@ -814,6 +850,8 @@ const BookRide = () => {
           riderName: loggedInUser ? loggedInUser.name : userProfile.name,
           driverName: assignedDriver ? assignedDriver.name : undefined,
           carPlate: assignedDriver ? assignedDriver.plate : undefined,
+                    // Family page stays in sync if the rider adds/removes contacts mid-ride
+          emergencyContacts: emergencyContacts,
         })
       }).catch((err) => {
         // A single missed ping isn't worth alarming the rider over — the
@@ -1376,6 +1414,14 @@ const BookRide = () => {
           onBlur={() => setTimeout(() => setFocusedInput(null), 200)}
           className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium"
         />
+                <button
+          type="button"
+          onClick={() => startVoiceInput(type)}
+          className={`ml-2 p-2 rounded-full transition ${listeningInput === type ? 'bg-red-100 text-red-600 animate-pulse' : 'text-gray-400 hover:text-black hover:bg-gray-200'}`}
+          title="Speak the place name"
+        >
+          <Mic className="h-5 w-5" />
+        </button>
         {focusedInput === type && (
           <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-[0_10px_40px_rgba(0,0,0,0.2)] z-[100] max-h-72 overflow-y-auto border border-gray-100 animate-in fade-in duration-200">
             {locationSuggestions.filter(s => s.title.toLowerCase().includes(value.toLowerCase()) || value === '').map((loc, idx) => (
@@ -2800,15 +2846,29 @@ const BookRide = () => {
                               </button>
                             </div>
                             
-                            <div className="flex flex-wrap gap-2 mb-6">
+                                                        <div className="flex flex-wrap gap-2 mb-6">
+                              {emergencyContacts.length === 0 && (
+                                <p className="text-sm text-gray-500 bg-gray-50 border border-dashed border-gray-300 rounded-lg px-4 py-3 w-full">
+                                  No emergency contacts yet. Add anyone you trust — a friend, roommate, partner, colleague, or family. 🛟
+                                </p>
+                              )}
                               {emergencyContacts.map((contact, idx) => (
-                                <a 
-                                  key={idx} 
-                                  href={`tel:${contact.phone}`} 
-                                  className="bg-gray-100 px-4 py-2 rounded-lg text-sm font-bold flex items-center w-max hover:bg-gray-200 hover:shadow-sm transition border border-transparent hover:border-gray-300"
+                                <span
+                                  key={idx}
+                                  className="bg-gray-100 pl-4 pr-2 py-2 rounded-lg text-sm font-bold flex items-center w-max border border-transparent hover:border-gray-300 transition"
                                 >
-                                  <PhoneCall className="h-4 w-4 mr-2 text-green-600"/> {contact.name}
-                                </a>
+                                  <a href={`tel:${contact.phone}`} className="flex items-center hover:underline">
+                                    <PhoneCall className="h-4 w-4 mr-2 text-green-600"/> {contact.name}
+                                  </a>
+                                  <button
+                                    onClick={() => handleRemoveContact(contact.phone)}
+                                    className="ml-2 p-1 rounded-full text-gray-400 hover:text-red-600 hover:bg-red-50 transition"
+                                    title={`Remove ${contact.name}`}
+                                    aria-label={`Remove ${contact.name}`}
+                                  >
+                                    <X className="h-3.5 w-3.5" />
+                                  </button>
+                                </span>
                               ))}
                             </div>
 
