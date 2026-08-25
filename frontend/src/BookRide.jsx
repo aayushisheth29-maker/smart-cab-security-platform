@@ -439,14 +439,7 @@ const BookRide = () => {
   };
 
  
-  const handleAddContact = () => {
-    if(newContactName && newContactPhone) {
-      setEmergencyContacts([...emergencyContacts, { name: newContactName, phone: newContactPhone }]);
-      setNewContactName('');
-      setNewContactPhone('');
-      setShowAddContactModal(false);
-    }
-  };  const handleAddContact = () => {
+    const handleAddContact = () => {
     const name = newContactName.trim();
     const phone = newContactPhone.trim();
     if (!name || phone.replace(/\D/g, '').length < 6) {
@@ -472,7 +465,6 @@ const BookRide = () => {
     setNewContactPhone('');
     setShowAddContactModal(false);
   };
-
   const handleRemoveContact = (phone) => {
     const next = emergencyContacts.filter(c => c.phone !== phone);
     setEmergencyContacts(next);
