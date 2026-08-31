@@ -100,6 +100,12 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionBusy, setActionBusy] = useState(null);
+  // 🔑 Owner key rotation
+  const [newAdminKey, setNewAdminKey] = useState('');
+  const [confirmNewAdminKey, setConfirmNewAdminKey] = useState('');
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyMsg, setKeyMsg] = useState('');
+  const [keyErr, setKeyErr] = useState('');
 
   const verifyAndLoad = async (adminKey) => {
     setLoading(true);
@@ -253,6 +259,55 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🔑 CHANGE OWNER ACCESS KEY (no redeploy — persisted on the backend)
+  const changeAdminKey = async () => {
+    if (newAdminKey.length < 10) {
+      setKeyErr('New key must be at least 10 characters.');
+      return;
+    }
+    if (newAdminKey !== confirmNewAdminKey) {
+      setKeyErr('The two keys do not match.');
+      return;
+    }
+    setKeyBusy(true);
+    setKeyMsg('');
+    setKeyErr('');
+    try {
+      await apiFetch('/api/admin/rotate-key', {
+        method: 'POST',
+        body: JSON.stringify({ newKey: newAdminKey }),
+      });
+      storeAdminKey(newAdminKey); // this session now uses the new key
+      setKeyMsg('Access key changed. New key is now active — old key no longer works.');
+      setNewAdminKey('');
+      setConfirmNewAdminKey('');
+    } catch (err) {
+      setKeyErr(err.message && err.message.includes('current') ? err.message : `Could not change key: ${err.message}`);
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
+  const resetAdminKey = async () => {
+    if (!window.confirm('Reset the access key back to the SMARTCAB_ADMIN_KEY value set in Render? Your current rotated key will stop working.')) return;
+    setKeyBusy(true);
+    setKeyMsg('');
+    setKeyErr('');
+    try {
+      await apiFetch('/api/admin/reset-key-to-default', { method: 'POST' });
+      const envKey = getAdminKey();
+      // The env key value is whatever was set in Render — this session's stored
+      // key might be the rotated one; prompt the owner in the message.
+      setKeyMsg('Reset done. Enter the SMARTCAB_ADMIN_KEY value from Render (admin12345 unless you changed it) to continue.');
+      storeAdminKey('');
+      setAuthenticated(false);
+    } catch (err) {
+      setKeyErr(`Could not reset key: ${err.message}`);
+    } finally {
+      setKeyBusy(false);
+    }
+  };
+
   // 💬 RIDER SUPPORT REQUESTS (help widget: report a driver, lost item, etc.)
   const resolveSupportRequest = async (req) => {
     setActionBusy(`req-${req.id}`);
@@ -371,6 +426,70 @@ export default function AdminDashboard() {
               <StatCard icon={Users} label="Registered Users" value={stats?.totalUsers ?? 0} tone="slate" />
               <StatCard icon={MapPin} label="Active Share Links" value={stats?.activeShareLinks ?? 0} tone="blue" />
             </div>
+
+            {/* 🔑 Owner security — change the admin access key (no redeploy) */}
+            <section className="mb-10">
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-5">
+                <h2 className="text-xl font-extrabold text-slate-900 mb-1 flex items-center gap-2">
+                  <Lock className="h-5 w-5 text-amber-600" /> OWNER SECURITY
+                </h2>
+                <p className="text-xs text-slate-500 mb-4">
+                  Change your Owner Portal access key here — the old key stops working immediately.
+                  Stored hashed &amp; persisted (survives server restarts, no Render redeploy needed).
+                </p>
+                <div className="grid md:grid-cols-2 gap-4 items-end">
+                  <div className="space-y-2">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">New access key (min 10 characters)</label>
+                      <input
+                        type="password"
+                        value={newAdminKey}
+                        onChange={(e) => setNewAdminKey(e.target.value)}
+                        placeholder="e.g. MyFamily-Only-Key-2026"
+                        className="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-600 mb-1">Confirm new key</label>
+                      <input
+                        type="password"
+                        value={confirmNewAdminKey}
+                        onChange={(e) => setConfirmNewAdminKey(e.target.value)}
+                        placeholder="Type it again"
+                        className="w-full px-3 py-2.5 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-amber-500 text-sm"
+                      />
+                    </div>
+                    <button
+                      onClick={changeAdminKey}
+                      disabled={keyBusy || !newAdminKey || newAdminKey !== confirmNewAdminKey}
+                      className="w-full bg-slate-900 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-slate-700 transition disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                    >
+                      {keyBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Lock className="h-4 w-4" />} Change access key
+                    </button>
+                    <p className="text-[11px] text-slate-400">
+                      ⚠️ Write the new key down now. If you ever lose it, reset it from Render (delete
+                      <code className="mx-1 bg-slate-100 px-1 rounded">admin_credentials.json</code>in the data dir) or use the button below while you still know it.
+                    </p>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-4">
+                    <p className="text-xs font-bold text-slate-600 mb-2">Recovery</p>
+                    <p className="text-[11px] text-slate-500 mb-3">
+                      Reset back to the value of <code className="bg-slate-100 px-1 rounded">SMARTCAB_ADMIN_KEY</code> in your Render environment
+                      (currently set by you in Render's Settings → Environment).
+                    </p>
+                    <button
+                      onClick={resetAdminKey}
+                      disabled={keyBusy}
+                      className="w-full bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold py-2.5 rounded-xl transition disabled:opacity-50"
+                    >
+                      Reset to Render env key
+                    </button>
+                  </div>
+                </div>
+                {keyMsg && <p className="mt-3 text-sm font-semibold text-green-700 bg-green-50 border border-green-200 rounded-xl px-3 py-2">✅ {keyMsg}</p>}
+                {keyErr && <p className="mt-3 text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">⚠️ {keyErr}</p>}
+              </div>
+            </section>
 
             {/* Active emergencies */}
             <section className="mb-10">

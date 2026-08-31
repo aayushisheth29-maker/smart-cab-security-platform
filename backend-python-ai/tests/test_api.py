@@ -24,8 +24,9 @@ def fresh_state():
     TRIPS.clear()
     EMERGENCIES.clear()
     ROUTE_CHECKS.clear()
-    from main import seed_samples, _RATE_BUCKETS
+    from main import seed_samples, _RATE_BUCKETS, _drop_admin_credentials
     _RATE_BUCKETS.clear()
+    _drop_admin_credentials()  # always start each test with the env dev key
     seed_samples(force=True)
     yield
 
@@ -571,3 +572,47 @@ def test_doc_screening_marks_unusual_shape_as_review_not_rejected():
                       files={"vehiclePhoto": ("v.png", _fake_png_bytes((200, 60, 60), size=(300, 2000)), "image/png")})
     assert res.status_code == 200
     assert res.json()["documents"][0]["check"]["status"] == "REVIEW"
+
+
+# ---------------------------------------------------------------------------
+# 🔑 Owner admin key rotation (change the access key without a redeploy)
+# ---------------------------------------------------------------------------
+
+def test_owner_can_change_admin_key_without_redeploy():
+    import main as main_mod
+    main_mod._drop_admin_credentials()
+    new_key = "owner-super-secret-2026"
+
+    # Wrong current key → 401
+    r = client.post("/api/admin/rotate-key",
+                    headers={"X-Admin-Key": "wrong-key-123"},
+                    json={"newKey": new_key})
+    assert r.status_code == 401
+    # Too short → 400
+    r = client.post("/api/admin/rotate-key",
+                    headers={"X-Admin-Key": ADMIN_KEY},
+                    json={"newKey": "short"})
+    assert r.status_code == 400
+    # Same as current → 400
+    r = client.post("/api/admin/rotate-key",
+                    headers={"X-Admin-Key": ADMIN_KEY},
+                    json={"newKey": ADMIN_KEY})
+    assert r.status_code == 400
+    # Rotate with the current (dev) key → 200; old key dies, new key works
+    r = client.post("/api/admin/rotate-key",
+                    headers={"X-Admin-Key": ADMIN_KEY},
+                    json={"newKey": new_key})
+    assert r.status_code == 200, r.text
+    assert main_mod._admin_credentials.get("hash") and "salt" in main_mod._admin_credentials
+    assert client.get("/api/admin/stats", headers={"X-Admin-Key": ADMIN_KEY}).status_code == 401
+    assert client.get("/api/admin/stats", headers={"X-Admin-Key": new_key}).status_code == 200
+    # Credentials file persisted (survives restart)
+    with open(main_mod._admin_creds_file()) as f:
+        import json as _json
+        assert _json.load(f).get("hash")
+
+    # Owner can reset back to the environment value (recovery path)
+    r = client.post("/api/admin/reset-key-to-default", headers={"X-Admin-Key": new_key})
+    assert r.status_code == 200, r.text
+    assert client.get("/api/admin/stats", headers={"X-Admin-Key": ADMIN_KEY}).status_code == 200
+    assert client.get("/api/admin/stats", headers={"X-Admin-Key": new_key}).status_code == 401

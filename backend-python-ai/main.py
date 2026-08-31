@@ -166,8 +166,85 @@ def require_own_user(request: Request, user_id: int) -> None:
 def require_admin(request: Request) -> None:
     """FastAPI dependency: admin endpoints require the X-Admin-Key header."""
     provided = request.headers.get("x-admin-key", "")
-    if not provided or not secrets.compare_digest(provided, SMARTCAB_ADMIN_KEY):
+    if not provided or not _admin_key_matches(provided):
         raise HTTPException(status_code=401, detail="Invalid or missing admin key.")
+
+
+# ---------------------------------------------------------------------------
+# 🔑 OWNER ADMIN KEY — rotatable by the owner, no redeploy needed.
+# The key set via SMARTCAB_ADMIN_KEY in the environment is the BOOTSTRAP
+# default. As soon as the owner changes it from the Owner Portal, a salted
+# PBKDF2 hash is stored in the data dir (admin_credentials.json) and the
+# environment value is no longer accepted. The owner can also reset back to
+# the environment value while they still know the current key.
+# ---------------------------------------------------------------------------
+_admin_credentials: Dict[str, Any] = {}
+_ADMIN_KEY_ITERATIONS = 120_000
+
+
+def _admin_creds_file() -> str:
+    # Lazy: PERSIST_DIR is resolved later in the module.
+    return os.path.join(PERSIST_DIR, "admin_credentials.json") if PERSIST_DIR else "admin_credentials.json"
+
+
+def _load_admin_credentials() -> None:
+    global _admin_credentials
+    try:
+        path = _admin_creds_file()
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and data.get("hash") and data.get("salt"):
+                _admin_credentials = data
+                log.info("🔑 Owner admin key credentials loaded from disk (rotated key active).")
+    except Exception as e:
+        log.warning("⚠️ Could not load admin credentials: %s", e)
+
+
+def _admin_key_matches(provided: str) -> bool:
+    creds = _admin_credentials or {}
+    if creds.get("hash") and creds.get("salt"):
+        try:
+            salt = bytes.fromhex(creds["salt"])
+            iterations = int(creds.get("iterations", _ADMIN_KEY_ITERATIONS))
+            dk = hashlib.pbkdf2_hmac("sha256", provided.encode("utf-8"), salt, iterations)
+            return secrets.compare_digest(dk.hex(), creds["hash"])
+        except Exception:
+            return False
+    default = os.environ.get("SMARTCAB_ADMIN_KEY", "smartcab-admin-dev-key")
+    return bool(provided) and secrets.compare_digest(provided, default)
+
+
+def _save_admin_credentials(new_key: str) -> None:
+    global _admin_credentials
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac(
+        "sha256", new_key.encode("utf-8"), bytes.fromhex(salt), _ADMIN_KEY_ITERATIONS
+    )
+    creds = {
+        "version": 1,
+        "salt": salt,
+        "iterations": _ADMIN_KEY_ITERATIONS,
+        "hash": dk.hex(),
+        "updatedAt": _now_iso(),
+    }
+    path = _admin_creds_file()
+    tmp = f"{path}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(creds, f)
+    os.replace(tmp, path)
+    _admin_credentials = creds
+
+
+def _drop_admin_credentials() -> None:
+    global _admin_credentials
+    _admin_credentials = {}
+    try:
+        path = _admin_creds_file()
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
 
 
 # ---------------------------------------------------------------------------
@@ -767,6 +844,7 @@ def _next_driver_application_reference() -> str:
 
 
 _restore_core_data()
+_load_admin_credentials()
 
 
 def _now_iso() -> str:
@@ -3426,3 +3504,48 @@ def admin_resolve_support_request(req_id: int, payload: SupportRequestResolve):
     _persist_core_data("support_requests")
     log.info("💬 Support request %s resolved", req["reference"])
     return {"status": "ok", "request": req}
+
+
+# ============================================================================
+# 🔑 OWNER SECURITY — change the admin access key WITHOUT touching Render
+# (persisted hashed credential). Requires the current key (X-Admin-Key).
+# ============================================================================
+
+class AdminKeyRotate(BaseModel):
+    newKey: str
+
+
+@app.post("/api/admin/rotate-key", dependencies=[Depends(require_admin)])
+def owner_rotate_admin_key(payload: AdminKeyRotate, request: Request):
+    """Owner changes the admin access key. The request must be signed with
+    the CURRENT key (X-Admin-Key). New key is hashed (PBKDF2) and persisted;
+    it survives restarts and does not need any Render environment change."""
+    if rate_limited(f"rotate-key:{client_key(request)}", limit=3, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many key changes. Please wait a few minutes.")
+    new_key = (payload.newKey or "").strip()
+    if len(new_key) < 10:
+        raise HTTPException(status_code=400, detail="New key must be at least 10 characters long.")
+    if len(new_key) > 128:
+        raise HTTPException(status_code=400, detail="New key is too long (max 128 characters).")
+    if _admin_key_matches(new_key):
+        raise HTTPException(status_code=400, detail="New key is the same as the current key.")
+    _save_admin_credentials(new_key)
+    log.warning("🔑 Owner admin key changed — previous key is no longer valid.")
+    return {
+        "status": "ok",
+        "message": "Admin access key changed. Use the new key from now on — the old key no longer works.",
+        "updatedAt": _now_iso(),
+    }
+
+
+@app.post("/api/admin/reset-key-to-default", dependencies=[Depends(require_admin)])
+def owner_reset_admin_key():
+    """Owner resets back to the value of SMARTCAB_ADMIN_KEY in the Render
+    environment (used when recovering after a rotation)."""
+    if _admin_credentials:
+        _drop_admin_credentials()
+    log.warning("🔑 Owner admin key reset to the SMARTCAB_ADMIN_KEY environment value.")
+    return {
+        "status": "ok",
+        "message": "Admin key reset to the SMARTCAB_ADMIN_KEY environment value.",
+    }

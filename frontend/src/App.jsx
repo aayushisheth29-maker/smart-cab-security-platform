@@ -11,7 +11,22 @@ import AdminDashboard from './AdminDashboard';
 import I18nLoader from './I18nLoader';
 import FloatingHelp from './HelpAssistant';
 
+// 🔒 OWNER PORTAL MODE — used by the SECOND, private Vercel project
+// (e.g. https://owner.smart-security-cab.com). That project sets
+// VITE_OWNER_MODE=true → the app renders ONLY the Owner Portal: no rider
+// navbar, no ride booking, no floating rider help, no links to rider pages.
+// Same backend, same admin key — just a private door.
+const OWNER_MODE = import.meta.env.VITE_OWNER_MODE === 'true';
+
 function App() {
+  if (OWNER_MODE) {
+    return (
+      <>
+        <I18nLoader />
+        <AdminDashboard />
+      </>
+    );
+  }
   return (
     <Router>
       <I18nLoader />
