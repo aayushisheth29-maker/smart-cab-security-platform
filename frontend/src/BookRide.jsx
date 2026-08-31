@@ -2643,16 +2643,6 @@ const BookRide = () => {
 
       {/* RIDE VIEW */}
       {mainView === 'ride' && (
-        <div className="animate-in fade-in duration-300">
-          {/* 🎨 BRAND HERO — the first thing visitors see */}
-          <div className="relative w-full">
-            <img
-              src="/assets/security-cab-banner.png"
-              alt="Smart Security AI Cab — Trusted Intelligent Transport"
-              className="w-full max-h-[300px] object-cover rounded-none md:rounded-b-3xl"
-            />
-          </div>
-          <div className="max-w-md mx-auto px-4">
         <div className="animate-in fade-in duration-500">
           
           <div className="border-b flex flex-col md:flex-row items-center px-4 md:px-12 pt-3 justify-between gap-2 overflow-hidden">
@@ -3400,8 +3390,6 @@ const BookRide = () => {
 
             </div>
           </section>
-          </div>
-        </div>
         </div>
       )}
 
