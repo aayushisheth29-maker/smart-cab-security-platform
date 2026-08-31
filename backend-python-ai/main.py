@@ -580,6 +580,82 @@ _load_share_links_from_disk()
 _init_video_chunk_id_counter()
 
 
+# ---------------------------------------------------------------------------
+# 💾 CORE-DATA PERSISTENCE — users, trips and emergencies are written to
+# JSON files inside PERSIST_DIR after every change and rehydrated at boot.
+# This is the always-on fallback (same as share links) so a Render free-tier
+# restart never wipes a signed-up account, ride history or alert.
+# ---------------------------------------------------------------------------
+def _json_path(name: str) -> Optional[str]:
+    return os.path.join(PERSIST_DIR, name) if PERSIST_DIR else None
+
+
+USERS_FILE = _json_path("users.json")
+TRIPS_FILE = _json_path("trips.json")
+EMERGENCIES_FILE = _json_path("emergencies.json")
+
+
+def _load_list_from_disk(path: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else None
+    except Exception as e:
+        log.warning("⚠️ Could not load %s: %s", path, e)
+        return None
+
+
+def _save_list_to_disk(path: Optional[str], items: List[Dict[str, Any]]) -> None:
+    if not path:
+        return
+    try:
+        tmp_path = f"{path}.tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(items, f, default=str)
+        os.replace(tmp_path, path)
+    except Exception as e:
+        log.warning("⚠️ Could not persist %s: %s", path, e)
+
+
+def _restore_core_data() -> None:
+    """Rehydrate USERS / TRIPS / EMERGENCIES from disk, then bump each
+    id counter past the highest stored id so ids never collide."""
+    loaded_users = _load_list_from_disk(USERS_FILE)
+    if loaded_users:
+        USERS.clear()
+        USERS.extend(loaded_users)
+        log.info("💾 Restored %d user(s) from disk", len(USERS))
+        _next_id["user"] = max([int(u.get("id", 0)) for u in USERS] or [0]) + 1
+
+    loaded_trips = _load_list_from_disk(TRIPS_FILE)
+    if loaded_trips:
+        TRIPS.clear()
+        TRIPS.extend(loaded_trips)
+        log.info("💾 Restored %d trip(s) from disk", len(TRIPS))
+        _next_id["trip"] = max([int(t.get("id", 0)) for t in TRIPS] or [0]) + 1
+
+    loaded_emergencies = _load_list_from_disk(EMERGENCIES_FILE)
+    if loaded_emergencies:
+        EMERGENCIES.clear()
+        EMERGENCIES.extend(loaded_emergencies)
+        log.info("💾 Restored %d emergency alert(s) from disk", len(EMERGENCIES))
+        _next_id["emergency"] = max([int(e.get("id", 0)) for e in EMERGENCIES] or [0]) + 1
+
+
+def _persist_core_data(which: str = "all") -> None:
+    if which in ("all", "users"):
+        _save_list_to_disk(USERS_FILE, USERS)
+    if which in ("all", "trips"):
+        _save_list_to_disk(TRIPS_FILE, TRIPS)
+    if which in ("all", "emergencies"):
+        _save_list_to_disk(EMERGENCIES_FILE, EMERGENCIES)
+
+
+_restore_core_data()
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -1241,6 +1317,7 @@ def auth_signup(payload: Dict[str, Any], request: Request):
     }
     USERS.append(new_user)
     _next_id["user"] += 1
+    _persist_core_data("users")
     log.info("✅ New user signed up: %s (%s)", name, email)
     # Never return password fields; return a signed token for the session.
     safe_user = {k: v for k, v in new_user.items() if k not in ("password", "passwordHash")}
@@ -1268,6 +1345,7 @@ def auth_login(payload: Dict[str, Any], request: Request):
             if ok:
                 u["passwordHash"] = hash_password(password)
                 u.pop("password", None)
+                _persist_core_data("users")
                 log.info("🔐 Migrated legacy plaintext password to PBKDF2 for user %d", u["id"])
             return_auth = ok
         else:
@@ -1359,6 +1437,7 @@ def update_profile(user_id: int, payload: ProfileUpdate):
     for field, value in payload.model_dump(exclude_unset=True).items():
         user[field] = value
     log.info("👤 Profile updated for user %d: %s", user_id, list(payload.model_dump(exclude_unset=True).keys()))
+    _persist_core_data("users")
     return {k: v for k, v in user.items() if k not in ("password", "passwordHash")}
 
 
@@ -1377,6 +1456,7 @@ def add_address(user_id: int, payload: SavedAddress):
     # Replace if the label already exists
     addresses[:] = [a for a in addresses if a.get("label") != payload.label]
     addresses.append(payload.model_dump())
+    _persist_core_data("users")
     log.info("📍 Address added for user %d: %s", user_id, payload.label)
     return addresses
 
@@ -1388,6 +1468,7 @@ def delete_address(user_id: int, label: str):
     user["savedAddresses"] = [
         a for a in user.get("savedAddresses", []) if a.get("label") != label
     ]
+    _persist_core_data("users")
     log.info("📍 Address deleted for user %d: %s", user_id, label)
     return user["savedAddresses"]
 
@@ -1404,6 +1485,7 @@ def add_emergency_contact(user_id: int, payload: EmergencyContact):
     user = _find_user(user_id)
     contacts = user.setdefault("emergencyContacts", [])
     contacts.append(payload.model_dump())
+    _persist_core_data("users")
     log.info("🚨 Emergency contact added for user %d: %s", user_id, payload.name)
     return contacts
 
@@ -1415,6 +1497,7 @@ def delete_emergency_contact(user_id: int, phone: str):
     user["emergencyContacts"] = [
         c for c in user.get("emergencyContacts", []) if c.get("phone") != phone
     ]
+    _persist_core_data("users")
     log.info("🚨 Emergency contact deleted for user %d: %s", user_id, phone)
     return user["emergencyContacts"]
 
@@ -1628,6 +1711,7 @@ def create_trip(payload: TripCreate, request: Request):
 
     TRIPS.append(trip)
     _next_id["trip"] += 1
+    _persist_core_data("trips")
     log.info(
         "🚕 Trip %s (#%d) created: %s → %s, %.2f km, ₹%.2f (×%.1f surge), driver %s",
         trip["rideCode"], trip["id"], trip.get("pickupLocation", "?"), trip.get("dropoffLocation", "?"),
@@ -1670,6 +1754,7 @@ def update_trip_status(trip_id: int, payload: TripStatusUpdate, request: Request
 
     trip["status"] = new_status
     trip.setdefault("statusHistory", []).append({"status": new_status, "at": _now_iso()})
+    _persist_core_data("trips")
     if new_status == "COMPLETED":
         trip["completedAt"] = _now_iso()
     log.info("🚕 Trip %s: %s → %s", trip.get("rideCode"), current, new_status)
@@ -1717,6 +1802,7 @@ def trigger_sos(trip_id: int, request: Request):
             }
             EMERGENCIES.append(rec)
             _next_id["emergency"] += 1
+            _persist_core_data("all")
             log.warning("🚨 SOS for %s — emergency log %d created", t.get("rideCode"), rec["id"])
             t["emergencyId"] = rec["id"]
             return {"trip": t, "emergency": rec}
@@ -1982,6 +2068,7 @@ def log_emergency(payload: EmergencyCreate, request: Request):
 
     EMERGENCIES.append(rec)
     _next_id["emergency"] += 1
+    _persist_core_data("emergencies")
     log.warning("🚨 Emergency alert #%s created for %s", rec["id"], rec.get("rideCode") or rec.get("bookingId") or "?")
 
     contacts = rec.get("contacts") or []
@@ -2415,6 +2502,7 @@ def admin_respond_emergency(emergency_id: int):
         raise HTTPException(status_code=404, detail="emergency not found")
     em["status"] = "RESPONDED"
     em["respondedAt"] = _now_iso()
+    _persist_core_data("emergencies")
     log.warning("🛡️ Admin responded to emergency #%s (%s)", emergency_id, em.get("rideCode") or em.get("bookingId"))
     return em
 

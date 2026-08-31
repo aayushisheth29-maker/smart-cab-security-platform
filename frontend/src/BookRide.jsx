@@ -314,6 +314,28 @@ const BookRide = () => {
     console.log('👋 Logged out');
   };
 
+  // 🔐 SESSION VALIDATION — on app load, if we think we're logged in but the
+  // backend no longer knows this user/token (e.g. the service restarted and
+  // reset in-memory data), clear the stale session so the app never crashes.
+  useEffect(() => {
+    if (!loggedInUser || !loggedInUser.id) return;
+    let cancelled = false;
+    fetch(`${PYTHON_API}/api/auth/me`, { headers: authHeaders() })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 401) {
+          localStorage.removeItem('smartcab_user');
+          localStorage.removeItem('smartcab_token');
+          setLoggedInUser(null);
+          setUserProfile({ name: 'Guest', email: '', phone: '', address: '' });
+          setAuthError("Your session has expired. Please log in again.");
+        }
+      })
+      .catch(() => { /* backend unreachable — keep the session and try later */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   useEffect(() => {
     if (mainView === 'dashboard' && dashTab === 'history') {
       if (!loggedInUser) {
@@ -321,8 +343,20 @@ const BookRide = () => {
         return;
       }
       fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/trips`, { headers: authHeaders() })
-        .then(res => res.json())
-        .then(data => setDashboardBookings(data))
+        .then(async (res) => {
+          if (res.status === 401) {
+            // Session is no longer valid (token expired / user removed after
+            // a backend restart). Clear it gracefully instead of crashing.
+            localStorage.removeItem('smartcab_user');
+            localStorage.removeItem('smartcab_token');
+            setLoggedInUser(null);
+            setDashboardBookings([]);
+            setAuthError('Your session has expired. Please log in again.');
+            return;
+          }
+          const data = await res.json();
+          setDashboardBookings(Array.isArray(data) ? data : []);
+        })
         .catch(err => console.error("Error fetching history:", err));
     }
   }, [mainView, dashTab, loggedInUser]);
@@ -2425,6 +2459,19 @@ const BookRide = () => {
       {/* DASHBOARD VIEW */}
       {mainView === 'dashboard' && (
         <main className="max-w-6xl mx-auto px-4 md:px-12 py-12 animate-in fade-in duration-500 flex flex-col md:flex-row gap-8">
+          {/* Stale-session banner — shown instead of a blank screen */}
+          {(!loggedInUser) && authError && (
+            <div className="w-full md:w-1/4 bg-amber-50 border border-amber-300 rounded-2xl p-5 mb-4 h-max">
+              <h3 className="font-bold text-amber-900 mb-2">⚠️ Session expired</h3>
+              <p className="text-sm text-amber-800 mb-4">{authError} Your data is safe — you can log in again.</p>
+              <button
+                onClick={() => { setAuthError(''); setMainView('login'); }}
+                className="w-full bg-amber-500 text-white font-bold py-2.5 rounded-xl hover:bg-amber-600 transition"
+              >
+                Log in again
+              </button>
+            </div>
+          )}
           {/* Sidebar */}
           <div className="w-full md:w-1/4">
             <div className="flex items-center space-x-4 mb-8">
@@ -2472,7 +2519,7 @@ const BookRide = () => {
               <div>
                 <h2 className="text-3xl font-bold mb-6">Recent Rides</h2>
                 <div className="space-y-4">
-                  {dashboardBookings.length === 0 ? (
+                  {Array.isArray(dashboardBookings) && dashboardBookings.length === 0 ? (
                     <div className="text-center p-8 bg-gray-50 rounded-2xl border border-gray-200">
                       <Car className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                       <p className="text-gray-500 font-bold">No rides found in the database yet. Go book one!</p>
