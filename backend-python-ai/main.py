@@ -593,6 +593,9 @@ def _json_path(name: str) -> Optional[str]:
 USERS_FILE = _json_path("users.json")
 TRIPS_FILE = _json_path("trips.json")
 EMERGENCIES_FILE = _json_path("emergencies.json")
+DRIVER_APPLICATIONS_FILE = _json_path("driver_applications.json")
+DRIVER_APPLICATIONS: List[Dict[str, Any]] = []
+_DRIVER_APP_COUNTER = {"seq": 0}
 
 
 def _load_list_from_disk(path: Optional[str]) -> Optional[List[Dict[str, Any]]]:
@@ -620,8 +623,8 @@ def _save_list_to_disk(path: Optional[str], items: List[Dict[str, Any]]) -> None
 
 
 def _restore_core_data() -> None:
-    """Rehydrate USERS / TRIPS / EMERGENCIES from disk, then bump each
-    id counter past the highest stored id so ids never collide."""
+    """Rehydrate USERS / TRIPS / EMERGENCIES / DRIVER_APPLICATIONS from disk,
+    then bump each id counter past the highest stored id so ids never collide."""
     loaded_users = _load_list_from_disk(USERS_FILE)
     if loaded_users:
         USERS.clear()
@@ -643,6 +646,15 @@ def _restore_core_data() -> None:
         log.info("💾 Restored %d emergency alert(s) from disk", len(EMERGENCIES))
         _next_id["emergency"] = max([int(e.get("id", 0)) for e in EMERGENCIES] or [0]) + 1
 
+    loaded_apps = _load_list_from_disk(DRIVER_APPLICATIONS_FILE)
+    if loaded_apps:
+        DRIVER_APPLICATIONS.clear()
+        DRIVER_APPLICATIONS.extend(loaded_apps)
+        log.info("💾 Restored %d driver application(s) from disk", len(DRIVER_APPLICATIONS))
+        _DRIVER_APP_COUNTER["seq"] = max(
+            [int((a.get("reference") or "").split("-")[-1] or 0) for a in DRIVER_APPLICATIONS] or [0]
+        )
+
 
 def _persist_core_data(which: str = "all") -> None:
     if which in ("all", "users"):
@@ -651,6 +663,18 @@ def _persist_core_data(which: str = "all") -> None:
         _save_list_to_disk(TRIPS_FILE, TRIPS)
     if which in ("all", "emergencies"):
         _save_list_to_disk(EMERGENCIES_FILE, EMERGENCIES)
+    if which in ("all", "applications"):
+        _save_list_to_disk(DRIVER_APPLICATIONS_FILE, DRIVER_APPLICATIONS)
+
+
+def _next_driver_application_reference() -> str:
+    try:
+        from zoneinfo import ZoneInfo
+        year = datetime.now(ZoneInfo("Asia/Kolkata")).year
+    except Exception:
+        year = datetime.now(timezone.utc).year
+    _DRIVER_APP_COUNTER["seq"] += 1
+    return f"DRV-{year}-{_DRIVER_APP_COUNTER['seq']:06d}"
 
 
 _restore_core_data()
@@ -1273,6 +1297,84 @@ def get_driver(driver_id: int):
         if d.get("id") == driver_id:
             return d
     raise HTTPException(status_code=404, detail="driver not found")
+
+
+# ---------------------------------------------------------------------------
+# 🚗 DRIVER APPLICATION — "Apply to drive" flow
+# ---------------------------------------------------------------------------
+class DriverApplicationCreate(BaseModel):
+    fullName: str
+    phone: str
+    email: Optional[str] = ""
+    city: str
+    vehicleType: str  # SmartMini / SmartSedan / SmartSUV / SmartBike
+    licenseNumber: str
+    experienceYears: Optional[float] = 0
+    ownVehicle: Optional[bool] = False
+    agreeTerms: Optional[bool] = False
+
+
+@app.post("/api/drivers/apply")
+def apply_driver(payload: DriverApplicationCreate, request: Request):
+    """Accept a driver application. Creates a reference like DRV-2026-000001,
+    stores it (persisted to disk) and returns the application + next steps.
+    An admin later reviews it in /admin and can approve it into the fleet."""
+    if rate_limited(f"driver-apply:{client_key(request)}", limit=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many applications. Please wait a minute.")
+
+    full_name = (payload.fullName or "").strip()
+    phone = (payload.phone or "").strip()
+    city = (payload.city or "").strip()
+    license_number = (payload.licenseNumber or "").strip().upper()
+    if not full_name or not phone or not city:
+        raise HTTPException(status_code=400, detail="Full name, phone number and city are required.")
+    if len(phone) < 7:
+        raise HTTPException(status_code=400, detail="Please enter a valid phone number.")
+    if len(license_number) < 5:
+        raise HTTPException(status_code=400, detail="Please enter a valid driving licence number.")
+    vehicle_type = payload.vehicleType or "SmartMini"
+    if vehicle_type not in ("SmartBike", "SmartMini", "SmartSedan", "SmartSUV"):
+        vehicle_type = "SmartMini"
+    if not payload.agreeTerms:
+        raise HTTPException(status_code=400, detail="Please accept the Driver Terms to continue.")
+
+    application = {
+        "id": max([int(a.get("id", 0)) for a in DRIVER_APPLICATIONS] or [0]) + 1,
+        "reference": _next_driver_application_reference(),
+        "fullName": full_name,
+        "phone": phone,
+        "email": (payload.email or "").strip(),
+        "city": city,
+        "vehicleType": vehicle_type,
+        "licenseNumber": license_number,
+        "experienceYears": float(payload.experienceYears or 0),
+        "ownVehicle": bool(payload.ownVehicle),
+        "status": "PENDING",
+        "createdAt": _now_iso(),
+    }
+    DRIVER_APPLICATIONS.append(application)
+    _persist_core_data("applications")
+    log.info("🚗 Driver application %s from %s (%s)", application["reference"], full_name, city)
+    return {
+        "status": "ok",
+        "application": application,
+        "nextSteps": [
+            "Our team reviews your application (usually within 24–48 hours).",
+            "We verify your driving licence and documents.",
+            "Once approved, you'll receive your onboarding link and can start earning.",
+        ],
+    }
+
+
+@app.get("/api/drivers/application/{reference}")
+def get_driver_application(reference: str):
+    """Public status lookup by reference (e.g. DRV-2026-000004)."""
+    app = next((a for a in DRIVER_APPLICATIONS if (a.get("reference") or "").upper() == reference.upper()), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    # Never return the driving licence back to the public lookup.
+    safe = {k: v for k, v in app.items() if k != "licenseNumber"}
+    return {"status": "ok", "application": safe}
 
 
 # ---------------------------------------------------------------------------
@@ -2528,3 +2630,57 @@ def admin_update_ride_status(trip_id: int, payload: TripStatusUpdate):
 @app.get("/api/admin/share-links", dependencies=[Depends(require_admin)])
 def admin_share_links():
     return sorted(SHARE_LINKS.values(), key=lambda l: l.get("createdAt", ""), reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# 🚗 ADMIN — DRIVER APPLICATIONS review/approval
+# ---------------------------------------------------------------------------
+@app.get("/api/admin/driver-applications", dependencies=[Depends(require_admin)])
+def admin_driver_applications(status: Optional[str] = None):
+    apps = DRIVER_APPLICATIONS
+    if status:
+        apps = [a for a in apps if (a.get("status") or "").upper() == status.upper()]
+    return sorted(apps, key=lambda a: a.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/driver-applications/{app_id}/approve", dependencies=[Depends(require_admin)])
+def admin_approve_driver_application(app_id: int):
+    """Approve a driver application and add the driver to the live fleet
+    so they can be matched to real rides."""
+    app = next((a for a in DRIVER_APPLICATIONS if a.get("id") == app_id), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="application not found")
+    if app.get("status") == "APPROVED":
+        return {"status": "ok", "message": "Already approved.", "application": app}
+
+    app["status"] = "APPROVED"
+    app["approvedAt"] = _now_iso()
+    # Add to the live fleet (so /api/drivers/random can match them).
+    if not any((d.get("id") == f"app-{app_id}") or (d.get("applicationId") == app_id) for d in DRIVERS):
+        plate = f"APP {str(app_id).zfill(4)}"  # placeholder plate till documents complete
+        DRIVERS.append({
+            "id": _next_id["driver"],
+            "applicationId": app_id,
+            "name": app["fullName"],
+            "rating": 5.0,
+            "dl": app["licenseNumber"],
+            "plate": plate,
+            "carModel": app["vehicleType"],
+            "phone": app["phone"],
+        })
+        _next_id["driver"] += 1
+    _persist_core_data("all")
+    log.warning("🚗 Driver application %s APPROVED — %s is now in the fleet", app["reference"], app["fullName"])
+    return {"status": "ok", "application": app, "fleetCount": len(DRIVERS)}
+
+
+@app.post("/api/admin/driver-applications/{app_id}/reject", dependencies=[Depends(require_admin)])
+def admin_reject_driver_application(app_id: int):
+    app = next((a for a in DRIVER_APPLICATIONS if a.get("id") == app_id), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="application not found")
+    app["status"] = "REJECTED"
+    app["rejectedAt"] = _now_iso()
+    _persist_core_data("applications")
+    log.warning("🚗 Driver application %s REJECTED", app["reference"])
+    return {"status": "ok", "application": app}

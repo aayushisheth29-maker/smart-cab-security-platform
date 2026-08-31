@@ -64,6 +64,7 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState(null);
   const [emergencies, setEmergencies] = useState([]);
   const [rides, setRides] = useState([]);
+  const [driverApps, setDriverApps] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionBusy, setActionBusy] = useState(null);
@@ -73,14 +74,16 @@ export default function AdminDashboard() {
     setError('');
     setKeyError('');
     try {
-      const [s, e, r] = await Promise.all([
+      const [s, e, r, da] = await Promise.all([
         apiFetch('/api/admin/stats'),
         apiFetch('/api/admin/emergencies'),
         apiFetch('/api/admin/rides'),
+        apiFetch('/api/admin/driver-applications'),
       ]);
       setStats(s);
       setEmergencies(Array.isArray(e) ? e : []);
       setRides(Array.isArray(r) ? r : []);
+      setDriverApps(Array.isArray(da) ? da : []);
       setAuthenticated(true);
     } catch (err) {
       if (err.status === 401) {
@@ -132,6 +135,18 @@ export default function AdminDashboard() {
     }
   };
 
+  const reviewDriverApp = async (app, decision) => {
+    setActionBusy(`app-${app.id}`);
+    try {
+      await apiFetch(`/api/admin/driver-applications/${app.id}/${decision}`, { method: 'POST' });
+      await refresh();
+    } catch (err) {
+      setError(`Could not ${decision} application: ${err.message}`);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
   const logoutAdmin = () => {
     storeAdminKey('');
     setKey('');
@@ -139,6 +154,7 @@ export default function AdminDashboard() {
     setStats(null);
     setEmergencies([]);
     setRides([]);
+    setDriverApps([]);
   };
 
   // ---------------- Lock screen ----------------
@@ -260,6 +276,61 @@ export default function AdminDashboard() {
                       >
                         {actionBusy === `respond-${e.id}` ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Mark responded
                       </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* Driver applications */}
+            <section className="mb-10">
+              <h2 className="text-xl font-extrabold text-slate-900 mb-4">
+                DRIVER APPLICATIONS{' '}
+                <span className="text-sm font-bold text-slate-400">({driverApps.filter((a) => a.status === 'PENDING').length} pending)</span>
+              </h2>
+              {driverApps.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                  <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  No driver applications yet. When someone taps "Apply to drive", it appears here.
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {driverApps.map((app) => (
+                    <div key={app.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${app.status === 'PENDING' ? 'border-amber-200' : app.status === 'APPROVED' ? 'border-green-200' : 'border-slate-100'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-extrabold text-slate-900">
+                          {app.fullName}
+                          <span className="block font-mono text-xs text-slate-400">{app.reference}</span>
+                        </div>
+                        <span className={`text-[10px] font-extrabold px-2 py-1 rounded-full ${app.status === 'APPROVED' ? 'bg-green-100 text-green-700' : app.status === 'REJECTED' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'}`}>
+                          {app.status}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-600 space-y-1 mb-4">
+                        <div>📍 {app.city} · 🚗 {app.vehicleType}</div>
+                        <div>📞 {app.phone} {app.email ? `· ✉️ ${app.email}` : ''}</div>
+                        <div className="text-xs text-slate-400">
+                          {app.experienceYears} yr experience · {app.ownVehicle ? 'Owns vehicle' : 'Needs vehicle'} · {fmtTime(app.createdAt)}
+                        </div>
+                      </div>
+                      {app.status === 'PENDING' && (
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => reviewDriverApp(app, 'approve')}
+                            disabled={actionBusy === `app-${app.id}`}
+                            className="flex-1 bg-green-600 text-white text-sm font-bold py-2 rounded-xl hover:bg-green-700 transition disabled:opacity-60"
+                          >
+                            {actionBusy === `app-${app.id}` ? '…' : '✓ Approve'}
+                          </button>
+                          <button
+                            onClick={() => reviewDriverApp(app, 'reject')}
+                            disabled={actionBusy === `app-${app.id}`}
+                            className="flex-1 bg-red-50 text-red-600 text-sm font-bold py-2 rounded-xl border border-red-200 hover:bg-red-100 transition disabled:opacity-60"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
-  User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
+  User, Phone, Mail, Building, CheckCircle, CheckCircle2, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
   Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic 
 } from 'lucide-react';
@@ -142,6 +142,108 @@ const BookRide = () => {
   const [showBusinessForm, setShowBusinessForm] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
+
+  // 🚗 DRIVER APPLICATION — real form payload + submit state
+  const [driverForm, setDriverForm] = useState({
+    fullName: '', phone: '', email: '', city: 'Ahmedabad',
+    vehicleType: 'SmartMini', licenseNumber: '', experienceYears: '',
+    ownVehicle: true, agreeTerms: false,
+  });
+  const [driverSubmitLoading, setDriverSubmitLoading] = useState(false);
+  const [driverSubmitError, setDriverSubmitError] = useState('');
+  const [driverApplicationResult, setDriverApplicationResult] = useState(null);
+  const readDriverAppRef = () => {
+    try { return localStorage.getItem('smartcab_driver_app_ref') || ''; } catch (e) { return ''; }
+  };
+  const [driverAppRef, setDriverAppRef] = useState(readDriverAppRef);
+  const [driverAppStatus, setDriverAppStatus] = useState(null);
+  const [driverStatusLoading, setDriverStatusLoading] = useState(false);
+
+  const handleDriverFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setDriverForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const handleDriverFormNext = () => {
+    setDriverSubmitError('');
+    if (formStep === 1) {
+      if (!driverForm.fullName.trim() || !driverForm.phone.trim()) {
+        setDriverSubmitError('Please enter your full name and phone number.');
+        return;
+      }
+      if (driverForm.phone.replace(/[^0-9]/g, '').length < 7) {
+        setDriverSubmitError('Please enter a valid phone number (e.g. +91 98765 43210).');
+        return;
+      }
+      setFormStep(2);
+    } else if (formStep === 2) {
+      if (!driverForm.licenseNumber.trim()) {
+        setDriverSubmitError('Please enter your driving licence number.');
+        return;
+      }
+      if (!driverForm.agreeTerms) {
+        setDriverSubmitError('Please accept the Driver Terms to continue.');
+        return;
+      }
+      submitDriverApplication();
+    }
+  };
+
+  const submitDriverApplication = async () => {
+    setDriverSubmitLoading(true);
+    setDriverSubmitError('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/drivers/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: driverForm.fullName.trim(),
+          phone: driverForm.phone.trim(),
+          email: driverForm.email.trim(),
+          city: driverForm.city.trim(),
+          vehicleType: driverForm.vehicleType,
+          licenseNumber: driverForm.licenseNumber.trim(),
+          experienceYears: parseFloat(driverForm.experienceYears || 0),
+          ownVehicle: driverForm.ownVehicle,
+          agreeTerms: driverForm.agreeTerms,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Application failed. Please try again.';
+        setDriverSubmitError(typeof detail === 'string' ? detail : 'Application failed. Please try again.');
+        return;
+      }
+      setDriverApplicationResult(data.application);
+      try { localStorage.setItem('smartcab_driver_app_ref', data.application.reference); } catch (e) { /* noop */ }
+      setDriverAppRef(data.application.reference);
+      setFormSubmitted(true);
+      setFormStep(1);
+    } catch (err) {
+      setDriverSubmitError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setDriverSubmitLoading(false);
+    }
+  };
+
+  const checkDriverApplicationStatus = async () => {
+    if (!driverAppRef) return;
+    setDriverStatusLoading(true);
+    setDriverSubmitError('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/drivers/application/${encodeURIComponent(driverAppRef)}`);
+      const data = await res.json();
+      if (res.ok && data.application) {
+        setDriverAppStatus(data.application.status);
+      } else {
+        setDriverSubmitError('Could not find that application. Check the reference and try again.');
+      }
+    } catch (err) {
+      setDriverSubmitError('Could not reach the server. Please try again later.');
+    } finally {
+      setDriverStatusLoading(false);
+    }
+  };
 
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
@@ -3456,6 +3558,35 @@ const BookRide = () => {
             >
               Apply to drive →
             </button>
+            {driverAppRef && (
+              <button
+                onClick={async () => {
+                  setDriverSubmitError('');
+                  setDriverStatusLoading(true);
+                  try {
+                    const res = await fetch(`${PYTHON_API}/api/drivers/application/${encodeURIComponent(driverAppRef)}`);
+                    const data = await res.json();
+                    if (res.ok && data.application) {
+                      setDriverAppStatus(data.application.status);
+                      setDriverSubmitError('');
+                      alert(`📋 Application ${driverAppRef}\n\nCurrent status: ${data.application.status}\n\nWe'll notify you once a decision is made.`);
+                    } else {
+                      setDriverSubmitError('Could not find that application. Check the reference and try again.');
+                    }
+                  } catch (err) {
+                    setDriverSubmitError('Could not reach the server. Please try again later.');
+                  } finally {
+                    setDriverStatusLoading(false);
+                  }
+                }}
+                className="mt-4 text-sm font-bold text-black underline underline-offset-4 hover:text-gray-700 transition"
+              >
+                {driverStatusLoading ? 'Checking…' : `Check application status (${driverAppRef})`}
+              </button>
+            )}
+            {driverSubmitError && driverAppRef && (
+              <p className="mt-2 text-sm font-semibold text-red-600">⚠️ {driverSubmitError}</p>
+            )}
           </div>
           <div className="w-full md:w-1/2">
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
@@ -3937,6 +4068,168 @@ const BookRide = () => {
           </button>
         )}
       </div>
+
+      {/* 🚗 DRIVER APPLICATION MODAL — "Apply to drive" */}
+      {showDriverForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[450] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl z-10">
+              <div className="flex items-center gap-2">
+                <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab" className="h-8 w-8 rounded-lg object-cover" />
+                <h3 className="text-lg font-extrabold text-slate-900">Driver Application</h3>
+              </div>
+              <button
+                onClick={closeAllForms}
+                className="p-2 rounded-full hover:bg-gray-100 transition"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {!formSubmitted ? (
+              <div className="px-6 py-5">
+                {/* Step indicator */}
+                <div className="flex items-center gap-2 mb-6">
+                  <div className={`h-2 flex-1 rounded-full ${formStep >= 1 ? 'bg-slate-900' : 'bg-gray-200'}`}></div>
+                  <div className={`h-2 flex-1 rounded-full ${formStep >= 2 ? 'bg-slate-900' : 'bg-gray-200'}`}></div>
+                  <span className="text-xs font-bold text-slate-400 w-16 text-right">{formStep}/2</span>
+                </div>
+
+                {formStep === 1 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-700 tracking-wide uppercase">Your details</h4>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Full name *</label>
+                      <input name="fullName" value={driverForm.fullName} onChange={handleDriverFormChange}
+                        placeholder="e.g. Rohan Patel"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Phone number *</label>
+                      <input name="phone" value={driverForm.phone} onChange={handleDriverFormChange}
+                        placeholder="+91 98765 43210"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Email (optional)</label>
+                      <input name="email" type="email" value={driverForm.email} onChange={handleDriverFormChange}
+                        placeholder="you@example.com"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">City *</label>
+                      <input name="city" value={driverForm.city} onChange={handleDriverFormChange}
+                        placeholder="e.g. Ahmedabad"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                  </div>
+                )}
+
+                {formStep === 2 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-700 tracking-wide uppercase">Vehicle & driving licence</h4>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Vehicle type *</label>
+                      <select name="vehicleType" value={driverForm.vehicleType} onChange={handleDriverFormChange}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-white">
+                        <option value="SmartMini">SmartMini</option>
+                        <option value="SmartSedan">SmartSedan</option>
+                        <option value="SmartSUV">SmartSUV</option>
+                        <option value="SmartBike">SmartBike</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Driving licence number *</label>
+                      <input name="licenseNumber" value={driverForm.licenseNumber} onChange={handleDriverFormChange}
+                        placeholder="e.g. GJ01-2023-1122334"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none uppercase" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Driving experience (years)</label>
+                      <input name="experienceYears" type="number" min="0" value={driverForm.experienceYears} onChange={handleDriverFormChange}
+                        placeholder="0"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <label className="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3 cursor-pointer">
+                      <input name="ownVehicle" type="checkbox" checked={driverForm.ownVehicle} onChange={handleDriverFormChange}
+                        className="h-4 w-4 accent-amber-500" />
+                      <span className="text-sm font-semibold text-slate-700">I own the vehicle I'll drive</span>
+                    </label>
+                    <label className="flex items-start gap-3 bg-amber-50 rounded-xl px-4 py-3 cursor-pointer">
+                      <input name="agreeTerms" type="checkbox" checked={driverForm.agreeTerms} onChange={handleDriverFormChange}
+                        className="h-4 w-4 accent-amber-500 mt-0.5" />
+                      <span className="text-sm text-slate-600">
+                        I agree to the <strong>Driver Terms</strong> and understand my licence & documents will be verified before onboarding.
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                {driverSubmitError && (
+                  <p className="mt-4 text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    ⚠️ {driverSubmitError}
+                  </p>
+                )}
+
+                <div className="flex gap-3 mt-6">
+                  {formStep === 2 && (
+                    <button onClick={() => setFormStep(1)} className="flex-1 bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition">
+                      Back
+                    </button>
+                  )}
+                  <button
+                    onClick={handleDriverFormNext}
+                    disabled={driverSubmitLoading}
+                    className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                  >
+                    {driverSubmitLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+                    {driverSubmitLoading ? 'Submitting…' : formStep === 1 ? 'Continue →' : 'Submit application'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="px-6 py-8 text-center">
+                <img src="/assets/security-cab-icon.png" alt="" className="h-16 w-16 rounded-2xl mx-auto mb-4 object-cover" />
+                <div className="inline-flex items-center gap-1.5 bg-green-100 text-green-700 text-xs font-extrabold px-3 py-1 rounded-full mb-3">
+                  <CheckCircle2 className="h-4 w-4" /> APPLICATION SUBMITTED
+                </div>
+                <h3 className="text-2xl font-extrabold text-slate-900 mb-1">Thanks, {driverApplicationResult?.fullName || 'Driver'}! 🎉</h3>
+                <p className="text-slate-500 text-sm mb-4">
+                  Your application reference: <strong className="font-mono text-slate-800">{driverApplicationResult?.reference}</strong>
+                </p>
+                <div className="bg-slate-50 rounded-2xl p-4 text-left text-sm text-slate-600 space-y-2 mb-5">
+                  <div className="font-bold text-slate-700 mb-1">What happens next</div>
+                  {driverApplicationResult?.nextSteps?.map((step, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button onClick={closeAllForms} className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition">
+                    Done
+                  </button>
+                  <button
+                    onClick={checkDriverApplicationStatus}
+                    disabled={driverStatusLoading}
+                    className="flex-1 bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                  >
+                    {driverStatusLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {driverStatusLoading ? 'Checking…' : 'Check status'}
+                  </button>
+                </div>
+                {driverAppStatus && (
+                  <p className="mt-4 text-sm font-bold text-slate-700 bg-slate-100 rounded-xl px-4 py-3">
+                    Status: <span className="text-green-700">{driverAppStatus}</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

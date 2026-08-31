@@ -217,3 +217,67 @@ def test_share_ride_returns_track_url_and_notification_preview():
     assert body["trackUrl"].startswith("/track/")
     assert body["notification"]["transport"] == "preview"
     assert "Smart Security AI Cab ride has started" in body["notification"]["message"]
+
+
+# ---------------------------------------------------------------------------
+# Driver application flow
+# ---------------------------------------------------------------------------
+def test_driver_application_creates_reference_and_persists():
+    from main import DRIVER_APPLICATIONS
+    res = client.post("/api/drivers/apply", json={
+        "fullName": "Rohan Driver",
+        "phone": "+91 98765 33333",
+        "email": "rohan@example.com",
+        "city": "Ahmedabad",
+        "vehicleType": "SmartSedan",
+        "licenseNumber": "GJ01-2023-1122334",
+        "experienceYears": 3,
+        "ownVehicle": True,
+        "agreeTerms": True,
+    })
+    assert res.status_code == 200, res.text
+    body = res.json()
+    assert body["application"]["reference"].startswith("DRV-")
+    assert body["application"]["status"] == "PENDING"
+    assert body["nextSteps"]
+    assert any(a["reference"] == body["application"]["reference"] for a in DRIVER_APPLICATIONS)
+
+
+def test_driver_application_rejects_bad_payload():
+    # Pydantic required fields -> 422 when missing entirely
+    res = client.post("/api/drivers/apply", json={"fullName": "", "phone": "123"})
+    assert res.status_code in (400, 422)
+    # Blank-ish values that pass Pydantic but fail business validation -> 400
+    res2 = client.post("/api/drivers/apply", json={
+        "fullName": "   ", "phone": "123", "city": "X",
+        "vehicleType": "SmartMini", "licenseNumber": "ABC12", "agreeTerms": True,
+    })
+    assert res2.status_code == 400
+
+
+def test_driver_application_requires_terms():
+    res = client.post("/api/drivers/apply", json={
+        "fullName": "X", "phone": "+91 98765 44444", "city": "Mumbai",
+        "vehicleType": "SmartMini", "licenseNumber": "MH01-1234567", "agreeTerms": False,
+    })
+    assert res.status_code == 400
+
+
+def test_admin_approves_application_into_fleet():
+    from main import DRIVER_APPLICATIONS, DRIVERS
+    res = client.post("/api/drivers/apply", json={
+        "fullName": "Approved Driver", "phone": "+91 98765 55555", "city": "Pune",
+        "vehicleType": "SmartSUV", "licenseNumber": "MH12-9876543",
+        "agreeTerms": True,
+    })
+    app_id = res.json()["application"]["id"]
+    before = len(DRIVERS)
+    # Admin-only: no key -> 401
+    assert client.post(f"/api/admin/driver-applications/{app_id}/approve").status_code == 401
+    ok = client.post(f"/api/admin/driver-applications/{app_id}/approve",
+                     headers={"X-Admin-Key": ADMIN_KEY})
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["application"]["status"] == "APPROVED"
+    assert len(DRIVERS) == before + 1
+    # Fleet now contains the approved driver
+    assert any(d.get("applicationId") == app_id for d in DRIVERS)
