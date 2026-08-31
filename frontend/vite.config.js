@@ -1,6 +1,9 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 
+// VITE_OWNER_MODE=true (set on the private smart-cab-owner-portal Vercel
+// project) makes the same frontend build render ONLY the Owner Portal —
+// no rider UI, no rider routes. The rider project leaves it unset.
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [react()],
