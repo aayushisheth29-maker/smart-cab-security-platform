@@ -1,6 +1,14 @@
 # smart-cab-security-platform
   AI-powered taxi safety platform with GPS tracking, SOS alerts, route deviation detection, and emergency response features.
 
+## ℹ️ Brand
+
+**Product name: Smart-AI-Cab** — displayed consistently across the app
+(navbar, login, rides, safety center, admin, browser tab & favicon), just like
+Uber/Ola keep their brand everywhere. Internal technical names (API routes,
+`SMARTCAB_*` env vars, `smartcab_*` localStorage keys) stay unchanged so
+existing logins and deployments are never broken.
+
 ## 🚀 Product upgrade (v3)
 
 The app now runs like a real product instead of a demo:

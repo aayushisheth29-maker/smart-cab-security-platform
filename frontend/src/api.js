@@ -1,4 +1,4 @@
-// Single source of truth for the SmartCab backend URL.
+// Single source of truth for the Smart-AI-Cab backend URL.
 //
 // The Java (Spring Boot) backend that used to run at localhost:8080 is
 // retired — the Python FastAPI service is now the ONE backend for the

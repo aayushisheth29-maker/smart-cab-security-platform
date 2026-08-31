@@ -32,7 +32,7 @@ const Login = () => {
       <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 max-w-md w-full">
         <div className="flex items-center justify-center gap-2 mb-6">
           <ShieldCheck className="h-8 w-8 text-green-600" />
-          <h2 className="text-3xl font-extrabold text-slate-900">SmartCab</h2>
+          <h2 className="text-3xl font-extrabold text-slate-900">Smart-AI-Cab</h2>
         </div>
         <h3 className="text-xl font-bold text-center mb-6">Welcome back</h3>
         {error && (
@@ -75,7 +75,7 @@ const Login = () => {
           </button>
         </form>
         <p className="mt-6 text-center text-slate-500 text-sm">
-          New to SmartCab?{' '}
+          New to Smart-AI-Cab?{' '}
           <Link to="/signup" className="text-green-700 font-bold hover:underline">
             Create an account
           </Link>

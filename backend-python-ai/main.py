@@ -1,8 +1,8 @@
 """
-SmartCab Security Platform - Live Python Backend
+Smart-AI-Cab Security Platform - Live Python Backend
 ================================================
 
-Single-file FastAPI service that powers the entire SmartCab rider + track flow.
+Single-file FastAPI service that powers the entire Smart-AI-Cab rider + track flow.
 
 Features
 --------
@@ -797,7 +797,7 @@ seed_samples(force=False)
 # ---------------------------------------------------------------------------
 # FastAPI app + CORS
 # ---------------------------------------------------------------------------
-app = FastAPI(title="SmartCab AI Security Service", version="3.0.0")
+app = FastAPI(title="Smart-AI-Cab Security Service", version="3.1.0")
 
 # CORS is controlled by SMARTCAB_CORS_ORIGINS (comma-separated). It defaults
 # to "*" for local dev / sandbox previews, but production MUST set it to the
@@ -975,10 +975,10 @@ def _preview_sms_message(req: Dict[str, Any]) -> str:
     """Build the exact SMS a trusted contact would receive. Rendered in the
     app as a preview when no SMS provider is configured."""
     return (
-        f"🚕 A SmartCab ride has started.\n"
+        f"🚕 A Smart-AI-Cab ride has started.\n"
         f"{req.get('riderName') or 'Your loved one'}'s ride\n"
         f"Driver: {req.get('driverName') or 'Verified driver'}\n"
-        f"Vehicle: {req.get('carPlate') or 'SmartCab'}\n"
+        f"Vehicle: {req.get('carPlate') or 'Smart-AI-Cab'}\n"
         f"Destination: {req.get('dropoff') or '—'}\n"
         f"Track: {req.get('trackUrl') or ''}\n"
         f"Ride ID: {req.get('rideCode') or '—'}"
@@ -1041,7 +1041,7 @@ def _send_notifications(req: Dict[str, Any]) -> Dict[str, Any]:
 @app.get("/")
 def home():
     return {
-        "message": "SmartCab AI Security Service is Running.",
+        "message": "Smart-AI-Cab Security Service is Running.",
         "version": "2.2.0",
         "database": "connected" if db_enabled else "in-memory",
         "endpoints": [
@@ -1493,7 +1493,7 @@ def _calc_surge(when: datetime) -> tuple[float, str]:
 
 
 def _estimate_fare(distance_km: float, car_type: str, when: datetime) -> Dict[str, Any]:
-    """Single source of truth for SmartCab pricing. Returns a full breakdown
+    """Single source of truth for Smart-AI-Cab pricing. Returns a full breakdown
     so the frontend can show a transparent receipt."""
     cfg = PRICING_TABLE.get(car_type, PRICING_TABLE["SmartMini"])
     surge, reason = _calc_surge(when)
@@ -1743,7 +1743,7 @@ def create_share_link(payload: ShareLinkCreate):
         "driverName": payload.driverName or "Verified Driver",
         "driverLicense": payload.driverLicense or "",
         "carPlate": payload.carPlate or "",
-        "carModel": payload.carModel or "SmartCab",
+        "carModel": payload.carModel or "Smart-AI-Cab",
         "pickup": payload.pickup or "Pickup",
         "dropoff": payload.dropoff or "Dropoff",
         "currentLocation": payload.currentLocation or {"lat": 23.0225, "lng": 72.5714},
@@ -1851,7 +1851,7 @@ def ping_link(link_id: str, payload: PingUpdate):
             "driverName": "Verified Driver",
             "driverLicense": "",
             "carPlate": "",
-            "carModel": "SmartCab",
+            "carModel": "Smart-AI-Cab",
             "pickup": "Pickup",
             "dropoff": "Dropoff",
             "currentLocation": {"lat": 23.0225, "lng": 72.5714},
@@ -2016,7 +2016,7 @@ def share_ride(payload: ShareRideRequest, request: Request):
         "driverName": payload.driverName or "Verified Driver",
         "driverLicense": "",
         "carPlate": payload.carPlate or "",
-        "carModel": payload.carModel or "SmartCab",
+        "carModel": payload.carModel or "Smart-AI-Cab",
         "pickup": payload.pickup or "Pickup",
         "dropoff": payload.dropoff or "Dropoff",
         "currentLocation": {"lat": payload.lat or 23.0225, "lng": payload.lng or 72.5714},

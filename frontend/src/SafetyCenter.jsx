@@ -137,7 +137,7 @@ export default function SafetyCenter() {
           riderName: user?.name || ride?.riderName || 'Rider',
           driverName: ride?.driver?.name || 'Verified Driver',
           carPlate: ride?.driver?.plate || '',
-          carModel: ride?.driver?.carModel || 'SmartCab',
+          carModel: ride?.driver?.carModel || 'Smart-AI-Cab',
           pickup: ride?.pickup || '',
           dropoff: ride?.dropoff || '',
           lat: ride?.lat ?? undefined,
@@ -209,7 +209,7 @@ export default function SafetyCenter() {
             <ArrowLeft className="h-5 w-5 mr-2" />
             <span className="flex items-center gap-2">
               <ShieldCheck className="h-6 w-6 text-green-400" />
-              <span className="font-extrabold text-xl">SmartCab</span>
+              <span className="font-extrabold text-xl">Smart-AI-Cab</span>
             </span>
           </Link>
           <nav className="flex items-center gap-4 text-sm font-semibold">

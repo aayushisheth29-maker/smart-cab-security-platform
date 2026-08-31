@@ -15,7 +15,7 @@ const Help = () => {
           </Link>
           <div className="flex items-center space-x-2">
             <ShieldCheck className="h-6 w-6 text-green-400" />
-            <span className="font-bold">SmartCab</span>
+            <span className="font-bold">Smart-AI-Cab</span>
           </div>
         </div>
       </div>
@@ -56,7 +56,7 @@ const Help = () => {
           
           {/* Card 3: EMAIL (Opens Email App) */}
           <a 
-            href="mailto:support@smartcab.com?subject=SmartCab%20Support%20Request"
+            href="mailto:support@smartcab.com?subject=Smart-AI-Cab%20Support%20Request"
             className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-lg hover:scale-105 transition transform cursor-pointer w-full"
           >
             <div className="bg-purple-50 p-4 rounded-full mb-4">

@@ -78,7 +78,7 @@ function RideCard({ ride, onTrack }) {
               <div className="text-sm">
                 <div className="font-semibold text-slate-800">{driver.name}</div>
                 <div className="text-xs text-slate-500 flex items-center gap-1">
-                  <Star className="h-3 w-3 text-amber-500 fill-amber-500" /> {driver.rating || '—'} · {driver.carModel || 'SmartCab'} · {driver.plate || ''}
+                  <Star className="h-3 w-3 text-amber-500 fill-amber-500" /> {driver.rating || '—'} · {driver.carModel || 'Smart-AI-Cab'} · {driver.plate || ''}
                 </div>
               </div>
             </div>
@@ -205,7 +205,7 @@ export default function MyRides() {
           riderName: user?.name || ride.riderName || 'Rider',
           driverName: ride.driver?.name || 'Verified Driver',
           carPlate: ride.driver?.plate || '',
-          carModel: ride.driver?.carModel || 'SmartCab',
+          carModel: ride.driver?.carModel || 'Smart-AI-Cab',
           pickup: ride.pickupLocation || '',
           dropoff: ride.dropoffLocation || '',
           contacts: [],
@@ -235,7 +235,7 @@ export default function MyRides() {
             <ArrowLeft className="h-5 w-5 mr-2" />
             <span className="flex items-center gap-2">
               <ShieldCheck className="h-6 w-6 text-green-400" />
-              <span className="font-extrabold text-xl">SmartCab</span>
+              <span className="font-extrabold text-xl">Smart-AI-Cab</span>
             </span>
           </Link>
           <nav className="flex items-center gap-4 text-sm font-semibold">

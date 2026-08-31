@@ -151,7 +151,7 @@ export default function AdminDashboard() {
               <ShieldCheck className="h-8 w-8 text-green-400" />
             </div>
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900">SmartCab Admin</h1>
+              <h1 className="text-2xl font-extrabold text-slate-900">Smart-AI-Cab Admin</h1>
               <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Safety Dashboard</p>
             </div>
           </div>
