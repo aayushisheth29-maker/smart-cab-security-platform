@@ -598,6 +598,9 @@ DRIVER_APPLICATIONS: List[Dict[str, Any]] = []
 _DRIVER_APP_COUNTER = {"seq": 0}
 DRIVER_ALERTS_FILE = _json_path("driver_alerts.json")
 DRIVER_ALERTS: List[Dict[str, Any]] = []
+# Rider → company support/help requests (report a driver, questions, lost items).
+SUPPORT_REQUESTS_FILE = _json_path("support_requests.json")
+SUPPORT_REQUESTS: List[Dict[str, Any]] = []
 # Vault for driver-uploaded verification documents (licence / vehicle / police).
 DRIVER_DOCS_DIR = os.environ.get("DRIVER_DOCS_DIR") or (
     os.path.join(PERSIST_DIR, "driver_docs") if PERSIST_DIR else os.path.abspath("driver_docs")
@@ -670,6 +673,12 @@ def _restore_core_data() -> None:
         DRIVER_ALERTS.extend(loaded_alerts)
         log.info("💾 Restored %d driver protection alert(s) from disk", len(DRIVER_ALERTS))
 
+    loaded_support = _load_list_from_disk(SUPPORT_REQUESTS_FILE)
+    if loaded_support:
+        SUPPORT_REQUESTS.clear()
+        SUPPORT_REQUESTS.extend(loaded_support)
+        log.info("💾 Restored %d support request(s) from disk", len(SUPPORT_REQUESTS))
+
 
 def _persist_core_data(which: str = "all") -> None:
     if which in ("all", "users"):
@@ -682,6 +691,8 @@ def _persist_core_data(which: str = "all") -> None:
         _save_list_to_disk(DRIVER_APPLICATIONS_FILE, DRIVER_APPLICATIONS)
     if which in ("all", "driver_alerts"):
         _save_list_to_disk(DRIVER_ALERTS_FILE, DRIVER_ALERTS)
+    if which in ("all", "support_requests"):
+        _save_list_to_disk(SUPPORT_REQUESTS_FILE, SUPPORT_REQUESTS)
 
 
 def _next_driver_application_reference() -> str:
@@ -2966,3 +2977,349 @@ def admin_resolve_driver_alert(alert_id: int, payload: DriverAlertResolve):
     _persist_core_data("driver_alerts")
     log.warning("🛡️ Driver alert #%d resolved as %s", alert_id, outcome)
     return {"status": "ok", "alert": alert}
+
+
+# ============================================================================
+# 🤖 AI ASSISTANT + 💬 SUPPORT / HELP REQUESTS
+# The rider-facing help widget: report a driver, ask questions, email support.
+# The assistant is a multilingual scripted knowledge assistant so it works
+# offline/without any external AI API key — all answers are local and safe.
+# ============================================================================
+
+_ASSISTANT_LANGS = ("en", "ru", "ja", "zh", "fr", "de")
+
+# Keywords per intent — matched case-insensitively against the rider's message.
+_ASSISTANT_KEYWORDS = {
+    "greeting": {
+        "en": ["hi", "hello", "hey", "namaste", "good morning", "good evening"],
+        "ru": ["привет", "здравствуйте", "добрый день", "добрый вечер", "хай"],
+        "ja": ["こんにちは", "こんばんは", "やあ", "もしもし"],
+        "zh": ["你好", "您好", "嗨", "早上好", "晚上好"],
+        "fr": ["bonjour", "salut", "bonsoir", "coucou"],
+        "de": ["hallo", "hi", "guten tag", "guten abend", "servus"],
+    },
+    "book": {
+        "en": ["book", "ride now", "get a cab", "book a", "reserve", "schedule"],
+        "ru": ["заказать", "поездка", "вызвать", "резерв", "записать"],
+        "ja": ["予約", "配車", "乗車", "タクシーを", "ライド"],
+        "zh": ["预约", "叫车", "打车", "预订", "乘车"],
+        "fr": ["réserver", "commander", "course", "taxi", "réserver une"],
+        "de": ["buchen", "buche", "fahren", "taxi", "fahr mich", "reservieren"],
+    },
+    "fare": {
+        "en": ["price", "fare", "cost", "charge", "how much"],
+        "ru": ["цена", "стоимость", "сколько стоит", "тариф"],
+        "ja": ["料金", "値段", "いくら", "価格"],
+        "zh": ["价格", "多少钱", "费用", "车费"],
+        "fr": ["prix", "tarif", "combien ça coûte", "coût"],
+        "de": ["preis", "kosten", "wie viel", "tarif"],
+    },
+    "sos": {
+        "en": ["sos", "emergency", "danger", "unsafe", "help me now", "ambulance", "police", "call 112"],
+        "ru": ["sos", "экстренно", "опасность", "помогите", "чрезвычай", "скорая", "полиция"],
+        "ja": ["sos", "緊急", "危ない", "助けて", "危険", "警察", "救急"],
+        "zh": ["紧急", "sos", "危险", "救命", "不安全", "警察", "急救"],
+        "fr": ["sos", "urgence", "danger", "aide", "aidez-moi", "police", "ambulance"],
+        "de": ["sos", "notfall", "gefahr", "hilfe", "gefährlich", "polizei", "krankenwagen"],
+    },
+    "cancel": {
+        "en": ["cancel", "refund", "cancel my ride"],
+        "ru": ["отменить", "отмена", "возврат", "отменить поездку"],
+        "ja": ["キャンセル", "取消", "返金", "キャンセルしたい"],
+        "zh": ["取消", "退款", "取消订单"],
+        "fr": ["annuler", "remboursement", "annulation"],
+        "de": ["stornieren", "stornierung", "erstattung", "abbrechen"],
+    },
+    "report_driver": {
+        "en": ["report driver", "complaint about driver", "bad driver", "driver was rude", "overcharged"],
+        "ru": ["пожаловаться на водителя", "жалоба на водителя", "плохой водитель", "водитель"],
+        "ja": ["運転手を", "ドライバーを", "苦情", "通報"],
+        "zh": ["投诉司机", "举报司机", "司机不好", "司机态度"],
+        "fr": ["signaler le chauffeur", "plainte contre le chauffeur", "chauffeur impoli", "chauffeur"],
+        "de": ["fahrer melden", "beschwerde über fahrer", "fahrer unhöflich", "fahrer"],
+    },
+    "lost_item": {
+        "en": ["lost item", "forgot my", "left my", "lost my phone"],
+        "ru": ["забыл", "потерял", "оставил вещь", "потерянная вещь"],
+        "ja": ["忘れ物", "なくした", "置き忘れ"],
+        "zh": ["遗失", "忘东西", "丢了", "落在车上"],
+        "fr": ["objet perdu", "oublié", "perdu", "j'ai laissé"],
+        "de": ["verloren", "vergessen", "gegenstand vergessen", "handy vergessen"],
+    },
+    "driver_app": {
+        "en": ["become a driver", "apply to drive", "driver application", "start driving", "job as driver"],
+        "ru": ["стать водителем", "подать заявку", "работа водителем", "водителем"],
+        "ja": ["ドライバーに", "配車アプリ", "運転手になる", "応募"],
+        "zh": ["成为司机", "司机申请", "报名开车", "当司机"],
+        "fr": ["devenir chauffeur", "candidature chauffeur", "conduire pour", "travailler chauffeur"],
+        "de": ["fahrer werden", "fahrer bewerbung", "als fahrer", "fahren für"],
+    },
+    "safety": {
+        "en": ["safe", "safety", "track", "live location", "route deviation", "gps"],
+        "ru": ["безопасность", "безопасно", "отслеживание", "маршрут", "gps"],
+        "ja": ["安全", "安心", "位置情報", "ルート", "追跡"],
+        "zh": ["安全", "追踪", "路线", "定位", "导航"],
+        "fr": ["sécurité", "sûr", "suivi", "itinéraire", "gps"],
+        "de": ["sicherheit", "sicher", "verfolgung", "route", "standort"],
+    },
+    "language": {
+        "en": ["language", "translate", "russian", "japanese", "chinese", "french", "german"],
+        "ru": ["язык", "перевод", "русский"],
+        "ja": ["言語", "翻訳", "日本語"],
+        "zh": ["语言", "翻译", "中文"],
+        "fr": ["langue", "traduire", "français"],
+        "de": ["sprache", "übersetzen", "deutsch"],
+    },
+    "contact": {
+        "en": ["contact", "email", "support", "human", "agent", "call company", "talk to"],
+        "ru": ["контакт", "почта", "поддержка", "человек", "оператор"],
+        "ja": ["連絡", "メール", "サポート", "担当者", "相談"],
+        "zh": ["联系", "邮箱", "客服", "人工", "邮件"],
+        "fr": ["contact", "email", "support", "agent", "joindre"],
+        "de": ["kontakt", "email", "support", "mitarbeiter", "erreichen"],
+    },
+    "thanks": {
+        "en": ["thanks", "thank you", "great", "awesome", "perfect"],
+        "ru": ["спасибо", "благодарю", "отлично", "супер"],
+        "ja": ["ありがとう", "助かった", "最高"],
+        "zh": ["谢谢", "感谢", "太好了", "很棒"],
+        "fr": ["merci", "génial", "parfait", "super"],
+        "de": ["danke", "super", "perfekt", "toll"],
+    },
+}
+
+_ASSISTANT_REPLIES = {
+    "greeting": {
+        "en": "Hello! 👋 I am the Smart Security AI Cab assistant. I can help you book a ride, check fares, use SOS safely, report a driver, or reach support. What do you need?",
+        "ru": "Здравствуйте! 👋 Я помощник Smart Security AI Cab. Помогу заказать поездку, узнать стоимость, разобраться с SOS, пожаловаться на водителя или связаться с поддержкой. Что вам нужно?",
+        "ja": "こんにちは！👋 Smart Security AI Cabのアシスタントです。配車、料金、SOSの使い方、ドライバーの通報、サポートへの連絡をお手伝いします。何が必要ですか？",
+        "zh": "您好！👋 我是Smart Security AI Cab助手。我可以帮您叫车、查询费用、了解SOS、投诉司机或联系客服。请问需要什么帮助？",
+        "fr": "Bonjour ! 👋 Je suis l'assistant Smart Security AI Cab. Je peux vous aider à réserver une course, vérifier un tarif, utiliser le SOS, signaler un chauffeur ou contacter le support. Que vous faut-il ?",
+        "de": "Hallo! 👋 Ich bin der Assistent von Smart Security AI Cab. Ich helfe beim Buchen, bei Preisen, SOS, Fahrer-Meldungen oder Support-Kontakt. Was brauchst du?",
+    },
+    "book": {
+        "en": "To book: open the Ride tab, set your pickup and dropoff, tap Search, choose SmartBike/SmartMini/SmartSedan/SmartSUV and confirm. Drivers are safety-verified before they are matched. 🚕",
+        "ru": "Чтобы заказать: откройте вкладку «Поездка», укажите откуда и куда, нажмите «Найти», выберите SmartBike/SmartMini/SmartSedan/SmartSUV и подтвердите. Водители проверены службой безопасности. 🚕",
+        "ja": "ご予約方法：「Ride」タブを開き、乗車地と目的地を入力して「検索」を押し、SmartBike/SmartMini/SmartSedan/SmartSUVを選んで確定します。ドライバーは事前に安全審査済みです。🚕",
+        "zh": "预约方法：打开“乘车”标签，输入上车和下车地点，点击“搜索”，选择SmartBike/SmartMini/SmartSedan/SmartSUV并确认。司机都经过安全审核。🚕",
+        "fr": "Pour réserver : ouvrez l'onglet Course, choisissez départ et arrivée, touchez Rechercher, choisissez SmartBike/SmartMini/SmartSedan/SmartSUV et confirmez. Les chauffeurs sont vérifiés avant d'être assignés. 🚕",
+        "de": "So buchst du: Öffne den Ride-Tab, wähle Abhol- und Zielort, tippe auf Suchen, wähle SmartBike/SmartMini/SmartSedan/SmartSUV und bestätige. Fahrer sind vor der Zuordnung geprüft. 🚕",
+    },
+    "fare": {
+        "en": "Fares are shown on the ride cards before you book (base fare + per-km + surge multiplier). The price you see is the price you pay — no hidden charges. 💰",
+        "ru": "Стоимость видна на карточках поездок до бронирования (базовая цена + за км + коэффициент пиковой нагрузки). Цена на экране — цена, которую вы платите, без скрытых платежей. 💰",
+        "ja": "料金は予約前に乗車カードに表示されます（基本料金＋距離料金＋サーチャージ）。表示された金額がお支払い額で、追加料金はありません。💰",
+        "zh": "费用会在下单前显示在车型卡片上（起步价＋每公里＋高峰系数）。所见即所付，没有隐藏费用。💰",
+        "fr": "Les tarifs sont affichés sur les cartes de course avant réservation (prix de base + km + coefficient de pointe). Le prix affiché est le prix payé — sans frais cachés. 💰",
+        "de": "Preise stehen vor der Buchung auf den Ride-Karten (Grundpreis + pro km + Stoßzeiten-Faktor). Der angezeigte Preis ist der Preis, den du zahlst — keine versteckten Kosten. 💰",
+    },
+    "sos": {
+        "en": "The SOS button is on the trip monitor while you ride. It alerts the on-duty security team in the app; it is not a phone call to police/ambulance. In a real emergency always call your local emergency number (112 in India) first. 🚨",
+        "ru": "Кнопка SOS находится на экране мониторинга поездки. Она отправляет сигнал дежурной службе безопасности в приложении; это не звонок в полицию/скорую. При реальной опасности сначала звоните в местную службу спасения (112 в Индии). 🚨",
+        "ja": "SOSボタンは乗車中のモニター画面にあります。アプリ内の当直警備チームへ通知しますが、警察・救急への電話ではありません。本当の緊急時はまず現地の緊急番号（インドは112）にお電話ください。🚨",
+        "zh": "SOS按钮在行程监控页面。它会向应用内的值守安全团队发送警报，但不是拨打警察/急救电话。遇到真正紧急情况，请先拨打当地紧急号码（印度为112）。🚨",
+        "fr": "Le bouton SOS est sur l'écran de suivi pendant la course. Il alerte l'équipe de sécurité de garde dans l'app ; ce n'est pas un appel à la police/ambulance. En vraie urgence, appelez d'abord votre numéro local (112 en Inde). 🚨",
+        "de": "Der SOS-Button ist im Fahrt-Monitor. Er alarmiert die Sicherheitscrew in der App, ist aber kein Anruf bei Polizei/Rettungsdienst. Bei echter Gefahr ruf zuerst die örtliche Notrufnummer an (in Indien 112). 🚨",
+    },
+    "cancel": {
+        "en": "You can cancel from the trip screen (Cancel Ride) before the ride starts. Cancellation is free before the driver arrives; refunds for prepaid trips are processed after review. Contact support at support@smartsecurityaicab.com with your Ride ID for help.",
+        "ru": "Отменить можно на экране поездки (кнопка «Отменить») до её начала. До прибытия водителя отмена бесплатна; возврат предоплаченных поездок обрабатывается после проверки. Напишите в support@smartsecurityaicab.com с номером поездки.",
+        "ja": "乗車開始前なら、トリップ画面の「キャンセル」から変更できます。ドライバー到着前は無料です。事前決済の返金は確認後に処理されます。Ride IDを添えてsupport@smartsecurityaicab.comへご連絡ください。",
+        "zh": "行程开始前可在行程页面点击“取消行程”。司机到达前取消免费；预付订单退款将在审核后处理。请附上行程编号联系support@smartsecurityaicab.com。",
+        "fr": "Vous pouvez annuler depuis l'écran de course (Annuler) avant le départ. L'annulation est gratuite avant l'arrivée du chauffeur ; les remboursements sont traités après vérification. Écrivez à support@smartsecurityaicab.com avec votre ID de course.",
+        "de": "Du kannst vor Fahrtbeginn im Fahrt-Bildschirm abbrechen. Vor Ankunft des Fahrers ist das kostenlos; Erstattungen werden nach Prüfung bearbeitet. Schreib mit deiner Ride-ID an support@smartsecurityaicab.com.",
+    },
+    "report_driver": {
+        "en": "I am sorry to hear that. Tap Help → Report a driver, choose a category, add details and send — the report goes straight to our team with the ride details. You can also email support@smartsecurityaicab.com. Every report is reviewed. 🛡️",
+        "ru": "Мне жаль это слышать. Нажмите «Помощь» → «Пожаловаться на водителя», выберите категорию, опишите ситуацию и отправьте — жалоба сразу попадёт к нашей команде вместе с данными поездки. Также можно написать на support@smartsecurityaicab.com. Каждая жалоба проверяется. 🛡️",
+        "ja": "申し訳ありません。「ヘルプ」→「ドライバーを通報」からカテゴリを選び、詳細を入力して送信してください。乗車情報と一緒に担当チームへ届きます。support@smartsecurityaicab.comへのメールも可能です。すべて確認されます。🛡️",
+        "zh": "很抱歉给您带来不便。请点击“帮助”→“投诉司机”，选择类别并填写详情提交，报告会连同行程信息直接发送给团队。也可以发送邮件至support@smartsecurityaicab.com。每份报告都会得到处理。🛡️",
+        "fr": "Je suis désolé. Touchez Aide → Signaler un chauffeur, choisissez une catégorie, décrivez et envoyez — le signalement arrive à notre équipe avec les détails de la course. Vous pouvez aussi écrire à support@smartsecurityaicab.com. Chaque signalement est examiné. 🛡️",
+        "de": "Das tut mir leid. Tippe auf Hilfe → Fahrer melden, wähle eine Kategorie, beschreibe den Vorfall und sende ab — die Meldung geht mit den Fahrtdetails an unser Team. Auch per E-Mail an support@smartsecurityaicab.com. Jede Meldung wird geprüft. 🛡️",
+    },
+    "lost_item": {
+        "en": "Tap Help → Report, choose “Lost item”, describe what you left and where. If your ride ID is known, add it — our team can contact the driver for you without sharing your number. 📦",
+        "ru": "Нажмите «Помощь» → «Отчёт», выберите «Забытая вещь», опишите, что и где вы оставили. Если знаете номер поездки, укажите его — команда свяжется с водителем, не раскрывая ваш номер. 📦",
+        "ja": "「ヘルプ」→「報告」で「忘れ物」を選び、置き忘れた物と場所を入力してください。Ride IDが分かれば記入すると、チームがあなたの番号を伝えずにドライバーへ連絡します。📦",
+        "zh": "请点击“帮助”→“报告”，选择“遗失物品”，描述遗忘的物品和地点。若知道行程编号请填写，团队会代您联系司机而不透露您的号码。📦",
+        "fr": "Touchez Aide → Signalement, choisissez « Objet perdu », décrivez ce que vous avez laissé et où. Indiquez l'ID de course si vous l'avez — notre équipe contacte le chauffeur sans partager votre numéro. 📦",
+        "de": "Tippe auf Hilfe → Melden, wähle „Gegenstand vergessen“, beschreibe was und wo. Mit deiner Ride-ID kann unser Team den Fahrer kontaktieren, ohne deine Nummer weiterzugeben. 📦",
+    },
+    "driver_app": {
+        "en": "Great! Tap Drive → Apply to drive. You'll declare your criminal record, add your police verification number (optional), upload licence/vehicle/police documents, and after our background check is CLEARED you join the verified fleet. 🚗",
+        "ru": "Отлично! Нажмите «Водить» → «Подать заявку». Укажите декларацию об отсутствии судимости, номер полицейской проверки (необязательно), загрузите документы (права, авто, справку), и после проверки службой безопасности вы попадёте в проверенный парк. 🚗",
+        "ja": "素晴らしい！「Drive」→「Apply to drive」からお申し込みください。犯罪歴の申告、警察確認番号（任意）、免許証・車両・警察証明書をアップロードし、背景審査がCLEAREDになると認証済みドライバーとして登録されます。🚗",
+        "zh": "很好！点击“开车”→“申请成为司机”。需申报犯罪记录、填写警方核验号（可选）、上传驾照/车辆/警方证明，背景审查通过（CLEARED）后即可加入认证车队。🚗",
+        "fr": "Excellent ! Touchez Conduire → Devenir chauffeur. Déclarez votre casier judiciaire, ajoutez votre numéro de vérification policière (optionnel), téléversez permis/véhicule/certificat policier ; après vérification CLEARED, vous rejoignez la flotte vérifiée. 🚗",
+        "de": "Super! Tippe auf Drive → Als Fahrer bewerben. Erkläre dein Führungszeugnis, gib die Polizei-Prüfnummer an (optional), lade Führerschein/Fahrzeug/Polizeizeugnis hoch — nach CLEARED-Background-Check gehörst du zum geprüften Fuhrpark. 🚗",
+    },
+    "safety": {
+        "en": "Every ride has verified drivers, live trip monitoring, route-deviation alerts, SOS, Live Guard sharing and the Driver Protection panel. The AI flags unusual behaviour — it never claims danger on its own. 🛡️",
+        "ru": "В каждой поездке: проверенные водители, мониторинг в реальном времени, предупреждения об отклонении от маршрута, SOS, Live Guard и панель защиты водителя. ИИ лишь помечает необычное поведение и сам не заявляет об опасности. 🛡️",
+        "ja": "すべての乗車で、審査済みドライバー、リアルタイム監視、ルート逸脱アラート、SOS、Live Guard共有、ドライバー保護パネルが利用できます。AIは異常な挙動を「フラグ」するだけで、勝手に危険と断定しません。🛡️",
+        "zh": "每次行程都有认证司机、实时行程监控、路线偏离提醒、SOS、Live Guard分享和司机保护面板。AI仅标记异常行为，不会自行判定危险。🛡️",
+        "fr": "Chaque course : chauffeurs vérifiés, suivi en temps réel, alertes de déviation, SOS, partage Live Guard et panneau de protection du chauffeur. L'IA signale les comportements inhabituels sans jamais affirmer un danger. 🛡️",
+        "de": "Jede Fahrt: geprüfte Fahrer, Live-Monitoring, Routenabweichungs-Warnungen, SOS, Live-Guard-Teilen und Fahrer-Schutz. Die KI markiert nur ungewöhnliches Verhalten, sie behauptet nie von sich aus Gefahr. 🛡️",
+    },
+    "language": {
+        "en": "Tap the 🌐 globe in the menu (or the language list in Help) to switch to Русский, 日本語, 中文, Français, Deutsch, हिन्दी, ગુજરાતી and more. The whole site translates instantly.",
+        "ru": "Нажмите на глобус 🌐 в меню (или список языков в «Помощи»), чтобы переключиться на русский, 日本語, 中文, Français, Deutsch, हिन्दी, ગુજરાતી и другие. Весь сайт переводится мгновенно.",
+        "ja": "メニューの🌐地球アイコン（またはヘルプの言語一覧）をタップすると、日本語、Русский, 中文, Français, Deutsch, हिन्दी, ગુજરાતીなどに切り替えられます。サイト全体がすぐに翻訳されます。",
+        "zh": "点击菜单中的🌐地球图标（或帮助中的语言列表），即可切换为中文、日本語、Русский、Français、Deutsch、हिन्दी、ગુજરાતી等。全站即时翻译。",
+        "fr": "Touchez le globe 🌐 du menu (ou la liste des langues dans Aide) pour passer en français, Русский, 日本語, 中文, Deutsch, हिन्दी, ગુજરાતી… Le site entier se traduit instantanément.",
+        "de": "Tippe auf das 🌐-Globus im Menü (oder die Sprachliste in Hilfe), um auf Deutsch, Русский, 日本語, 中文, Français, हिन्दी, ગુજરાતी umzuschalten. Die ganze Seite wird sofort übersetzt.",
+    },
+    "contact": {
+        "en": "You can reach us at support@smartsecurityaicab.com — or tap Help in the app to send a report/request in a few taps. Our team reviews every message (usually within 24–48 hours). 🤝",
+        "ru": "Напишите нам на support@smartsecurityaicab.com или нажмите «Помощь» в приложении — заявка отправится в несколько касаний. Наша команда проверяет каждое сообщение (обычно в течение 24–48 часов). 🤝",
+        "ja": "support@smartsecurityaicab.comへご連絡いただくか、アプリの「ヘルプ」から数タップで報告・お問い合わせを送信できます。すべてのメッセージを確認しています（通常24〜48時間以内）。🤝",
+        "zh": "可通过support@smartsecurityaicab.com联系我们，或点击应用内的“帮助”几步完成报告/咨询。每一条信息我们都会处理（通常在24–48小时内）。🤝",
+        "fr": "Écrivez à support@smartsecurityaicab.com ou touchez Aide dans l'app pour envoyer un signalement en quelques touches. Notre équipe examine chaque message (généralement sous 24–48 h). 🤝",
+        "de": "Erreichst uns unter support@smartsecurityaicab.com — oder tippe im App auf Hilfe und sende eine Meldung in wenigen Schritten. Jede Nachricht wird geprüft (meist innerhalb von 24–48 Stunden). 🤝",
+    },
+    "thanks": {
+        "en": "You're welcome! 😊 Anything else I can help you with — booking, safety, report, or support?",
+        "ru": "Пожалуйста! 😊 Могу ещё чем-то помочь — бронирование, безопасность, жалоба или поддержка?",
+        "ja": "どういたしまして！😊 他に予約、安全、通報、サポートなどでお手伝いできることはありますか？",
+        "zh": "不客气！😊 还有什么可以帮您吗——预订、安全、投诉或支持？",
+        "fr": "Avec plaisir ! 😊 Puis-je vous aider sur autre chose — réservation, sécurité, signalement ou support ?",
+        "de": "Gern geschehen! 😊 Kann ich noch etwas für dich tun — Buchen, Sicherheit, Meldung oder Support?",
+    },
+}
+
+_ASSISTANT_FALLBACK = {
+    "en": "I can help with booking rides, fares, SOS, safety, reporting a driver, lost items, becoming a driver, languages and contacting support. Try one of the quick questions below, or tap Help → Report to reach our team directly. 😊",
+    "ru": "Я помогаю с заказом поездок, стоимостью, SOS, безопасностью, жалобами на водителя, забытыми вещами, работой водителем, языками и связью с поддержкой. Попробуйте быстрый вопрос ниже или «Помощь» → «Отчёт», чтобы напрямую связаться с командой. 😊",
+    "ja": "配車、料金、SOS、安全、ドライバー通報、忘れ物、ドライバー応募、言語、サポート連絡をお手伝いできます。下のクイック質問を試すか、「ヘルプ」→「報告」から直接ご連絡ください。😊",
+    "zh": "我可以帮助：叫车、费用、SOS、安全、投诉司机、遗失物品、成为司机、语言和联系客服。请尝试下方快捷问题，或点击“帮助”→“报告”直接联系团队。😊",
+    "fr": "Je peux aider pour : réserver, tarifs, SOS, sécurité, signaler un chauffeur, objets perdus, devenir chauffeur, langues et contacter le support. Essayez une question rapide ci-dessous ou Aide → Signalement. 😊",
+    "de": "Ich helfe bei: Buchen, Preisen, SOS, Sicherheit, Fahrer-Meldung, verlorenen Sachen, Fahrer werden, Sprachen und Support. Probier eine Schnellfrage unten oder Hilfe → Melden. 😊",
+}
+
+_ASSISTANT_SUGGESTIONS = {
+    "en": ["How do I book a ride?", "Is SOS real?", "I want to report a driver", "Become a driver", "Contact support"],
+    "ru": ["Как заказать поездку?", "SOS работает?", "Хочу пожаловаться на водителя", "Стать водителем", "Связаться с поддержкой"],
+    "ja": ["予約方法を教えて", "SOSは本当に機能する？", "ドライバーを通報したい", "ドライバーになる", "サポートに連絡する"],
+    "zh": ["如何预约行程？", "SOS是真的吗？", "我想投诉司机", "成为司机", "联系客服"],
+    "fr": ["Comment réserver une course ?", "Le SOS est-il réel ?", "Je veux signaler un chauffeur", "Devenir chauffeur", "Contacter le support"],
+    "de": ["Wie buche ich eine Fahrt?", "Ist SOS echt?", "Ich will einen Fahrer melden", "Fahrer werden", "Support kontaktieren"],
+}
+
+
+def _normalize_assistant_lang(language: Optional[str]) -> str:
+    code = (language or "en").lower().replace("_", "-")
+    if code in ("zh-cn", "zh-sg", "zh-hans", "zh-tw", "zh-hant"):
+        return "zh"
+    if code.startswith("zh"):
+        return "zh"
+    if code in _ASSISTANT_LANGS:
+        return code
+    return "en"
+
+
+def _assistant_l10n(kb: Dict[str, Any], lang: str, intent: str):
+    bucket = kb.get(intent, {})
+    if isinstance(bucket, dict):
+        return bucket.get(lang) or bucket.get("en") or ""
+    return bucket
+
+
+class AssistantQuery(BaseModel):
+    message: str
+    language: Optional[str] = "en"
+
+
+@app.post("/api/assistant")
+def ai_assistant(payload: AssistantQuery, request: Request):
+    """Rider-facing AI help assistant. Fully local & scripted (no external
+    AI/API key): answers common questions in 6 languages and routes safety
+    issues to the support/report flow. Never claims things the app can't do."""
+    if rate_limited(f"assistant:{client_key(request)}", limit=20, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many questions. One moment, please.")
+    text = (payload.message or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Please type a question.")
+    lang = _normalize_assistant_lang(payload.language)
+    lower = text.lower()
+    best_intent, best_score = "fallback", 0
+    for intent, keywords in _ASSISTANT_KEYWORDS.items():
+        words = keywords.get(lang, []) + keywords.get("en", [])
+        score = sum(1 for kw in words if kw and kw.lower() in lower)
+        # Boost when a non-English keyword matched — the user typed that language.
+        if score and any(kw and kw.lower() in lower for kw in keywords.get(lang, [])):
+            score += 1
+        if score > best_score:
+            best_intent, best_score = intent, score
+    if best_intent == "fallback":
+        reply = _ASSISTANT_FALLBACK[lang]
+    else:
+        reply = _assistant_l10n(_ASSISTANT_REPLIES, lang, best_intent)
+    return {
+        "intent": best_intent,
+        "reply": reply,
+        "language": lang,
+        "suggestions": _ASSISTANT_SUGGESTIONS[lang],
+    }
+
+
+class SupportRequestCreate(BaseModel):
+    name: Optional[str] = ""
+    email: Optional[str] = ""
+    category: str  # report_driver | lost_item | question | other
+    rideCode: Optional[str] = ""
+    message: str
+    language: Optional[str] = "en"
+
+
+class SupportRequestResolve(BaseModel):
+    note: Optional[str] = ""
+
+
+@app.post("/api/support/requests")
+def create_support_request(payload: SupportRequestCreate, request: Request):
+    """Rider help/report form → stored and reviewed by the company team.
+    Categories include reporting a driver; every request keeps ride context."""
+    if rate_limited(f"support:{client_key(request)}", limit=6, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait a moment.")
+    message = (payload.message or "").strip()
+    if len(message) < 5:
+        raise HTTPException(status_code=400, detail="Please add a short description so we can help you.")
+    category = (payload.category or "").strip()
+    req = {
+        "id": max([int(r.get("id", 0)) for r in SUPPORT_REQUESTS] or [0]) + 1,
+        "reference": f"SRV-{datetime.now(timezone.utc).year}-{max([int(r.get('id', 0)) for r in SUPPORT_REQUESTS] or [0]) + 1:06d}",
+        "name": (payload.name or "").strip(),
+        "email": (payload.email or "").strip(),
+        "category": category or "other",
+        "rideCode": (payload.rideCode or "").strip(),
+        "message": message,
+        "language": _normalize_assistant_lang(payload.language),
+        "status": "OPEN",
+        "createdAt": _now_iso(),
+    }
+    SUPPORT_REQUESTS.append(req)
+    _persist_core_data("support_requests")
+    log.info("💬 Support request %s (%s) from %s", req["reference"], category, req["name"] or req["email"] or "guest")
+    return {
+        "status": "ok",
+        "request": req,
+        "note": "Our team reviews every request (usually within 24–48 hours).",
+    }
+
+
+@app.get("/api/admin/support-requests", dependencies=[Depends(require_admin)])
+def admin_support_requests():
+    return sorted(SUPPORT_REQUESTS, key=lambda r: r.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/support-requests/{req_id}/resolve", dependencies=[Depends(require_admin)])
+def admin_resolve_support_request(req_id: int, payload: SupportRequestResolve):
+    req = next((r for r in SUPPORT_REQUESTS if r.get("id") == req_id), None)
+    if not req:
+        raise HTTPException(status_code=404, detail="request not found")
+    req["status"] = "RESOLVED"
+    req["resolutionNote"] = (payload.note or "").strip()
+    req["resolvedAt"] = _now_iso()
+    _persist_core_data("support_requests")
+    log.info("💬 Support request %s resolved", req["reference"])
+    return {"status": "ok", "request": req}

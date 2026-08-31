@@ -430,3 +430,78 @@ def test_driver_alert_requires_reason():
     trip = _new_trip()
     res = client.post(f"/api/trips/{trip['id']}/driver-alert", json={"reason": ""})
     assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 🧭 I18n: international languages (RU / JA / ZH / FR / DE) + help & assistant
+# ---------------------------------------------------------------------------
+
+def test_assistant_answers_in_english_and_other_languages():
+    en = client.post("/api/assistant", json={"message": "how do I book a ride?", "language": "en"})
+    assert en.status_code == 200, en.text
+    body = en.json()
+    assert body["intent"] == "book"
+    assert "Ride" in body["reply"] or "book" in body["reply"].lower()
+    assert len(body["suggestions"]) >= 4
+
+    ru = client.post("/api/assistant", json={"message": "как заказать поездку?", "language": "ru"})
+    assert ru.status_code == 200
+    assert ru.json()["language"] == "ru"
+    # Reply should be Russian after matching a Russian keyword.
+    assert ru.json()["intent"] == "book"
+
+    zh = client.post("/api/assistant", json={"message": "如何预约行程", "language": "zh-CN"})
+    assert zh.status_code == 200
+    assert zh.json()["language"] == "zh"
+    assert zh.json()["intent"] == "book"
+
+    ja = client.post("/api/assistant", json={"message": "予約方法", "language": "ja"})
+    assert ja.status_code == 200
+    assert ja.json()["intent"] == "book"
+
+    de = client.post("/api/assistant", json={"message": "wie buche ich eine fahrt", "language": "de"})
+    assert de.status_code == 200
+    assert de.json()["intent"] == "book"
+
+    fr = client.post("/api/assistant", json={"message": "comment réserver une course", "language": "fr"})
+    assert fr.status_code == 200
+    assert fr.json()["intent"] == "book"
+
+
+def test_assistant_falls_back_to_local_help_without_false_claims():
+    res = client.post("/api/assistant", json={"message": "do you call ambulances for me?", "language": "en"})
+    assert res.status_code == 200
+    assert res.json()["intent"] == "sos"
+    # The SOS answer must not claim the app calls emergency services.
+    assert "call" not in res.json()["reply"].lower() or "not a phone call" in res.json()["reply"].lower()
+
+
+def test_support_request_flow_and_admin_resolution():
+    res = client.post("/api/support/requests", json={
+        "name": "Rider Namesh", "email": "rider@example.com",
+        "category": "report_driver", "rideCode": "SC-2026-000001",
+        "message": "Driver was rude and took a longer route.", "language": "en",
+    })
+    assert res.status_code == 200, res.text
+    req = res.json()["request"]
+    assert req["status"] == "OPEN"
+    assert req["reference"].startswith("SRV-")
+    assert req["category"] == "report_driver"
+
+    admin_list = client.get("/api/admin/support-requests", headers={"X-Admin-Key": ADMIN_KEY})
+    assert admin_list.status_code == 200
+    assert any(r["id"] == req["id"] for r in admin_list.json())
+
+    resolved = client.post(f"/api/admin/support-requests/{req['id']}/resolve",
+                           headers={"X-Admin-Key": ADMIN_KEY},
+                           json={"note": "Contacted rider, driver counselled."})
+    assert resolved.status_code == 200
+    assert resolved.json()["request"]["status"] == "RESOLVED"
+    assert resolved.json()["request"]["resolutionNote"]
+
+
+def test_support_request_rejects_empty_message():
+    res = client.post("/api/support/requests", json={
+        "category": "other", "message": "   ",
+    })
+    assert res.status_code == 400

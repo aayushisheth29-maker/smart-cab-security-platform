@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowLeft, Car, Siren, Users, RefreshCw, Loader2,
-  MapPin, CheckCircle2, LogOut, Lock, Activity, Route as RouteIcon,
+  MapPin, CheckCircle2, LogOut, Lock, Activity, Route as RouteIcon, Mail,
 } from 'lucide-react';
 import { apiFetch, getAdminKey, storeAdminKey, API_BASE } from './api';
 
@@ -66,8 +66,10 @@ export default function AdminDashboard() {
   const [rides, setRides] = useState([]);
   const [driverApps, setDriverApps] = useState([]);
   const [driverAlerts, setDriverAlerts] = useState([]);
+  const [supportReqs, setSupportReqs] = useState([]);
   const [bgNotes, setBgNotes] = useState({});
   const [alertNotes, setAlertNotes] = useState({});
+  const [reqNotes, setReqNotes] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionBusy, setActionBusy] = useState(null);
@@ -77,18 +79,20 @@ export default function AdminDashboard() {
     setError('');
     setKeyError('');
     try {
-      const [s, e, r, da, als] = await Promise.all([
+      const [s, e, r, da, als, sr] = await Promise.all([
         apiFetch('/api/admin/stats'),
         apiFetch('/api/admin/emergencies'),
         apiFetch('/api/admin/rides'),
         apiFetch('/api/admin/driver-applications'),
         apiFetch('/api/admin/driver-alerts'),
+        apiFetch('/api/admin/support-requests'),
       ]);
       setStats(s);
       setEmergencies(Array.isArray(e) ? e : []);
       setRides(Array.isArray(r) ? r : []);
       setDriverApps(Array.isArray(da) ? da : []);
       setDriverAlerts(Array.isArray(als) ? als : []);
+      setSupportReqs(Array.isArray(sr) ? sr : []);
       setAuthenticated(true);
     } catch (err) {
       if (err.status === 401) {
@@ -200,6 +204,22 @@ export default function AdminDashboard() {
     }
   };
 
+  // 💬 RIDER SUPPORT REQUESTS (help widget: report a driver, lost item, etc.)
+  const resolveSupportRequest = async (req) => {
+    setActionBusy(`req-${req.id}`);
+    try {
+      await apiFetch(`/api/admin/support-requests/${req.id}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ note: (reqNotes[req.id] || '').trim() }),
+      });
+      await refresh();
+    } catch (err) {
+      setError(`Could not resolve request: ${err.message}`);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
   const logoutAdmin = () => {
     storeAdminKey('');
     setKey('');
@@ -209,6 +229,7 @@ export default function AdminDashboard() {
     setRides([]);
     setDriverApps([]);
     setDriverAlerts([]);
+    setSupportReqs([]);
   };
 
   // ---------------- Lock screen ----------------
@@ -542,6 +563,61 @@ export default function AdminDashboard() {
                         <p className="text-[11px] text-slate-400 mt-2">
                           {alert.driverExonerated ? '✅ Driver exonerated' : 'Resolved'} at {fmtTime(alert.resolvedAt)}{alert.resolutionNote ? ` · ${alert.resolutionNote}` : ''}
                         </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* 💬 Rider support / help requests */}
+            <section className="mb-10">
+              <h2 className="text-xl font-extrabold text-slate-900 mb-4">
+                SUPPORT REQUESTS{' '}
+                <span className="text-sm font-bold text-slate-400">({supportReqs.filter((r) => r.status === 'OPEN').length} open)</span>
+              </h2>
+              {supportReqs.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                  <Mail className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  No support requests yet. Riders can report a driver / ask for help from the Help widget.
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {supportReqs.map((req) => (
+                    <div key={req.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${req.status === 'OPEN' ? 'border-amber-200' : 'border-slate-100'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-extrabold text-slate-900">
+                          {req.category?.replace(/_/g, ' ')}
+                          <span className="block font-mono text-xs text-slate-400">{req.reference}</span>
+                        </div>
+                        <span className={`text-[10px] font-extrabold px-2 py-1 rounded-full ${req.status === 'OPEN' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>
+                          {req.status}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-600 space-y-1 mb-3">
+                        <div>👤 {req.name || 'Guest'} {req.email ? `· ✉️ ${req.email}` : ''}</div>
+                        {req.rideCode && <div>🚕 Ride: <span className="font-mono">{req.rideCode}</span></div>}
+                        <div className="text-xs text-slate-500">🌐 {req.language || 'en'} · {fmtTime(req.createdAt)}</div>
+                        <div className="bg-slate-50 rounded-lg px-3 py-2 text-xs text-slate-700 whitespace-pre-wrap">{req.message}</div>
+                      </div>
+                      {req.status === 'OPEN' ? (
+                        <div className="flex gap-2">
+                          <input
+                            value={reqNotes[req.id] || ''}
+                            onChange={(e) => setReqNotes((p) => ({ ...p, [req.id]: e.target.value }))}
+                            placeholder="Resolution note…"
+                            className="flex-1 text-xs bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-amber-500"
+                          />
+                          <button
+                            onClick={() => resolveSupportRequest(req)}
+                            disabled={actionBusy === `req-${req.id}`}
+                            className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-lg hover:bg-slate-700 transition disabled:opacity-60"
+                          >
+                            {actionBusy === `req-${req.id}` ? '…' : '✓ Resolve'}
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400">Resolved {fmtTime(req.resolvedAt)}{req.resolutionNote ? ` · ${req.resolutionNote}` : ''}</p>
                       )}
                     </div>
                   ))}

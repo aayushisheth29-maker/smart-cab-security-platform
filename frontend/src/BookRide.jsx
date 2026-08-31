@@ -13,6 +13,7 @@ import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-lea
 import L from 'leaflet';
 
 import { API_BASE, authHeaders } from './api';
+import { LANGS, getGoogleLang, setSiteLanguage } from './i18n';
 
 // --- CUSTOM MAP ICONS ---
 // Small pickup dot — just a black circle so the car isn't covered
@@ -973,28 +974,9 @@ const BookRide = () => {
   });
 };
 
-  useEffect(() => {
-    if (!document.getElementById('google-translate-script')) {
-      const addScript = document.createElement('script');
-      addScript.id = 'google-translate-script';
-      addScript.setAttribute('src', 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit');
-      document.body.appendChild(addScript);
-      window.googleTranslateElementInit = () => {
-        new window.google.translate.TranslateElement({pageLanguage: 'en', autoDisplay: false}, 'google_translate_element');
-      };
-    }
-  }, []);
-
   const handleLanguageChange = (langCode) => {
-    if (langCode === 'en') {
-      document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
-    } else {
-      document.cookie = `googtrans=/en/${langCode}; path=/;`;
-      document.cookie = `googtrans=/en/${langCode}; path=/; domain=${window.location.hostname};`;
-    }
+    setSiteLanguage(langCode); // shared helper: cookie + reload (whole site)
     setIsLangModalOpen(false);
-    window.location.reload(); 
   };
 
   useEffect(() => {
@@ -1775,7 +1757,7 @@ const BookRide = () => {
         .hide-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
-      <div id="google_translate_element" style={{ display: 'none' }}></div>
+      {/* 🌐 in-page translator element is mounted globally in App.jsx (I18nLoader) */}
 
       {/* ---- SELECTED CARD MODAL ---- */}
       {selectedCard && (
@@ -2514,17 +2496,7 @@ const BookRide = () => {
             <div className="mt-20 md:mt-32">
               <h2 className="text-4xl md:text-5xl font-bold mb-16 notranslate">Select your preferred language</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-8">
-                {[
-                  { eng: 'Bangla', native: 'বাংলা', code: 'bn' },
-                  { eng: 'English', native: 'English', code: 'en' },
-                  { eng: 'Gujarati', native: 'ગુજરાતી', code: 'gu' },
-                  { eng: 'Hindi', native: 'हिन्दी', code: 'hi' },
-                  { eng: 'Kannada', native: 'ಕನ್ನಡ', code: 'kn' },
-                  { eng: 'Marathi', native: 'मराठी', code: 'mr' },
-                  { eng: 'Tamil', native: 'தமிழ்', code: 'ta' },
-                  { eng: 'Telugu', native: 'తెలుగు', code: 'te' },
-                  { eng: 'Urdu', native: 'اردو', code: 'ur' }
-                ].map((lang, idx) => (
+                {LANGS.map((lang, idx) => (
                   <button 
                     key={idx} 
                     onClick={() => handleLanguageChange(lang.code)} 
@@ -2606,8 +2578,9 @@ const BookRide = () => {
           <button
             onClick={() => setIsLangModalOpen(true)}
             className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"
+            title="🌐 International languages: Русский · 日本語 · 中文 · Français · Deutsch"
           >
-            <Globe className="h-4 w-4 mr-2" /> EN
+            <Globe className="h-4 w-4 mr-2" /> <span className="uppercase notranslate">{getGoogleLang() || 'EN'}</span>
           </button>
           {loggedInUser ? (
             <>

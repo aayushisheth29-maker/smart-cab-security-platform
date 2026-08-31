@@ -8,10 +8,13 @@ import BookRide from './BookRide';
 import MyRides from './MyRides';
 import SafetyCenter from './SafetyCenter';
 import AdminDashboard from './AdminDashboard';
+import I18nLoader from './I18nLoader';
+import FloatingHelp from './HelpAssistant';
 
 function App() {
   return (
     <Router>
+      <I18nLoader />
       <Routes>
         <Route path="/" element={<BookRide />} />
         <Route path="/track/:linkId" element={<TrackRide />} />
@@ -23,6 +26,7 @@ function App() {
         <Route path="/safety" element={<SafetyCenter />} />
         <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
+      <FloatingHelp />
     </Router>
   );
 }
