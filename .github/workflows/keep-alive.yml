@@ -10,9 +10,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping backend health endpoint
-        env:
-          # Update this URL (or set the RENDER_HEALTH_URL repo secret) after
-          # you deploy the new backend, e.g. https://smartcab-backend.onrender.com
-          HEALTH_URL: ${{ secrets.RENDER_HEALTH_URL || 'https://smart-cab-security-platform-1.onrender.com' }}
         run: |
-          curl -sS -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" "$HEALTH_URL/api/health" || echo "Ping failed, will retry next cycle"
+          curl -sS -o /dev/null -w "HTTP %{http_code} in %{time_total}s\n" "https://smart-cab-security-platform-1.onrender.com/api/health" || echo "Ping failed, will retry next cycle"
