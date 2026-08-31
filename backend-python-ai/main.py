@@ -596,6 +596,15 @@ EMERGENCIES_FILE = _json_path("emergencies.json")
 DRIVER_APPLICATIONS_FILE = _json_path("driver_applications.json")
 DRIVER_APPLICATIONS: List[Dict[str, Any]] = []
 _DRIVER_APP_COUNTER = {"seq": 0}
+DRIVER_ALERTS_FILE = _json_path("driver_alerts.json")
+DRIVER_ALERTS: List[Dict[str, Any]] = []
+# Vault for driver-uploaded verification documents (licence / vehicle / police).
+DRIVER_DOCS_DIR = os.environ.get("DRIVER_DOCS_DIR") or (
+    os.path.join(PERSIST_DIR, "driver_docs") if PERSIST_DIR else os.path.abspath("driver_docs")
+)
+os.makedirs(DRIVER_DOCS_DIR, exist_ok=True)
+MAX_DOC_BYTES = 12 * 1024 * 1024  # 12 MB per document
+ALLOWED_DOC_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 
 
 def _load_list_from_disk(path: Optional[str]) -> Optional[List[Dict[str, Any]]]:
@@ -655,6 +664,12 @@ def _restore_core_data() -> None:
             [int((a.get("reference") or "").split("-")[-1] or 0) for a in DRIVER_APPLICATIONS] or [0]
         )
 
+    loaded_alerts = _load_list_from_disk(DRIVER_ALERTS_FILE)
+    if loaded_alerts:
+        DRIVER_ALERTS.clear()
+        DRIVER_ALERTS.extend(loaded_alerts)
+        log.info("💾 Restored %d driver protection alert(s) from disk", len(DRIVER_ALERTS))
+
 
 def _persist_core_data(which: str = "all") -> None:
     if which in ("all", "users"):
@@ -665,6 +680,8 @@ def _persist_core_data(which: str = "all") -> None:
         _save_list_to_disk(EMERGENCIES_FILE, EMERGENCIES)
     if which in ("all", "applications"):
         _save_list_to_disk(DRIVER_APPLICATIONS_FILE, DRIVER_APPLICATIONS)
+    if which in ("all", "driver_alerts"):
+        _save_list_to_disk(DRIVER_ALERTS_FILE, DRIVER_ALERTS)
 
 
 def _next_driver_application_reference() -> str:
@@ -1312,6 +1329,10 @@ class DriverApplicationCreate(BaseModel):
     experienceYears: Optional[float] = 0
     ownVehicle: Optional[bool] = False
     agreeTerms: Optional[bool] = False
+    # 🛡️ Safety screening — the driver must declare their record; supporting
+    # documents (licence/vehicle/police certificate) are uploaded afterwards.
+    criminalRecordDeclaration: Optional[bool] = False
+    policeVerificationNumber: Optional[str] = ""
 
 
 @app.post("/api/drivers/apply")
@@ -1337,6 +1358,8 @@ def apply_driver(payload: DriverApplicationCreate, request: Request):
         vehicle_type = "SmartMini"
     if not payload.agreeTerms:
         raise HTTPException(status_code=400, detail="Please accept the Driver Terms to continue.")
+    if not payload.criminalRecordDeclaration:
+        raise HTTPException(status_code=400, detail="Please confirm your criminal-record declaration to continue.")
 
     application = {
         "id": max([int(a.get("id", 0)) for a in DRIVER_APPLICATIONS] or [0]) + 1,
@@ -1349,6 +1372,14 @@ def apply_driver(payload: DriverApplicationCreate, request: Request):
         "licenseNumber": license_number,
         "experienceYears": float(payload.experienceYears or 0),
         "ownVehicle": bool(payload.ownVehicle),
+        "criminalRecordDeclaration": bool(payload.criminalRecordDeclaration),
+        "policeVerificationNumber": (payload.policeVerificationNumber or "").strip(),
+        "documents": [],       # filled by /api/drivers/apply/{id}/documents
+        "backgroundCheck": {   # set by an admin after reviewing documents
+            "status": "PENDING",
+            "note": "",
+            "checkedAt": None,
+        },
         "status": "PENDING",
         "createdAt": _now_iso(),
     }
@@ -1360,8 +1391,9 @@ def apply_driver(payload: DriverApplicationCreate, request: Request):
         "application": application,
         "nextSteps": [
             "Our team reviews your application (usually within 24–48 hours).",
-            "We verify your driving licence and documents.",
-            "Once approved, you'll receive your onboarding link and can start earning.",
+            "Upload your driving licence, vehicle and police-clearance documents (next screen).",
+            "We verify your documents and background record.",
+            "Once cleared & approved, you'll receive your onboarding link and can start earning.",
         ],
     }
 
@@ -1375,6 +1407,118 @@ def get_driver_application(reference: str):
     # Never return the driving licence back to the public lookup.
     safe = {k: v for k, v in app.items() if k != "licenseNumber"}
     return {"status": "ok", "application": safe}
+
+
+def _find_driver_application(app_id: int) -> Dict[str, Any]:
+    app = next((a for a in DRIVER_APPLICATIONS if a.get("id") == app_id), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="application not found")
+    return app
+
+
+# 🛡️ DRIVER VETTING DOCUMENTS — licence photo / vehicle photo / police certificate
+def _save_driver_doc(app_id: int, doc_type: str, file: UploadFile) -> Dict[str, Any]:
+    data = file.file.read(MAX_DOC_BYTES + 1)
+    if not data or len(data) < 50:
+        raise HTTPException(status_code=400, detail=f"{doc_type}: file is empty.")
+    if len(data) > MAX_DOC_BYTES:
+        raise HTTPException(status_code=400, detail=f"{doc_type}: file too large (max 12 MB).")
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(status_code=400, detail=f"{doc_type}: only JPG, PNG, WebP or PDF allowed.")
+    # Basename + UUID so a malicious filename can never escape the vault.
+    ext = ".pdf" if content_type == "application/pdf" else ".jpg"
+    safe_name = f"app{app_id}_{doc_type}_{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
+    abs_dir = os.path.join(DRIVER_DOCS_DIR, f"app_{app_id}")
+    os.makedirs(abs_dir, exist_ok=True)
+    path = os.path.join(abs_dir, safe_name)
+    with open(path, "wb") as f:
+        f.write(data)
+    return {
+        "id": len(app_docs(app_id)) + 1,
+        "type": doc_type,          # licence / vehicle / police_certificate
+        "label": {"licence": "Driving licence", "vehicle": "Vehicle photo",
+                  "police_certificate": "Police clearance"}.get(doc_type, doc_type),
+        "filename": safe_name,
+        "path": path,
+        "size": len(data),
+        "contentType": content_type,
+        "uploadedAt": _now_iso(),
+    }
+
+
+def app_docs(app_id: int) -> List[Dict[str, Any]]:
+    return _find_driver_application(app_id).get("documents", [])
+
+
+@app.post("/api/drivers/apply/{app_id}/documents")
+async def upload_driver_documents(
+    app_id: int,
+    licencePhoto: UploadFile = File(None),
+    vehiclePhoto: UploadFile = File(None),
+    policeCertificate: UploadFile = File(None),
+    request: Request = None,
+):
+    """Driver uploads verification documents after applying. Files are stored
+    in a private vault (never served publicly) and reviewed by an admin."""
+    app = _find_driver_application(app_id)
+    if app.get("status") in ("APPROVED", "REJECTED"):
+        raise HTTPException(status_code=400, detail="Application already reviewed.")
+
+    uploaded = []
+    for doc_type, file in (("licence", licencePhoto), ("vehicle", vehiclePhoto),
+                           ("police_certificate", policeCertificate)):
+        if file is None or not file.filename:
+            continue
+        rec = _save_driver_doc(app_id, doc_type, file)
+        # Replace any previous doc of the same type.
+        app["documents"] = [d for d in app.get("documents", []) if d.get("type") != doc_type]
+        app["documents"].append(rec)
+        uploaded.append({k: v for k, v in rec.items() if k != "path"})
+
+    if not uploaded:
+        raise HTTPException(status_code=400, detail="Select at least one document to upload.")
+    _persist_core_data("applications")
+    log.info("🛡️ Driver %s uploaded %d document(s)", app["reference"], len(uploaded))
+    return {"status": "ok", "uploaded": uploaded, "documents": app["documents"]}
+
+
+@app.get("/api/admin/driver-applications/{app_id}/documents/{doc_id}", dependencies=[Depends(require_admin)])
+def download_driver_document(app_id: int, doc_id: int):
+    """Admin-only document view (licence / vehicle / police certificate)."""
+    app = _find_driver_application(app_id)
+    doc = next((d for d in app.get("documents", []) if d.get("id") == doc_id), None)
+    if not doc or not os.path.exists(doc.get("path", "")):
+        raise HTTPException(status_code=404, detail="document not found")
+    from fastapi.responses import FileResponse
+    media = doc.get("contentType") or "application/octet-stream"
+    return FileResponse(doc["path"], media_type=media, filename=doc.get("filename", "document"))
+
+
+class BackgroundCheckUpdate(BaseModel):
+    status: str  # CLEARED | FLAGGED
+    note: Optional[str] = ""
+
+
+@app.post("/api/admin/driver-applications/{app_id}/background-check", dependencies=[Depends(require_admin)])
+def admin_update_background_check(app_id: int, payload: BackgroundCheckUpdate):
+    """Admin reviews the police-clearance certificate & record and marks the
+    background check CLEARED (safe to approve) or FLAGGED (reject)."""
+    app = _find_driver_application(app_id)
+    status = (payload.status or "").upper()
+    if status not in ("CLEARED", "FLAGGED"):
+        raise HTTPException(status_code=400, detail="status must be CLEARED or FLAGGED")
+    app["backgroundCheck"] = {
+        "status": status,
+        "note": (payload.note or "").strip(),
+        "checkedAt": _now_iso(),
+    }
+    if status == "FLAGGED":
+        app["status"] = "REJECTED"
+        app["rejectedAt"] = _now_iso()
+        log.warning("🚫 Driver %s FLAGGED in background check — application rejected", app["reference"])
+    _persist_core_data("applications")
+    return {"status": "ok", "application": app}
 
 
 # ---------------------------------------------------------------------------
@@ -2652,6 +2796,20 @@ def admin_approve_driver_application(app_id: int):
         raise HTTPException(status_code=404, detail="application not found")
     if app.get("status") == "APPROVED":
         return {"status": "ok", "message": "Already approved.", "application": app}
+    # 🛡️ Safety gate: no bad driver gets selected. Before approving, the
+    # background check must be marked CLEARED and key docs uploaded.
+    bg = app.get("backgroundCheck") or {}
+    if bg.get("status") != "CLEARED":
+        raise HTTPException(
+            status_code=400,
+            detail="Background check must be CLEARED before approval. Review the police-clearance certificate in the admin dashboard first.",
+        )
+    doc_types = {d.get("type") for d in app.get("documents", [])}
+    if "licence" not in doc_types or "vehicle" not in doc_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Driver must upload driving licence + vehicle photos before approval.",
+        )
 
     app["status"] = "APPROVED"
     app["approvedAt"] = _now_iso()
@@ -2684,3 +2842,127 @@ def admin_reject_driver_application(app_id: int):
     _persist_core_data("applications")
     log.warning("🚗 Driver application %s REJECTED", app["reference"])
     return {"status": "ok", "application": app}
+
+
+# ---------------------------------------------------------------------------
+# DRIVER & RIDER TWO-WAY SAFETY
+#   • Rider side   : SOS + route checks (existing) — no bad driver gets selected
+#                     thanks to the vetting gate above.
+#   • Driver side  : driver can verify a rider's identity and report a rider
+#                     concern (e.g. suspected contraband). Incidents are logged
+#                     and an admin can EXONERATE the driver, protecting them
+#                     from being blamed for what a rider does.
+# ---------------------------------------------------------------------------
+class RiderVerifyUpdate(BaseModel):
+    verified: bool
+    method: Optional[str] = "ID shown at pickup"
+
+
+@app.post("/api/trips/{trip_id}/rider-verify")
+def rider_verify(trip_id: int, payload: RiderVerifyUpdate):
+    """Driver records that the rider's identity was verified at pickup.
+    This is the driver's proof — the rider who books is the rider who rides."""
+    trip = next((t for t in TRIPS if t.get("id") == trip_id), None)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+    trip["riderVerified"] = bool(payload.verified)
+    trip["riderVerifiedAt"] = _now_iso()
+    trip["riderVerificationMethod"] = payload.method
+    _persist_core_data("trips")
+    log.info("🪪 Trip %s: rider verification %s", trip.get("rideCode"), payload.verified)
+    return {"status": "ok", "trip": trip}
+
+
+class DriverAlertCreate(BaseModel):
+    reason: str
+    notes: Optional[str] = ""
+    riderName: Optional[str] = ""
+
+
+@app.post("/api/trips/{trip_id}/driver-alert")
+def create_driver_alert(trip_id: int, payload: DriverAlertCreate, request: Request):
+    """Driver reports a rider concern (suspicious activity / suspected illegal
+    items / misbehaviour). Recorded with ride context so the driver has an
+    incident log — and admins can exonerate them if the rider was at fault."""
+    if rate_limited(f"driver-alert:{client_key(request)}", limit=6, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many reports. Please wait a moment.")
+    trip = next((t for t in TRIPS if t.get("id") == trip_id), None)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+    reason = (payload.reason or "").strip()
+    if not reason or len(reason) < 3:
+        raise HTTPException(status_code=400, detail="Please describe the concern.")
+    alert = {
+        "id": max([int(a.get("id", 0)) for a in DRIVER_ALERTS] or [0]) + 1,
+        "tripId": trip.get("id"),
+        "rideCode": trip.get("rideCode") or f"SC-{trip.get('id')}",
+        "driverName": (trip.get("driver") or {}).get("name", ""),
+        "driverPlate": (trip.get("driver") or {}).get("plate", ""),
+        "riderName": payload.riderName or trip.get("riderName", ""),
+        "pickup": trip.get("pickupLocation", ""),
+        "dropoff": trip.get("dropoffLocation", ""),
+        "reason": reason,
+        "notes": (payload.notes or "").strip(),
+        "evidence": [],          # optional photo/video uploads
+        "status": "OPEN",
+        "createdAt": _now_iso(),
+    }
+    DRIVER_ALERTS.append(alert)
+    _persist_core_data("driver_alerts")
+    log.warning("🛡️ Driver alert #%d on %s: %s", alert["id"], trip.get("rideCode"), reason)
+    return {"status": "ok", "alert": alert,
+            "guide": "Your report is logged with this ride's details. If the rider was at fault, an admin can mark this EXONERATED so you are never blamed for their actions."}
+
+
+@app.post("/api/trips/{trip_id}/driver-alerts/{alert_id}/evidence")
+async def upload_driver_alert_evidence(trip_id: int, alert_id: int, file: UploadFile = File(...)):
+    """Optional photo evidence attached to a driver report."""
+    alert = next((a for a in DRIVER_ALERTS if a.get("id") == alert_id and a.get("tripId") == trip_id), None)
+    if not alert:
+        raise HTTPException(status_code=404, detail="alert not found")
+    data = file.file.read(MAX_DOC_BYTES + 1)
+    if not data or len(data) < 50:
+        raise HTTPException(status_code=400, detail="file is empty.")
+    if len(data) > MAX_DOC_BYTES:
+        raise HTTPException(status_code=400, detail="file too large (max 12 MB).")
+    abs_dir = os.path.join(EVIDENCE_VAULT_DIR, f"driver_alert_{alert_id}")
+    os.makedirs(abs_dir, exist_ok=True)
+    safe_name = f"evidence_{int(time.time())}_{uuid.uuid4().hex[:8]}.jpg"
+    path = os.path.join(abs_dir, safe_name)
+    with open(path, "wb") as f:
+        f.write(data)
+    rec = {"id": len(alert.get("evidence", [])) + 1, "filename": safe_name,
+           "path": path, "size": len(data), "uploadedAt": _now_iso()}
+    alert["evidence"].append(rec)
+    _persist_core_data("driver_alerts")
+    return {"status": "ok", "evidence": {k: v for k, v in rec.items() if k != "path"}}
+
+
+class DriverAlertResolve(BaseModel):
+    outcome: str  # EXONERATED | RESOLVED
+    note: Optional[str] = ""
+
+
+@app.get("/api/admin/driver-alerts", dependencies=[Depends(require_admin)])
+def admin_driver_alerts():
+    return sorted(DRIVER_ALERTS, key=lambda a: a.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/driver-alerts/{alert_id}/resolve", dependencies=[Depends(require_admin)])
+def admin_resolve_driver_alert(alert_id: int, payload: DriverAlertResolve):
+    """EXONERATED = driver proven not at fault (protection record).
+    RESOLVED  = incident acknowledged & closed."""
+    alert = next((a for a in DRIVER_ALERTS if a.get("id") == alert_id), None)
+    if not alert:
+        raise HTTPException(status_code=404, detail="alert not found")
+    outcome = (payload.outcome or "").upper()
+    if outcome not in ("EXONERATED", "RESOLVED"):
+        raise HTTPException(status_code=400, detail="outcome must be EXONERATED or RESOLVED")
+    alert["status"] = "RESOLVED"
+    alert["outcome"] = outcome
+    alert["driverExonerated"] = outcome == "EXONERATED"
+    alert["resolutionNote"] = (payload.note or "").strip()
+    alert["resolvedAt"] = _now_iso()
+    _persist_core_data("driver_alerts")
+    log.warning("🛡️ Driver alert #%d resolved as %s", alert_id, outcome)
+    return {"status": "ok", "alert": alert}

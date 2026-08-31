@@ -5,7 +5,8 @@ import {
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
   User, Phone, Mail, Building, CheckCircle, CheckCircle2, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
-  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic 
+  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
+  FileWarning
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -148,7 +149,16 @@ const BookRide = () => {
     fullName: '', phone: '', email: '', city: 'Ahmedabad',
     vehicleType: 'SmartMini', licenseNumber: '', experienceYears: '',
     ownVehicle: true, agreeTerms: false,
+    criminalRecordDeclaration: false, policeVerificationNumber: '',
   });
+  // 🛡️ Vet documents (licence / vehicle / police certificate) — uploaded after
+  // the application is created so they can be reviewed before approval.
+  const [driverDocs, setDriverDocs] = useState({
+    licence: null, vehicle: null, police_certificate: null,
+  });
+  const [driverDocsStatus, setDriverDocsStatus] = useState({});
+  const [driverDocsMessage, setDriverDocsMessage] = useState('');
+  const [driverDocsBusy, setDriverDocsBusy] = useState(null);
   const [driverSubmitLoading, setDriverSubmitLoading] = useState(false);
   const [driverSubmitError, setDriverSubmitError] = useState('');
   const [driverApplicationResult, setDriverApplicationResult] = useState(null);
@@ -185,6 +195,10 @@ const BookRide = () => {
         setDriverSubmitError('Please accept the Driver Terms to continue.');
         return;
       }
+      if (!driverForm.criminalRecordDeclaration) {
+        setDriverSubmitError('Please confirm your criminal-record declaration to continue.');
+        return;
+      }
       submitDriverApplication();
     }
   };
@@ -206,6 +220,8 @@ const BookRide = () => {
           experienceYears: parseFloat(driverForm.experienceYears || 0),
           ownVehicle: driverForm.ownVehicle,
           agreeTerms: driverForm.agreeTerms,
+          criminalRecordDeclaration: driverForm.criminalRecordDeclaration,
+          policeVerificationNumber: driverForm.policeVerificationNumber.trim(),
         }),
       });
       const data = await res.json();
@@ -242,6 +258,41 @@ const BookRide = () => {
       setDriverSubmitError('Could not reach the server. Please try again later.');
     } finally {
       setDriverStatusLoading(false);
+    }
+  };
+
+  // 🛡️ UPLOAD A VETTING DOCUMENT (licence / vehicle / police certificate)
+  const uploadDriverDocument = async (docType) => {
+    const file = driverDocs[docType];
+    if (!file || !driverApplicationResult?.id) {
+      setDriverDocsMessage('Select a file first.');
+      return;
+    }
+    setDriverDocsBusy(docType);
+    setDriverDocsMessage('');
+    try {
+      const fd = new FormData();
+      fd.append(
+        docType === 'licence' ? 'licencePhoto' :
+        docType === 'vehicle' ? 'vehiclePhoto' : 'policeCertificate',
+        file
+      );
+      const res = await fetch(`${PYTHON_API}/api/drivers/apply/${driverApplicationResult.id}/documents`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Upload failed.';
+        setDriverDocsMessage(typeof detail === 'string' ? detail : 'Upload failed (check file type/size).');
+        return;
+      }
+      setDriverDocsStatus((prev) => ({ ...prev, [docType]: 'uploaded' }));
+      setDriverDocsMessage('✅ Document uploaded securely. Our team will review it.');
+    } catch (err) {
+      setDriverDocsMessage('Could not reach the server. Please try again.');
+    } finally {
+      setDriverDocsBusy(null);
     }
   };
 
@@ -467,6 +518,19 @@ const BookRide = () => {
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
   const [showGPSLostPopup, setShowGPSLostPopup] = useState(false);
   const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false); 
+
+  // 🛡️ TWO-WAY SAFETY — driver records rider identity verification at pickup
+  // and can report a rider concern (e.g. suspicious/illegal items). The
+  // report is attached to the trip and an admin can EXONERATE the driver.
+  const [riderVerified, setRiderVerified] = useState(false);
+  const [riderVerifyBusy, setRiderVerifyBusy] = useState(false);
+  const [riderVerifyMessage, setRiderVerifyMessage] = useState('');
+  const [showDriverAlertModal, setShowDriverAlertModal] = useState(false);
+  const [driverAlertReason, setDriverAlertReason] = useState('');
+  const [driverAlertNotes, setDriverAlertNotes] = useState('');
+  const [driverAlertBusy, setDriverAlertBusy] = useState(false);
+  const [driverAlertResult, setDriverAlertResult] = useState('');
+  const [driverAlertError, setDriverAlertError] = useState('');
 
   const [showLiveGuardModal, setShowLiveGuardModal] = useState(false);
   const [showSilentSOSModal, setShowSilentSOSModal] = useState(false);
@@ -1307,6 +1371,77 @@ const BookRide = () => {
     }
   };
 
+  // 🛡️ DRIVER verifies the rider's identity at pickup — recorded on the trip
+  // as proof, so the driver cannot be blamed if a rider behaves badly.
+  const verifyRiderIdentity = async () => {
+    if (!currentBookingId) {
+      setRiderVerifyMessage('Ride not saved yet — try again in a moment.');
+      return;
+    }
+    setRiderVerifyBusy(true);
+    setRiderVerifyMessage('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/trips/${currentBookingId}/rider-verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ verified: true, method: 'In-person ID check at pickup' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Verification failed.';
+        setRiderVerifyMessage(typeof detail === 'string' ? detail : 'Verification failed.');
+        return;
+      }
+      setRiderVerified(true);
+      setRiderVerifyMessage('✅ Rider identity verified — recorded on this trip.');
+    } catch (err) {
+      setRiderVerifyMessage('Could not reach the server. Please try again.');
+    } finally {
+      setRiderVerifyBusy(false);
+    }
+  };
+
+  // 🛡️ DRIVER reports a rider concern (e.g. suspicious / illegal items) —
+  // tied to the ride so an admin can review and EXONERATE the driver.
+  const submitDriverAlert = async () => {
+    if (!driverAlertReason.trim()) {
+      setDriverAlertError('Please select or describe your concern.');
+      return;
+    }
+    if (!currentBookingId) {
+      setDriverAlertError('Ride not saved yet — try again in a moment.');
+      return;
+    }
+    setDriverAlertBusy(true);
+    setDriverAlertError('');
+    setDriverAlertResult('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/trips/${currentBookingId}/driver-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          reason: driverAlertReason.trim(),
+          notes: driverAlertNotes.trim(),
+          riderName: loggedInUser ? loggedInUser.name : 'Guest Rider',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Report failed.';
+        setDriverAlertError(typeof detail === 'string' ? detail : 'Report failed.');
+        return;
+      }
+      setDriverAlertResult(
+        `✅ Concern reported as ${data.alert?.reference || 'ALERT'}. Support has been notified — ` +
+        'if you were not at fault, an admin will review and mark you EXONERATED.'
+      );
+    } catch (err) {
+      setDriverAlertError('Could not reach the server. Please try again.');
+    } finally {
+      setDriverAlertBusy(false);
+    }
+  };
+
   // 🔍 SEARCH PRICES — geocode BOTH points up front so the ride cards
   // show the REAL distance-based fare (not just base rates), and so a
   // same-name geocoding mix-up (e.g. the wrong "Saraspur") is caught
@@ -1826,6 +1961,73 @@ const BookRide = () => {
             >
               Save Contact
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 🛡️ DRIVER CONCERN REPORT MODAL — two-way safety */}
+      {showDriverAlertModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl relative">
+            <button
+              onClick={() => setShowDriverAlertModal(false)}
+              className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-600 transition"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
+              <FileWarning className="h-6 w-6 text-purple-600" /> Report Rider Concern
+            </h3>
+            <p className="text-xs text-slate-500 mb-5">
+              Driver protection: report suspicious behaviour or illegal items tied to this ride.
+              An admin will review it and can mark you <strong>EXONERATED</strong> if you are not at fault.
+            </p>
+            <div className="space-y-4 mb-5">
+              <select
+                value={driverAlertReason}
+                onChange={(e) => setDriverAlertReason(e.target.value)}
+                className="w-full bg-gray-100 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+              >
+                <option value="">Select concern…</option>
+                <option value="Suspicious / illegal items">Suspicious / illegal items</option>
+                <option value="Rider refused identity check">Rider refused identity check</option>
+                <option value="Behavioural / safety concern">Behavioural / safety concern</option>
+                <option value="Possible contraband / drugs">Possible contraband / drugs</option>
+                <option value="Other">Other</option>
+              </select>
+              <textarea
+                value={driverAlertNotes}
+                onChange={(e) => setDriverAlertNotes(e.target.value)}
+                placeholder="Describe what you noticed (optional details help admins understand the incident)…"
+                rows={4}
+                className="w-full bg-gray-100 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-medium resize-none"
+              />
+              {driverAlertResult && (
+                <p className="text-sm font-semibold text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                  {driverAlertResult}
+                </p>
+              )}
+              {driverAlertError && (
+                <p className="text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  ⚠️ {driverAlertError}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDriverAlertModal(false)}
+                className="flex-1 bg-gray-100 text-gray-700 font-bold py-3.5 rounded-xl hover:bg-gray-200 transition"
+              >
+                Close
+              </button>
+              <button
+                onClick={submitDriverAlert}
+                disabled={driverAlertBusy || !!driverAlertResult}
+                className="flex-1 bg-purple-600 text-white font-bold py-3.5 rounded-xl hover:bg-purple-700 transition disabled:opacity-60"
+              >
+                {driverAlertBusy ? 'Submitting…' : 'Submit Report'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -3070,6 +3272,43 @@ const BookRide = () => {
                               ))}
                             </div>
 
+                            {/* 🛡️ DRIVER SAFETY — two-way protection: verify the rider at
+                                pickup and report any concern so the driver is never
+                                blamed for a rider's illegal items. */}
+                            <div className="border-t border-gray-200 pt-4 mt-2 mb-5">
+                              <p className="text-base font-bold text-gray-700 mb-3 flex items-center">
+                                <ShieldCheck className="h-4 w-4 mr-1.5 text-green-600" /> Driver Protection
+                              </p>
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <span className="text-xs font-semibold text-slate-600">
+                                  {riderVerified ? '✅ Rider identity verified' : 'Verify rider identity at pickup'}
+                                </span>
+                                <button
+                                  onClick={verifyRiderIdentity}
+                                  disabled={riderVerified || riderVerifyBusy}
+                                  className={`text-xs font-bold px-3 py-1.5 rounded-lg transition border ${
+                                    riderVerified
+                                      ? 'text-green-700 bg-green-50 border-green-200 cursor-default'
+                                      : 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100'
+                                  }`}
+                                >
+                                  {riderVerifyBusy ? 'Saving…' : riderVerified ? 'Verified ✓' : 'Verify ID'}
+                                </button>
+                              </div>
+                              {riderVerifyMessage && (
+                                <p className="text-xs font-semibold text-slate-500 mb-3">{riderVerifyMessage}</p>
+                              )}
+                              <button
+                                onClick={() => { setShowDriverAlertModal(true); setDriverAlertResult(''); setDriverAlertError(''); }}
+                                className="w-full text-sm font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2.5 hover:bg-purple-100 flex items-center justify-center gap-2 transition"
+                              >
+                                <FileWarning className="h-4 w-4" /> Report rider concern (suspicious / illegal items)
+                              </button>
+                              <p className="text-[11px] text-slate-400 mt-2">
+                                Your report is tied to this ride. If you were not at fault, an admin will review it and mark you <strong>EXONERATED</strong>.
+                              </p>
+                            </div>
+
                             <div className="flex gap-3">
                               {rideProgress === 100 ? (
                                 <button 
@@ -4163,6 +4402,20 @@ const BookRide = () => {
                         I agree to the <strong>Driver Terms</strong> and understand my licence & documents will be verified before onboarding.
                       </span>
                     </label>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Police verification number (optional)</label>
+                      <input name="policeVerificationNumber" value={driverForm.policeVerificationNumber} onChange={handleDriverFormChange}
+                        placeholder="e.g. PC-2026-778899"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <label className="flex items-start gap-3 border-2 border-red-200 bg-red-50 rounded-xl px-4 py-3 cursor-pointer">
+                      <input name="criminalRecordDeclaration" type="checkbox" checked={driverForm.criminalRecordDeclaration} onChange={handleDriverFormChange}
+                        className="h-4 w-4 accent-red-600 mt-0.5" />
+                      <span className="text-sm text-slate-700">
+                        🛡️ <strong>Safety declaration:</strong> I confirm I have <strong>no criminal record</strong> and I will
+                        upload my <strong>police-clearance certificate</strong> next. Drivers with unresolved records are not selected.
+                      </span>
+                    </label>
                   </div>
                 )}
 
@@ -4206,6 +4459,43 @@ const BookRide = () => {
                       <span>{step}</span>
                     </div>
                   ))}
+                </div>
+                {/* 🛡️ STEP 2 — upload verification documents (licence / vehicle / police) */}
+                <div className="bg-slate-50 rounded-2xl p-4 text-left mb-5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <ShieldCheck className="h-4 w-4 text-amber-600" />
+                    <h4 className="text-sm font-extrabold text-slate-800">Step 2 · Upload verification documents</h4>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-3">JPG / PNG / PDF, max 12 MB. Stored securely and reviewed before approval.</p>
+                  <div className="space-y-2.5">
+                    {[
+                      { key: 'licence', label: '📄 Driving licence photo', field: 'licencePhoto' },
+                      { key: 'vehicle', label: '🚗 Vehicle photo / RC', field: 'vehiclePhoto' },
+                      { key: 'police_certificate', label: '🛡️ Police clearance certificate', field: 'policeCertificate' },
+                    ].map((d) => (
+                      <div key={d.key} className="flex items-center gap-2">
+                        <label className="flex-1 text-xs font-semibold text-slate-600">{d.label}</label>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          onChange={(e) => setDriverDocs((prev) => ({ ...prev, [d.key]: e.target.files?.[0] || null }))}
+                          className="text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-700 file:shadow-sm hover:file:bg-slate-100"
+                        />
+                        <button
+                          onClick={() => uploadDriverDocument(d.key)}
+                          disabled={driverDocsBusy === d.key || !driverDocs[d.key]}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition disabled:opacity-50"
+                        >
+                          {driverDocsStatus[d.key] === 'uploaded' ? '✓ Uploaded' : driverDocsBusy === d.key ? '…' : 'Upload'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {driverDocsMessage && (
+                    <p className={`mt-3 text-xs font-semibold ${driverDocsMessage.startsWith('✅') ? 'text-green-700' : 'text-red-600'}`}>
+                      {driverDocsMessage}
+                    </p>
+                  )}
                 </div>
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button onClick={closeAllForms} className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition">

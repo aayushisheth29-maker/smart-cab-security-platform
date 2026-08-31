@@ -4,7 +4,7 @@ import {
   ArrowLeft, Car, Siren, Users, RefreshCw, Loader2,
   MapPin, CheckCircle2, LogOut, Lock, Activity, Route as RouteIcon,
 } from 'lucide-react';
-import { apiFetch, getAdminKey, storeAdminKey } from './api';
+import { apiFetch, getAdminKey, storeAdminKey, API_BASE } from './api';
 
 const STATUS_META = {
   REQUESTED: 'bg-slate-100 text-slate-700',
@@ -65,6 +65,9 @@ export default function AdminDashboard() {
   const [emergencies, setEmergencies] = useState([]);
   const [rides, setRides] = useState([]);
   const [driverApps, setDriverApps] = useState([]);
+  const [driverAlerts, setDriverAlerts] = useState([]);
+  const [bgNotes, setBgNotes] = useState({});
+  const [alertNotes, setAlertNotes] = useState({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [actionBusy, setActionBusy] = useState(null);
@@ -74,16 +77,18 @@ export default function AdminDashboard() {
     setError('');
     setKeyError('');
     try {
-      const [s, e, r, da] = await Promise.all([
+      const [s, e, r, da, als] = await Promise.all([
         apiFetch('/api/admin/stats'),
         apiFetch('/api/admin/emergencies'),
         apiFetch('/api/admin/rides'),
         apiFetch('/api/admin/driver-applications'),
+        apiFetch('/api/admin/driver-alerts'),
       ]);
       setStats(s);
       setEmergencies(Array.isArray(e) ? e : []);
       setRides(Array.isArray(r) ? r : []);
       setDriverApps(Array.isArray(da) ? da : []);
+      setDriverAlerts(Array.isArray(als) ? als : []);
       setAuthenticated(true);
     } catch (err) {
       if (err.status === 401) {
@@ -147,6 +152,54 @@ export default function AdminDashboard() {
     }
   };
 
+  // 🛡️ Admin marks the background check CLEARED (safe to approve) or FLAGGED
+  // (application is automatically rejected — a bad driver can never join).
+  const runBackgroundCheck = async (app, status) => {
+    setActionBusy(`bg-${app.id}-${status}`);
+    try {
+      await apiFetch(`/api/admin/driver-applications/${app.id}/background-check`, {
+        method: 'POST',
+        body: JSON.stringify({ status, note: (bgNotes[app.id] || '').trim() }),
+      });
+      await refresh();
+    } catch (err) {
+      setError(`Could not update background check: ${err.message}`);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
+  // Fetch a vault document with the admin key and open it for review.
+  const openDriverDocument = async (appId, docId) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/admin/driver-applications/${appId}/documents/${docId}`, {
+        headers: { 'X-Admin-Key': getAdminKey() },
+      });
+      if (!res.ok) throw new Error(`Document fetch failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setError(`Could not open document: ${err.message}`);
+    }
+  };
+
+  const resolveDriverAlert = async (alert, outcome) => {
+    setActionBusy(`alert-${alert.id}-${outcome}`);
+    try {
+      await apiFetch(`/api/admin/driver-alerts/${alert.id}/resolve`, {
+        method: 'POST',
+        body: JSON.stringify({ outcome, note: (alertNotes[alert.id] || '').trim() }),
+      });
+      await refresh();
+    } catch (err) {
+      setError(`Could not resolve alert: ${err.message}`);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
   const logoutAdmin = () => {
     storeAdminKey('');
     setKey('');
@@ -155,6 +208,7 @@ export default function AdminDashboard() {
     setEmergencies([]);
     setRides([]);
     setDriverApps([]);
+    setDriverAlerts([]);
   };
 
   // ---------------- Lock screen ----------------
@@ -312,24 +366,182 @@ export default function AdminDashboard() {
                         <div className="text-xs text-slate-400">
                           {app.experienceYears} yr experience · {app.ownVehicle ? 'Owns vehicle' : 'Needs vehicle'} · {fmtTime(app.createdAt)}
                         </div>
-                      </div>
-                      {app.status === 'PENDING' && (
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => reviewDriverApp(app, 'approve')}
-                            disabled={actionBusy === `app-${app.id}`}
-                            className="flex-1 bg-green-600 text-white text-sm font-bold py-2 rounded-xl hover:bg-green-700 transition disabled:opacity-60"
-                          >
-                            {actionBusy === `app-${app.id}` ? '…' : '✓ Approve'}
-                          </button>
-                          <button
-                            onClick={() => reviewDriverApp(app, 'reject')}
-                            disabled={actionBusy === `app-${app.id}`}
-                            className="flex-1 bg-red-50 text-red-600 text-sm font-bold py-2 rounded-xl border border-red-200 hover:bg-red-100 transition disabled:opacity-60"
-                          >
-                            Reject
-                          </button>
+                        <div className="text-xs font-semibold">
+                          {app.criminalRecordDeclaration
+                            ? <span className="text-green-700">✅ Criminal-record declaration signed</span>
+                            : <span className="text-red-600">❌ No criminal-record declaration</span>}
+                          {app.policeVerificationNumber ? ` · 🛂 Police ref: ${app.policeVerificationNumber}` : ''}
                         </div>
+                      </div>
+
+                      {/* 🛡️ Documents — admin reviews before approval */}
+                      <div className="mb-3">
+                        <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-1.5">Verification documents</p>
+                        {(app.documents || []).length === 0 ? (
+                          <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">No documents uploaded yet.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-1.5">
+                            {(app.documents || []).map((doc) => (
+                              <button
+                                key={doc.id}
+                                onClick={() => openDriverDocument(app.id, doc.id)}
+                                className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg px-2.5 py-1.5 transition"
+                              >
+                                📄 {doc.name || doc.type} <span className="text-[9px]">({Math.round((doc.size || 0) / 1024)} KB)</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* 🛡️ Background check — must be CLEARED before Approve is allowed */}
+                      {app.status === 'PENDING' && (
+                        <div className="mb-3 bg-slate-50 rounded-xl p-3">
+                          <p className="text-xs font-extrabold text-slate-600 mb-2">
+                            Background check:{' '}
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                              app.backgroundCheck?.status === 'CLEARED' ? 'bg-green-100 text-green-700' :
+                              app.backgroundCheck?.status === 'FLAGGED' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                            }`}>
+                              {app.backgroundCheck?.status || 'PENDING'}
+                            </span>
+                          </p>
+                          <textarea
+                            value={bgNotes[app.id] || ''}
+                            onChange={(e) => setBgNotes((p) => ({ ...p, [app.id]: e.target.value }))}
+                            placeholder="Review note (e.g. records verified, docs look genuine)…"
+                            rows={2}
+                            className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-green-500 resize-none mb-2"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => runBackgroundCheck(app, 'CLEARED')}
+                              disabled={actionBusy === `bg-${app.id}-CLEARED`}
+                              className="flex-1 bg-green-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-green-700 transition disabled:opacity-60"
+                            >
+                              {actionBusy === `bg-${app.id}-CLEARED` ? '…' : '🛡 Mark CLEARED'}
+                            </button>
+                            <button
+                              onClick={() => runBackgroundCheck(app, 'FLAGGED')}
+                              disabled={actionBusy === `bg-${app.id}-FLAGGED`}
+                              className="flex-1 bg-red-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-red-700 transition disabled:opacity-60"
+                            >
+                              {actionBusy === `bg-${app.id}-FLAGGED` ? '…' : '🚫 Mark FLAGGED'}
+                            </button>
+                          </div>
+                          {app.backgroundCheck?.note && (
+                            <p className="text-[11px] text-slate-500 mt-2">Note: {app.backgroundCheck.note}</p>
+                          )}
+                        </div>
+                      )}
+
+                      {app.status === 'PENDING' && (
+                        <>
+                          {app.backgroundCheck?.status === 'FLAGGED' && (
+                            <p className="text-xs font-bold text-red-600 mb-2">🚫 Background check failed — this driver must NOT be approved. Application was auto-rejected.</p>
+                          )}
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => reviewDriverApp(app, 'approve')}
+                              disabled={
+                                actionBusy === `app-${app.id}` ||
+                                app.backgroundCheck?.status !== 'CLEARED' ||
+                                !(app.documents || []).some((d) => d.type === 'licence') ||
+                                !(app.documents || []).some((d) => d.type === 'vehicle')
+                              }
+                              title={app.backgroundCheck?.status === 'CLEARED' ? 'Approve into fleet' : 'Mark background check CLEARED to enable approval'}
+                              className="flex-1 bg-green-600 text-white text-sm font-bold py-2 rounded-xl hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {actionBusy === `app-${app.id}` ? '…' : '✓ Approve'}
+                            </button>
+                            <button
+                              onClick={() => reviewDriverApp(app, 'reject')}
+                              disabled={actionBusy === `app-${app.id}`}
+                              className="flex-1 bg-red-50 text-red-600 text-sm font-bold py-2 rounded-xl border border-red-200 hover:bg-red-100 transition disabled:opacity-60"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                          {app.backgroundCheck?.status !== 'CLEARED' && (
+                            <p className="text-[11px] text-amber-600 mt-2">
+                              🔒 Approve unlocks after: licence + vehicle photo uploaded <strong>and</strong> background check marked CLEARED.
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            {/* 🛡️ Driver alerts — two-way safety: drivers report rider concerns;
+                admin can EXONERATE so an innocent driver is never blamed. */}
+            <section className="mb-10">
+              <h2 className="text-xl font-extrabold text-slate-900 mb-4">
+                DRIVER ALERTS{' '}
+                <span className="text-sm font-bold text-slate-400">({driverAlerts.filter((a) => a.status === 'OPEN').length} open)</span>
+              </h2>
+              {driverAlerts.length === 0 ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                  <Activity className="h-8 w-8 mx-auto mb-2 opacity-40" />
+                  No driver alerts yet. Drivers can report rider concerns during a ride.
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {driverAlerts.map((alert) => (
+                    <div key={alert.id} className={`bg-white rounded-2xl border shadow-sm p-5 ${alert.status === 'OPEN' ? 'border-purple-200' : 'border-slate-100'}`}>
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-extrabold text-slate-900">
+                          {alert.reason}
+                          <span className="block font-mono text-xs text-slate-400">{alert.reference || `ALERT-${alert.id}`}</span>
+                        </div>
+                        <span className={`text-[10px] font-extrabold px-2 py-1 rounded-full ${alert.status === 'OPEN' ? 'bg-purple-100 text-purple-700' : alert.driverExonerated ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                          {alert.status}{alert.driverExonerated ? ' · EXONERATED' : ''}
+                        </span>
+                      </div>
+                      <div className="text-sm text-slate-600 space-y-1 mb-3">
+                        <div>🧑‍✈️ Driver: {alert.driverName || '—'} · 🚕 Ride: {alert.rideCode || `#${alert.tripId}`}</div>
+                        <div>🧍 Rider: {alert.riderName || '—'} · {fmtTime(alert.createdAt)}</div>
+                        {alert.notes && <div className="text-xs text-slate-500">📝 {alert.notes}</div>}
+                        {Array.isArray(alert.evidence) && alert.evidence.length > 0 && (
+                          <div className="text-xs font-bold text-blue-600">📎 {alert.evidence.length} evidence file(s) attached</div>
+                        )}
+                      </div>
+                      {alert.status === 'OPEN' && (
+                        <div className="bg-slate-50 rounded-xl p-3">
+                          <textarea
+                            value={alertNotes[alert.id] || ''}
+                            onChange={(e) => setAlertNotes((p) => ({ ...p, [alert.id]: e.target.value }))}
+                            placeholder="Admin note (e.g. verified with rider, no driver fault)…"
+                            rows={2}
+                            className="w-full text-xs bg-white border border-slate-200 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-purple-500 resize-none mb-2"
+                          />
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => resolveDriverAlert(alert, 'EXONERATED')}
+                              disabled={actionBusy === `alert-${alert.id}-EXONERATED`}
+                              className="flex-1 bg-green-600 text-white text-xs font-bold py-2 rounded-lg hover:bg-green-700 transition disabled:opacity-60"
+                            >
+                              {actionBusy === `alert-${alert.id}-EXONERATED` ? '…' : '🛡 Exonerate driver'}
+                            </button>
+                            <button
+                              onClick={() => resolveDriverAlert(alert, 'RESOLVED')}
+                              disabled={actionBusy === `alert-${alert.id}-RESOLVED`}
+                              className="flex-1 bg-slate-100 text-slate-700 text-xs font-bold py-2 rounded-lg hover:bg-slate-200 transition disabled:opacity-60"
+                            >
+                              {actionBusy === `alert-${alert.id}-RESOLVED` ? '…' : 'Resolve'}
+                            </button>
+                          </div>
+                          {alert.status !== 'OPEN' && !alert.driverExonerated && (
+                            <p className="text-[11px] text-slate-500 mt-2">Resolved without exoneration.</p>
+                          )}
+                        </div>
+                      )}
+                      {alert.resolvedAt && (
+                        <p className="text-[11px] text-slate-400 mt-2">
+                          {alert.driverExonerated ? '✅ Driver exonerated' : 'Resolved'} at {fmtTime(alert.resolvedAt)}{alert.resolutionNote ? ` · ${alert.resolutionNote}` : ''}
+                        </p>
                       )}
                     </div>
                   ))}

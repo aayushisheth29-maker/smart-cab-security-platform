@@ -24,7 +24,8 @@ def fresh_state():
     TRIPS.clear()
     EMERGENCIES.clear()
     ROUTE_CHECKS.clear()
-    from main import seed_samples
+    from main import seed_samples, _RATE_BUCKETS
+    _RATE_BUCKETS.clear()
     seed_samples(force=True)
     yield
 
@@ -234,6 +235,7 @@ def test_driver_application_creates_reference_and_persists():
         "experienceYears": 3,
         "ownVehicle": True,
         "agreeTerms": True,
+        "criminalRecordDeclaration": True,
     })
     assert res.status_code == 200, res.text
     body = res.json()
@@ -268,12 +270,19 @@ def test_admin_approves_application_into_fleet():
     res = client.post("/api/drivers/apply", json={
         "fullName": "Approved Driver", "phone": "+91 98765 55555", "city": "Pune",
         "vehicleType": "SmartSUV", "licenseNumber": "MH12-9876543",
-        "agreeTerms": True,
+        "agreeTerms": True, "criminalRecordDeclaration": True,
     })
+    assert res.status_code == 200, res.text
     app_id = res.json()["application"]["id"]
     before = len(DRIVERS)
     # Admin-only: no key -> 401
     assert client.post(f"/api/admin/driver-applications/{app_id}/approve").status_code == 401
+    # Gated flow: docs + cleared background check, then approval.
+    client.post(f"/api/drivers/apply/{app_id}/documents",
+                files={"licencePhoto": ("l.png", _fake_png_bytes(), "image/png"),
+                       "vehiclePhoto": ("v.png", _fake_png_bytes(), "image/png")})
+    client.post(f"/api/admin/driver-applications/{app_id}/background-check",
+                headers={"X-Admin-Key": ADMIN_KEY}, json={"status": "CLEARED"})
     ok = client.post(f"/api/admin/driver-applications/{app_id}/approve",
                      headers={"X-Admin-Key": ADMIN_KEY})
     assert ok.status_code == 200, ok.text
@@ -281,3 +290,143 @@ def test_admin_approves_application_into_fleet():
     assert len(DRIVERS) == before + 1
     # Fleet now contains the approved driver
     assert any(d.get("applicationId") == app_id for d in DRIVERS)
+
+
+# ---------------------------------------------------------------------------
+# Driver vetting: documents + background check + approval gate
+# ---------------------------------------------------------------------------
+def _apply_driver(full_name="Vetted Driver", **overrides):
+    payload = {
+        "fullName": full_name, "phone": "+91 98765 66666", "email": "v@example.com",
+        "city": "Surat", "vehicleType": "SmartSedan",
+        "licenseNumber": "GJ05-2020-9988776", "agreeTerms": True,
+        "criminalRecordDeclaration": True,
+    }
+    payload.update(overrides)
+    return client.post("/api/drivers/apply", json=payload).json()
+
+
+def _fake_png_bytes():
+    # Minimal 1x1 PNG so the multipart upload passes size/content checks.
+    import base64
+    return base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+    )
+
+
+def test_apply_requires_criminal_declaration():
+    res = client.post("/api/drivers/apply", json={
+        "fullName": "X", "phone": "+91 1", "city": "A", "vehicleType": "SmartMini",
+        "licenseNumber": "ABC123", "agreeTerms": True, "criminalRecordDeclaration": False,
+    })
+    assert res.status_code == 400
+
+
+def test_documents_upload_and_admin_download():
+    app = _apply_driver(full_name="Doc Uploader")
+    app_id = app["application"]["id"]
+    res = client.post(
+        f"/api/drivers/apply/{app_id}/documents",
+        files={
+            "licencePhoto": ("licence.png", _fake_png_bytes(), "image/png"),
+            "vehiclePhoto": ("vehicle.png", _fake_png_bytes(), "image/png"),
+        },
+    )
+    assert res.status_code == 200, res.text
+    docs = res.json()["documents"]
+    assert {d["type"] for d in docs} == {"licence", "vehicle"}
+    # Admin can download; no key -> 401
+    doc_id = docs[0]["id"]
+    assert client.get(f"/api/admin/driver-applications/{app_id}/documents/{doc_id}").status_code == 401
+    ok = client.get(f"/api/admin/driver-applications/{app_id}/documents/{doc_id}",
+                    headers={"X-Admin-Key": ADMIN_KEY})
+    assert ok.status_code == 200
+    assert ok.headers["content-type"].startswith("image/")
+    # Reject bad file type
+    bad = client.post(f"/api/drivers/apply/{app_id}/documents",
+                      files={"licencePhoto": ("x.exe", b"123456789012345678901234567890", "application/x-msdownload")})
+    assert bad.status_code == 400
+
+
+def test_approval_requires_cleared_background_and_docs():
+    app = _apply_driver(full_name="Gate Tester")
+    app_id = app["application"]["id"]
+    # 1) Approve before docs/background -> 400
+    res = client.post(f"/api/admin/driver-applications/{app_id}/approve",
+                      headers={"X-Admin-Key": ADMIN_KEY})
+    assert res.status_code == 400
+    # 2) Upload docs
+    client.post(f"/api/drivers/apply/{app_id}/documents",
+                files={"licencePhoto": ("l.png", _fake_png_bytes(), "image/png"),
+                       "vehiclePhoto": ("v.png", _fake_png_bytes(), "image/png")})
+    # 3) Clear background check
+    bg = client.post(f"/api/admin/driver-applications/{app_id}/background-check",
+                     headers={"X-Admin-Key": ADMIN_KEY},
+                     json={"status": "CLEARED", "note": "Police certificate verified"})
+    assert bg.status_code == 200
+    assert bg.json()["application"]["backgroundCheck"]["status"] == "CLEARED"
+    # 4) Now approve works
+    ok = client.post(f"/api/admin/driver-applications/{app_id}/approve",
+                     headers={"X-Admin-Key": ADMIN_KEY})
+    assert ok.status_code == 200
+    assert ok.json()["application"]["status"] == "APPROVED"
+
+
+def test_background_flag_rejects_application():
+    app = _apply_driver(full_name="Flagged Person")
+    app_id = app["application"]["id"]
+    res = client.post(f"/api/admin/driver-applications/{app_id}/background-check",
+                      headers={"X-Admin-Key": ADMIN_KEY},
+                      json={"status": "FLAGGED", "note": "Record mismatch"})
+    assert res.status_code == 200
+    assert res.json()["application"]["status"] == "REJECTED"
+
+
+# ---------------------------------------------------------------------------
+# Driver protection (two-way safety)
+# ---------------------------------------------------------------------------
+def _new_trip():
+    token = _token()
+    trip = client.post("/api/trips", headers={"Authorization": f"Bearer {token}"}, json={
+        "pickupLocation": "A", "dropoffLocation": "B", "distanceKm": 5,
+        "riderName": "Aayushi S.",
+    }).json()
+    return trip
+
+
+def test_rider_verify_records_proof():
+    trip = _new_trip()
+    res = client.post(f"/api/trips/{trip['id']}/rider-verify",
+                      json={"verified": True, "method": "ID shown at pickup"})
+    assert res.status_code == 200
+    assert res.json()["trip"]["riderVerified"] is True
+
+
+def test_driver_alert_flow_and_admin_exoneration():
+    trip = _new_trip()
+    res = client.post(f"/api/trips/{trip['id']}/driver-alert", json={
+        "reason": "Suspected illegal items in bag",
+        "notes": "Rider refused inspection",
+    })
+    assert res.status_code == 200, res.text
+    alert = res.json()["alert"]
+    assert alert["status"] == "OPEN"
+    assert alert["rideCode"] == trip["rideCode"]
+    assert "exonerate" in res.json()["guide"].lower()
+    # Attach evidence
+    ev = client.post(f"/api/trips/{trip['id']}/driver-alerts/{alert['id']}/evidence",
+                     files={"file": ("proof.png", _fake_png_bytes(), "image/png")})
+    assert ev.status_code == 200
+    # Admin exonerates the driver
+    ok = client.post(f"/api/admin/driver-alerts/{alert['id']}/resolve",
+                     headers={"X-Admin-Key": ADMIN_KEY},
+                     json={"outcome": "EXONERATED", "note": "Rider confirmed at fault"})
+    assert ok.status_code == 200
+    assert ok.json()["alert"]["driverExonerated"] is True
+    assert ok.json()["alert"]["status"] == "RESOLVED"
+
+
+def test_driver_alert_requires_reason():
+    trip = _new_trip()
+    res = client.post(f"/api/trips/{trip['id']}/driver-alert", json={"reason": ""})
+    assert res.status_code == 400
