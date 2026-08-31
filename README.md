@@ -127,3 +127,23 @@ See: [Database Files](database/)
 
 
 
+
+## Week 6 - GPS Tracking Integration
+
+### Live Tracking
+- [Live Tracking](docs/Live_Tracking.md)
+
+### Live Tracking Test Guide
+- [Live Tracking Test Guide](TEST_LIVE_TRACKING.md)
+
+
+## Week 7 - Testing and Bug Fixing
+
+### Test Cases
+- [Test Cases](docs/Test_Cases.md)
+
+### Bug Fixing
+- [Bug Fixing](docs/Bug_Fixing.md)
+
+
+
