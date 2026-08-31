@@ -241,11 +241,11 @@ const LiveGuardModal = ({
 
             {/* 📱 Social media share sheet (WhatsApp / SMS / Email / Telegram / More) */}
             {shareableLocationLink && (() => {
-              const shareText = `🚖 Smart-AI-Cab Live Tracking\n${riderName} is on the way from ${pickup} → ${dropoff}.\nDriver: ${assignedDriver?.name} (${assignedDriver?.plate})\nTrack live: ${shareableLocationLink}`;
+              const shareText = `🚖 Smart Security AI Cab Live Tracking\n${riderName} is on the way from ${pickup} → ${dropoff}.\nDriver: ${assignedDriver?.name} (${assignedDriver?.plate})\nTrack live: ${shareableLocationLink}`;
               const waLink = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
               const smsLink = `sms:?body=${encodeURIComponent(shareText)}`;
-              const emailLink = `mailto:?subject=${encodeURIComponent("My Smart-AI-Cab ride — live tracking")}&body=${encodeURIComponent(shareText)}`;
-              const tgLink = `https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${encodeURIComponent("🚖 Track my Smart-AI-Cab ride live")}`;
+              const emailLink = `mailto:?subject=${encodeURIComponent("My Smart Security AI Cab ride — live tracking")}&body=${encodeURIComponent(shareText)}`;
+              const tgLink = `https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${encodeURIComponent("🚖 Track my Smart Security AI Cab ride live")}`;
               return (
                 <div className="bg-blue-50 border-2 border-blue-500 rounded-xl p-4">
                   <p className="text-xs font-bold text-blue-700 mb-2 uppercase">Share with family</p>
@@ -266,7 +266,7 @@ const LiveGuardModal = ({
                     <button onClick={async () => {
                       if (navigator.share) {
                         try {
-                          await navigator.share({ title: 'Smart-AI-Cab Live Tracking', text: shareText, url: shareableLocationLink });
+                          await navigator.share({ title: 'Smart Security AI Cab Live Tracking', text: shareText, url: shareableLocationLink });
                         } catch (e) { /* cancelled */ }
                       } else {
                         navigator.clipboard.writeText(shareableLocationLink);

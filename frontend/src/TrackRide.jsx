@@ -341,7 +341,7 @@ const TrackRide = () => {
     return (
       <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center p-4 font-sans">
         <Loader2 className="h-12 w-12 text-green-400 animate-spin mb-4" />
-        <p className="text-lg font-bold">Connecting to Smart-AI-Cab Security Feed...</p>
+        <p className="text-lg font-bold">Connecting to Smart Security AI Cab Security Feed...</p>
         <p className="text-xs text-gray-400 mt-2">Verifying link: {linkId}</p>
       </div>
     );
@@ -353,8 +353,8 @@ const TrackRide = () => {
       {/* Top Navbar */}
       <nav className="bg-black text-white px-6 py-4 flex justify-between items-center shadow-lg">
         <div className="flex items-center space-x-2">
-          <ShieldCheck className="h-8 w-8 text-green-400" />
-          <span className="text-xl font-bold tracking-tight">Smart-AI-Cab Live Tracking</span>
+          <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-9 w-9 rounded-lg object-cover ring-1 ring-amber-400/40" />
+          <span className="text-xl font-bold tracking-tight">Smart Security AI Cab Live Tracking</span>
         </div>
         <Link to="/" className="text-sm font-bold text-gray-300 hover:text-white flex items-center bg-gray-800 px-4 py-2 rounded-full transition">
           <ArrowLeft className="h-4 w-4 mr-1" /> Home

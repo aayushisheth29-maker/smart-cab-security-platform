@@ -14,8 +14,8 @@ const Help = () => {
             Back to Home
           </Link>
           <div className="flex items-center space-x-2">
-            <ShieldCheck className="h-6 w-6 text-green-400" />
-            <span className="font-bold">Smart-AI-Cab</span>
+            <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-8 w-8 rounded-lg object-cover ring-1 ring-amber-400/40" />
+            <span className="font-bold">Smart Security AI Cab</span>
           </div>
         </div>
       </div>
@@ -56,7 +56,7 @@ const Help = () => {
           
           {/* Card 3: EMAIL (Opens Email App) */}
           <a 
-            href="mailto:support@smartcab.com?subject=Smart-AI-Cab%20Support%20Request"
+            href="mailto:support@smartcab.com?subject=Smart Security AI Cab%20Support%20Request"
             className="bg-white p-8 rounded-2xl shadow-sm border border-gray-100 flex flex-col items-center text-center hover:shadow-lg hover:scale-105 transition transform cursor-pointer w-full"
           >
             <div className="bg-purple-50 p-4 rounded-full mb-4">

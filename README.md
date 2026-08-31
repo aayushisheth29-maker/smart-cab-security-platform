@@ -3,7 +3,7 @@
 
 ## ℹ️ Brand
 
-**Product name: Smart-AI-Cab** — displayed consistently across the app
+**Product name: Smart Security AI Cab** — displayed consistently across the app
 (navbar, login, rides, safety center, admin, browser tab & favicon), just like
 Uber/Ola keep their brand everywhere. Internal technical names (API routes,
 `SMARTCAB_*` env vars, `smartcab_*` localStorage keys) stay unchanged so

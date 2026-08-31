@@ -216,4 +216,4 @@ def test_share_ride_returns_track_url_and_notification_preview():
     body = res.json()
     assert body["trackUrl"].startswith("/track/")
     assert body["notification"]["transport"] == "preview"
-    assert "Smart-AI-Cab ride has started" in body["notification"]["message"]
+    assert "Smart Security AI Cab ride has started" in body["notification"]["message"]

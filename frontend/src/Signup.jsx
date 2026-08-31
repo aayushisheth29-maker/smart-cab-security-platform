@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ShieldCheck, Loader2 } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
 import { apiFetch, storeAuth } from './api';
 
 const Signup = () => {
@@ -34,9 +34,10 @@ const Signup = () => {
   return (
     <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
       <div className="bg-white p-8 rounded-2xl shadow-xl border border-slate-100 max-w-md w-full">
-        <div className="flex items-center justify-center gap-2 mb-6">
-          <ShieldCheck className="h-8 w-8 text-green-600" />
-          <h2 className="text-3xl font-extrabold text-slate-900">Smart-AI-Cab</h2>
+        <div className="flex flex-col items-center gap-3 mb-6">
+          <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-20 w-20 rounded-2xl object-cover shadow-lg ring-2 ring-amber-400/40" />
+          <h2 className="text-3xl font-extrabold text-slate-900">Smart Security AI Cab</h2>
+          <p className="text-xs font-bold tracking-widest text-amber-600 uppercase">Trusted Intelligent Transport</p>
         </div>
         <h3 className="text-xl font-bold text-center mb-6">Create your account</h3>
         {error && (

@@ -82,7 +82,7 @@ const BookRide = () => {
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
   // 📱 PHONE COMPATIBILITY CHECK — runs a real diagnostic on the user's
-  // device so they know if their phone/browser can run Smart-AI-Cab's live
+  // device so they know if their phone/browser can run Smart Security AI Cab's live
   // tracking + camera features. Honest pass/fail per capability.
   const [compatCheck, setCompatCheck] = useState(null);
   const [compatRunning, setCompatRunning] = useState(false);
@@ -264,7 +264,7 @@ const BookRide = () => {
       setLoggedInUser(data);
       setSignupForm({ name: '', email: '', phone: '', password: '' });
       setMainView('dashboard');
-      alert(`Welcome to Smart-AI-Cab, ${data.name}! 🎉`);
+      alert(`Welcome to Smart Security AI Cab, ${data.name}! 🎉`);
     } catch (err) {
       console.error('Signup error:', err);
       setAuthError('Could not reach the server. Please try again.');
@@ -408,10 +408,10 @@ const BookRide = () => {
   ];
 
   const airportList = [
-    { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ Smart-AI-Cabs Nearby" },
-    { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ Smart-AI-Cabs Nearby" },
-    { name: "Kempegowda International Airport (BLR)", code: "BLR", city: "Bengaluru", state: "Karnataka", activeCabs: "120+ Smart-AI-Cabs Nearby" },
-    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ Smart-AI-Cabs Nearby" }
+    { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ Smart Security AI Cabs Nearby" },
+    { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ Smart Security AI Cabs Nearby" },
+    { name: "Kempegowda International Airport (BLR)", code: "BLR", city: "Bengaluru", state: "Karnataka", activeCabs: "120+ Smart Security AI Cabs Nearby" },
+    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ Smart Security AI Cabs Nearby" }
   ];
 
   const cityList = [
@@ -692,7 +692,7 @@ const BookRide = () => {
     const url = URL.createObjectURL(mp4Blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Smart-AI-Cab_Evidence_${Date.now()}.mp4`;
+    a.download = `Smart Security AI Cab_Evidence_${Date.now()}.mp4`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1028,7 +1028,7 @@ const BookRide = () => {
     if (addrLower.includes('bhavnagar')) return 'bhavnagar';
     if (addrLower.includes('jamnagar')) return 'jamnagar';
     if (addrLower.includes('udaipur')) return 'udaipur';
-    return 'ahmedabad'; // Smart-AI-Cab's home city — the safe default
+    return 'ahmedabad'; // Smart Security AI Cab's home city — the safe default
   };
 
   const geocodeLocation = async (address) => {
@@ -1298,7 +1298,7 @@ const BookRide = () => {
           // If the backend returned a real ID, use it instead
           if (savedBooking && savedBooking.id) {
             setCurrentBookingId(savedBooking.id);
-            console.log("✅ Booking saved to Smart-AI-Cab Python backend:", savedBooking);
+            console.log("✅ Booking saved to Smart Security AI Cab Python backend:", savedBooking);
           }
         }
         // 🏷️ Remember this ride (Ride ID, driver, route, coords) so the
@@ -1328,7 +1328,7 @@ const BookRide = () => {
         alert(`🎉 ${selectedCar} Booked Successfully!${rideIdLine}\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}${surgeNote}\n\nTap 'Live Guard' to share your ride with family!`);
 
       } catch (error) {
-        console.warn("Could not reach Smart-AI-Cab Python backend:", error);
+        console.warn("Could not reach Smart Security AI Cab Python backend:", error);
         // setCurrentBookingId is already set above (localId), so Share
         // Live Location will still work. The link will use the local
         // ID as a fallback if the backend doesn't have it.
@@ -1393,7 +1393,7 @@ const BookRide = () => {
       setSelectedCard({
         title: 'SmartBike',
         subtitle: 'Fast and affordable bike rides',
-        description: 'Beat city traffic with quick SmartBike rides. Smart-AI-Cab adds safety checks, helmet verification, live tracking, and SOS support for a safer two-wheeler experience.',
+        description: 'Beat city traffic with quick SmartBike rides. Smart Security AI Cab adds safety checks, helmet verification, live tracking, and SOS support for a safer two-wheeler experience.',
         benefits: [
           'Quick rides through traffic',
           'Affordable short-distance travel',
@@ -1702,7 +1702,7 @@ const BookRide = () => {
             <Globe className="h-20 w-20 text-orange-500 mb-6 mx-auto opacity-50" />
             <h2 className="text-3xl font-bold text-center mb-4">GPS Signal Lost</h2>
             <p className="text-gray-600 text-center text-lg mb-8">
-              Smart-AI-Cab has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe?
+              Smart Security AI Cab has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe?
             </p>
             <div className="flex flex-col gap-3">
               <button 
@@ -1980,7 +1980,7 @@ const BookRide = () => {
                     <p className="text-xs text-blue-600 mb-3">Pick how you want to share the live tracking link</p>
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       <a
-                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🚖 Smart-AI-Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex flex-col items-center justify-center bg-green-500 hover:bg-green-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
@@ -1990,7 +1990,7 @@ const BookRide = () => {
                         WhatsApp
                       </a>
                       <a
-                        href={`sms:?body=${encodeURIComponent(`🚖 Smart-AI-Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        href={`sms:?body=${encodeURIComponent(`🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
                         className="flex flex-col items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
                         title="Share via SMS"
                       >
@@ -1998,7 +1998,7 @@ const BookRide = () => {
                         SMS
                       </a>
                       <a
-                        href={`mailto:?subject=${encodeURIComponent("My Smart-AI-Cab ride — live tracking")}&body=${encodeURIComponent(`🚖 Smart-AI-Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        href={`mailto:?subject=${encodeURIComponent("My Smart Security AI Cab ride — live tracking")}&body=${encodeURIComponent(`🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
                         className="flex flex-col items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
                         title="Share via Email"
                       >
@@ -2006,7 +2006,7 @@ const BookRide = () => {
                         Email
                       </a>
                       <a
-                        href={`https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${encodeURIComponent("🚖 Track my Smart-AI-Cab ride live")}`}
+                        href={`https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${encodeURIComponent("🚖 Track my Smart Security AI Cab ride live")}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex flex-col items-center justify-center bg-sky-500 hover:bg-sky-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
@@ -2020,8 +2020,8 @@ const BookRide = () => {
                           if (navigator.share) {
                             try {
                               await navigator.share({
-                                title: 'Smart-AI-Cab Live Tracking',
-                                text: `🚖 Smart-AI-Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name}\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`,
+                                title: 'Smart Security AI Cab Live Tracking',
+                                text: `🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name}\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`,
                                 url: shareableLocationLink,
                               });
                             } catch (e) { /* user cancelled */ }
@@ -2144,7 +2144,7 @@ const BookRide = () => {
           <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
           <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
           <p className="text-red-100 text-xl text-center max-w-lg mb-12">
-            Your live location and dashcam feed have been sent to the Smart-AI-Cab Security Center. Do you need immediate police assistance?
+            Your live location and dashcam feed have been sent to the Smart Security AI Cab Security Center. Do you need immediate police assistance?
           </p>
           <div className="flex flex-col w-full max-w-md gap-4">
             <a 
@@ -2208,8 +2208,8 @@ const BookRide = () => {
             className="flex items-center space-x-2 cursor-pointer" 
             onClick={() => { setMainView('ride'); resetRide(); }}
           >
-            <ShieldCheck className="h-8 w-8 text-green-400" />
-            <span className="text-2xl font-bold tracking-tight notranslate">Smart-AI-Cab</span>
+            <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-10 w-10 rounded-xl object-cover ring-1 ring-amber-400/40" />
+            <span className="text-2xl font-bold tracking-tight notranslate">Smart Security AI Cab</span>
           </div>
           <div className="flex flex-wrap justify-center gap-2 md:gap-6 font-medium text-sm">
             <button 
@@ -2239,7 +2239,7 @@ const BookRide = () => {
             <button
               onClick={() => setMainView('compat')}
               className={`px-3 py-2 rounded-full transition ${mainView === 'compat' ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
-              title="Check if your phone supports Smart-AI-Cab"
+              title="Check if your phone supports Smart Security AI Cab"
             >
               📱 Compatibility
             </button>
@@ -2358,7 +2358,7 @@ const BookRide = () => {
       {mainView === 'signup' && (
         <main className="max-w-md mx-auto px-4 py-16 animate-in fade-in duration-500">
           <h1 className="text-4xl font-bold mb-2 text-center">Create Account</h1>
-          <p className="text-center text-gray-600 mb-8 font-medium">Join Smart-AI-Cab Security today.</p>
+          <p className="text-center text-gray-600 mb-8 font-medium">Join Smart Security AI Cab Security today.</p>
           <div className="space-y-4">
             <div className="bg-gray-100 rounded-xl px-4 py-4">
               <input
@@ -2643,6 +2643,16 @@ const BookRide = () => {
 
       {/* RIDE VIEW */}
       {mainView === 'ride' && (
+        <div className="animate-in fade-in duration-300">
+          {/* 🎨 BRAND HERO — the first thing visitors see */}
+          <div className="relative w-full">
+            <img
+              src="/assets/security-cab-banner.png"
+              alt="Smart Security AI Cab — Trusted Intelligent Transport"
+              className="w-full max-h-[300px] object-cover rounded-none md:rounded-b-3xl"
+            />
+          </div>
+          <div className="max-w-md mx-auto px-4">
         <div className="animate-in fade-in duration-500">
           
           <div className="border-b flex flex-col md:flex-row items-center px-4 md:px-12 pt-3 justify-between gap-2 overflow-hidden">
@@ -3123,7 +3133,7 @@ const BookRide = () => {
 
           {/* EXPLORE SECTION */}
           <section id="explore-section" className="max-w-7xl mx-auto px-4 md:px-12 py-16">
-            <h2 className="text-3xl font-bold mb-8">Explore what you can do with Smart-AI-Cab</h2>
+            <h2 className="text-3xl font-bold mb-8">Explore what you can do with Smart Security AI Cab</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
@@ -3214,7 +3224,7 @@ const BookRide = () => {
             <div className="flex flex-col lg:flex-row bg-[#e2f1f8] rounded-2xl overflow-hidden relative">
               <div className="w-full lg:w-1/2 p-8 md:p-12 z-10 flex flex-col justify-center">
                 <h3 className="text-4xl md:text-5xl font-bold mb-8 leading-tight text-gray-900">
-                  Get your ride right<br/>with Smart-AI-Cab Reserve
+                  Get your ride right<br/>with Smart Security AI Cab Reserve
                 </h3>
                 <p className="font-bold mb-2">Choose date and time</p>
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -3306,7 +3316,7 @@ const BookRide = () => {
               <div className="w-full md:w-1/2">
                 <h2 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">Ride with friends seamlessly</h2>
                 <p className="text-lg text-gray-600 mb-6">
-                  Riding with friends just got easier: set up a group ride in the Smart-AI-Cab app, invite your friends, and arrive at your destination. Friends who ride together save together.
+                  Riding with friends just got easier: set up a group ride in the Smart Security AI Cab app, invite your friends, and arrive at your destination. Friends who ride together save together.
                 </p>
                 <button 
                   onClick={() => setSelectedCard({ 
@@ -3324,7 +3334,7 @@ const BookRide = () => {
           {/* TRAVEL YOUR WAY SECTION */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">
-              Use the Smart-AI-Cab app to help you travel your way
+              Use the Smart Security AI Cab app to help you travel your way
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               
@@ -3338,7 +3348,7 @@ const BookRide = () => {
                 </div>
                 <h3 className="text-xl font-bold mb-3">Ride options</h3>
                 <p className="text-gray-600 mb-6 flex-grow">
-                  There's more than one way to move with Smart-AI-Cab, no matter where you are or where you're headed next.
+                  There's more than one way to move with Smart Security AI Cab, no matter where you are or where you're headed next.
                 </p>
                 <button 
                   onClick={() => { setActiveTab('request'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
@@ -3390,6 +3400,8 @@ const BookRide = () => {
 
             </div>
           </section>
+          </div>
+        </div>
         </div>
       )}
 
@@ -3401,7 +3413,7 @@ const BookRide = () => {
               Drive when you want, make what you need
             </h1>
             <p className="text-xl text-gray-600 mb-8">
-              Make money on your schedule. Smart-AI-Cab's AI-driven security protects our drivers just as much as our riders.
+              Make money on your schedule. Smart Security AI Cab's AI-driven security protects our drivers just as much as our riders.
             </p>
             <button 
               onClick={() => { closeAllForms(); setShowDriverForm(true); }} 
@@ -3430,7 +3442,7 @@ const BookRide = () => {
       {mainView === 'business' && (
         <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
           <div className="w-full md:w-1/2 flex flex-col">
-            <h1 className="text-5xl md:text-7xl font-bold mb-6">Smart-AI-Cab for Business</h1>
+            <h1 className="text-5xl md:text-7xl font-bold mb-6">Smart Security AI Cab for Business</h1>
             <p className="text-xl text-gray-600 mb-8">
               A premium, secure travel solution for your employees. Corporate billing and a real-time safety dashboard.
             </p>
@@ -3457,7 +3469,7 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* ✨ OUR MISSION — The women's safety story behind Smart-AI-Cab */}
+      {/* ✨ OUR MISSION — The women's safety story behind Smart Security AI Cab */}
       {mainView === 'about' && (
         <main className="max-w-5xl mx-auto px-4 md:px-12 py-16 animate-in fade-in duration-500">
           {/* --- HERO --- */}
@@ -3474,7 +3486,7 @@ const BookRide = () => {
               without the knot in her stomach, without checking the back seat twice."
             </p>
             <p className="text-base text-gray-500 mt-6 max-w-2xl mx-auto">
-              Smart-AI-Cab was built by women who have ridden home alone at night with their
+              Smart Security AI Cab was built by women who have ridden home alone at night with their
               keys between their fingers. We're changing that — one ride at a time.
             </p>
           </section>
@@ -3651,7 +3663,7 @@ const BookRide = () => {
                 <div className="flex-1">
                   <h3 className="text-2xl md:text-3xl font-bold mb-3">A note from Aayushi</h3>
                   <p className="text-gray-700 leading-relaxed mb-4">
-                    I started Smart-AI-Cab after a ride home from college where the driver
+                    I started Smart Security AI Cab after a ride home from college where the driver
                     took a "shortcut" through a road I didn't recognize. I was 19, alone,
                     and I had to make small talk for 12 minutes to stay calm.
                   </p>
@@ -3696,7 +3708,7 @@ const BookRide = () => {
             <div className="inline-flex items-center bg-blue-50 border-2 border-blue-300 text-blue-700 font-bold px-4 py-2 rounded-full text-sm mb-6">
               📱 Compatibility Check
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Will Smart-AI-Cab work on your phone?</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">Will Smart Security AI Cab work on your phone?</h1>
             <p className="text-lg text-gray-600 max-w-xl mx-auto">
               Tap the button below — we'll run a real test on your device
               and tell you honestly whether live tracking, GPS, and camera
@@ -3790,7 +3802,7 @@ const BookRide = () => {
                     <div className="bg-green-50 border-2 border-green-500 rounded-2xl p-6 text-center">
                       <div className="text-4xl mb-2">✅</div>
                       <h3 className="text-2xl font-bold text-green-800 mb-2">All systems go!</h3>
-                      <p className="text-green-700">Your phone is fully compatible with Smart-AI-Cab. Live tracking, GPS, and video will all work great.</p>
+                      <p className="text-green-700">Your phone is fully compatible with Smart Security AI Cab. Live tracking, GPS, and video will all work great.</p>
                       <button onClick={() => setMainView('ride')} className="mt-4 bg-green-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-green-700 transition">
                         Book a ride →
                       </button>
@@ -3836,7 +3848,7 @@ const BookRide = () => {
           <div className="mt-10 bg-gray-50 border border-gray-200 rounded-2xl p-6 text-sm text-gray-600">
             <h3 className="font-bold text-gray-900 mb-2">📱 Tips for the best experience</h3>
             <ul className="space-y-1 list-disc pl-5">
-              <li>Open Smart-AI-Cab in <strong>Safari</strong> (iPhone) or <strong>Chrome</strong> (Android), not in WhatsApp/Instagram</li>
+              <li>Open Smart Security AI Cab in <strong>Safari</strong> (iPhone) or <strong>Chrome</strong> (Android), not in WhatsApp/Instagram</li>
               <li>Allow <strong>location</strong> and <strong>camera</strong> permissions when prompted</li>
               <li>Keep the <strong>app in the foreground</strong> for live video to work continuously</li>
               <li>Have a <strong>charger handy</strong> for long rides (camera + GPS use battery)</li>

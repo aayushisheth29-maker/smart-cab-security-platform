@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  ShieldCheck, ArrowLeft, Car, Siren, Users, RefreshCw, Loader2,
+  ArrowLeft, Car, Siren, Users, RefreshCw, Loader2,
   MapPin, CheckCircle2, LogOut, Lock, Activity, Route as RouteIcon,
 } from 'lucide-react';
 import { apiFetch, getAdminKey, storeAdminKey } from './api';
@@ -147,11 +147,9 @@ export default function AdminDashboard() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center px-4">
         <div className="bg-white rounded-3xl shadow-xl border border-slate-100 p-8 max-w-md w-full">
           <div className="flex items-center gap-3 mb-6 justify-center">
-            <div className="bg-slate-900 rounded-2xl p-3">
-              <ShieldCheck className="h-8 w-8 text-green-400" />
-            </div>
+            <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-14 w-14 rounded-2xl object-cover ring-2 ring-amber-400/40" />
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900">Smart-AI-Cab Admin</h1>
+              <h1 className="text-2xl font-extrabold text-slate-900">Smart Security AI Cab Admin</h1>
               <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Safety Dashboard</p>
             </div>
           </div>
@@ -185,9 +183,9 @@ export default function AdminDashboard() {
       <header className="bg-slate-900 text-white">
         <div className="max-w-6xl mx-auto px-4 py-5 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <ShieldCheck className="h-7 w-7 text-green-400" />
+            <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-10 w-10 rounded-lg object-cover ring-1 ring-amber-400/40" />
             <div>
-              <div className="font-extrabold text-lg leading-tight">SMARTCAB ADMIN</div>
+              <div className="font-extrabold text-lg leading-tight">SMART SECURITY AI CAB ADMIN</div>
               <div className="text-[10px] text-slate-400 tracking-widest uppercase">Safety Dashboard</div>
             </div>
           </div>

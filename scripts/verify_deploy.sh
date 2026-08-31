@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Smart-AI-Cab deploy verification — run from your PC (or any machine with internet):
+# Smart Security AI Cab deploy verification — run from your PC (or any machine with internet):
 #
 #   bash scripts/verify_deploy.sh
 #   bash scripts/verify_deploy.sh <backend-url> <admin-key>

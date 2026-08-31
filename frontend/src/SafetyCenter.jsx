@@ -137,7 +137,7 @@ export default function SafetyCenter() {
           riderName: user?.name || ride?.riderName || 'Rider',
           driverName: ride?.driver?.name || 'Verified Driver',
           carPlate: ride?.driver?.plate || '',
-          carModel: ride?.driver?.carModel || 'Smart-AI-Cab',
+          carModel: ride?.driver?.carModel || 'Smart Security AI Cab',
           pickup: ride?.pickup || '',
           dropoff: ride?.dropoff || '',
           lat: ride?.lat ?? undefined,
@@ -208,8 +208,8 @@ export default function SafetyCenter() {
           <Link to="/" className="flex items-center hover:text-slate-300 transition">
             <ArrowLeft className="h-5 w-5 mr-2" />
             <span className="flex items-center gap-2">
-              <ShieldCheck className="h-6 w-6 text-green-400" />
-              <span className="font-extrabold text-xl">Smart-AI-Cab</span>
+              <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-9 w-9 rounded-lg object-cover ring-1 ring-amber-400/40" />
+              <span className="font-extrabold text-xl">Smart Security AI Cab</span>
             </span>
           </Link>
           <nav className="flex items-center gap-4 text-sm font-semibold">

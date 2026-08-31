@@ -4,9 +4,9 @@
 @tailwind utilities;
 
 /* ------------------------------------------------------------------ */
-/* Smart-AI-Cab design system                                             */
+/* Smart Security AI Cab design system                                             */
 /* Primary: deep navy/charcoal · Safety: red · Success: green         */
-/* Accent: Smart-AI-Cab green (#10b981) — used across buttons/badges.     */
+/* Accent: Smart Security AI Cab green (#10b981) — used across buttons/badges.     */
 /* ------------------------------------------------------------------ */
 :root {
   --sc-primary: #0f172a;        /* slate-900 — deep navy/charcoal */
