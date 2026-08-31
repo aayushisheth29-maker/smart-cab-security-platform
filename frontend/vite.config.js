@@ -5,8 +5,10 @@ import react from '@vitejs/plugin-react'
 export default defineConfig({
   plugins: [react()],
   server: {
-    // Allow any host so dev previews (ngrok, Arena, tunnels) work —
+    // Bind to all interfaces so dev previews (ngrok, Arena, tunnels) work —
     // production on Vercel is unaffected by this dev-server-only setting.
+    host: true,
+    // Allow any host so preview hosts (e.g. 5173-<sandbox>.e2b.app) work.
     allowedHosts: true,
   },
 })

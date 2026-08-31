@@ -11,7 +11,7 @@ import {
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
-import { API_BASE } from './api';
+import { API_BASE, authHeaders } from './api';
 
 // --- CUSTOM MAP ICONS ---
 // Small pickup dot — just a black circle so the car isn't covered
@@ -308,6 +308,7 @@ const BookRide = () => {
     setLoggedInUser(null);
     setUserProfile({ name: 'Guest', email: '', phone: '', address: '' });
     localStorage.removeItem('smartcab_user');
+    localStorage.removeItem('smartcab_token');
     setDashboardBookings([]);
     setMainView('ride');
     console.log('👋 Logged out');
@@ -319,7 +320,7 @@ const BookRide = () => {
         setDashboardBookings([]);
         return;
       }
-      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/trips`)
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/trips`, { headers: authHeaders() })
         .then(res => res.json())
         .then(data => setDashboardBookings(data))
         .catch(err => console.error("Error fetching history:", err));
@@ -355,7 +356,7 @@ const BookRide = () => {
   const [emergencyContacts, setEmergencyContacts] = useState(readGuestContacts);
   useEffect(() => {
     if (loggedInUser && loggedInUser.id) {
-      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`)
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`, { headers: authHeaders() })
         .then(res => (res.ok ? res.json() : []))
         .then(contacts => setEmergencyContacts(Array.isArray(contacts) ? contacts : []))
         .catch(() => { /* keep whatever is currently shown */ });
@@ -493,7 +494,7 @@ const BookRide = () => {
     if (loggedInUser && loggedInUser.id) {
       fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ name, phone }),
       }).catch(err => console.warn('Could not save contact to profile:', err.message));
     }
@@ -508,6 +509,7 @@ const BookRide = () => {
     if (loggedInUser && loggedInUser.id) {
       fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts/${encodeURIComponent(phone)}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       }).catch(err => console.warn('Could not remove contact from profile:', err.message));
     }
   };
@@ -1284,29 +1286,64 @@ const BookRide = () => {
         const tripResponse = await fetch(`${PYTHON_API}/api/trips`, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            ...authHeaders()
           },
           body: JSON.stringify(bookingData)
         });
 
+        let savedBooking = null;
         if (tripResponse.ok) {
-          const savedBooking = await tripResponse.json();
+          savedBooking = await tripResponse.json();
           // If the backend returned a real ID, use it instead
           if (savedBooking && savedBooking.id) {
             setCurrentBookingId(savedBooking.id);
             console.log("✅ Booking saved to SmartCab Python backend:", savedBooking);
           }
         }
+        // 🏷️ Remember this ride (Ride ID, driver, route, coords) so the
+        // Safety Center + My Rides can show it without another booking.
+        try {
+          localStorage.setItem('smartcab_last_ride', JSON.stringify({
+            bookingId: savedBooking?.id || localId,
+            rideCode: savedBooking?.rideCode || null,
+            riderName: bookingData.riderName,
+            driver: {
+              name: randomDriver.name,
+              plate: randomDriver.plate,
+              carModel: randomDriver.carModel,
+              rating: randomDriver.rating,
+            },
+            pickup,
+            dropoff,
+            pickupLat: pCoords[0], pickupLng: pCoords[1],
+            dropoffLat: dCoords[0], dropoffLng: dCoords[1],
+            lat: pCoords[0], lng: pCoords[1],
+          }));
+        } catch (e) { /* storage may be unavailable */ }
         const surgeNote = estimate.surgeMultiplier > 1
           ? ` (${estimate.surgeMultiplier}x — ${estimate.surgeReason || 'surge pricing'})`
           : '';
-        alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}${surgeNote}\n\nTap 'Live Guard' to share your ride with family!`);
+        const rideIdLine = savedBooking?.rideCode ? `\n🏷️ Ride ID: ${savedBooking.rideCode}\n` : '';
+        alert(`🎉 ${selectedCar} Booked Successfully!${rideIdLine}\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}${surgeNote}\n\nTap 'Live Guard' to share your ride with family!`);
 
       } catch (error) {
         console.warn("Could not reach SmartCab Python backend:", error);
         // setCurrentBookingId is already set above (localId), so Share
         // Live Location will still work. The link will use the local
         // ID as a fallback if the backend doesn't have it.
+        try {
+          localStorage.setItem('smartcab_last_ride', JSON.stringify({
+            bookingId: localId,
+            rideCode: null,
+            riderName: bookingData.riderName,
+            driver: { name: randomDriver.name, plate: randomDriver.plate, carModel: randomDriver.carModel, rating: randomDriver.rating },
+            pickup, dropoff,
+            pickupLat: pCoords[0], pickupLng: pCoords[1],
+            dropoffLat: dCoords[0], dropoffLng: dCoords[1],
+            lat: pCoords[0], lng: pCoords[1],
+          }));
+        } catch (e) { /* storage may be unavailable */ }
         alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}\n\n(Booking saved locally — backend sync will retry)`);
       }
 
@@ -2212,6 +2249,18 @@ const BookRide = () => {
             >
               Dashboard
               {!loggedInUser && <span className="ml-1 text-[10px] bg-red-600 px-1.5 rounded-full text-white">New</span>}
+            </button>
+            <button
+              onClick={() => { window.location.href = '/rides'; }}
+              className="px-3 py-2 rounded-full transition hover:bg-gray-800"
+            >
+              My Rides
+            </button>
+            <button
+              onClick={() => { window.location.href = '/safety'; }}
+              className="px-3 py-2 rounded-full transition flex items-center hover:bg-gray-800"
+            >
+              🛡️ Safety Center
             </button>
           </div>
         </div>

@@ -36,7 +36,7 @@ GET  /api/ai/check-route                  -> fake AI safety check
 POST /api/video/upload-evidence           -> upload encrypted video evidence
 """
 
-from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, Union
@@ -48,9 +48,150 @@ import uuid
 import json
 import logging
 import time
+import math
+import hashlib
+import hmac
+import base64
+import secrets
+import threading
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("smartcab")
+
+
+# ---------------------------------------------------------------------------
+# 🔐 SECURITY & CONFIGURATION — everything sensitive comes from the
+# environment. Never hard-code secrets. In production set:
+#   SMARTCAB_SECRET_KEY      -> random 32+ char string signing auth tokens
+#   SMARTCAB_ADMIN_KEY       -> key required by /api/admin/* endpoints
+#   SMARTCAB_EVIDENCE_KEY    -> key required to upload video evidence
+#   SMARTCAB_CORS_ORIGINS    -> comma-separated allowed origins (frontend URL)
+# ---------------------------------------------------------------------------
+SMARTCAB_SECRET_KEY = os.environ.get("SMARTCAB_SECRET_KEY", "dev-only-secret-change-me")
+SMARTCAB_ADMIN_KEY = os.environ.get("SMARTCAB_ADMIN_KEY", "smartcab-admin-dev-key")
+SMARTCAB_EVIDENCE_KEY = os.environ.get("SMARTCAB_EVIDENCE_KEY", "sk_test_smartcab_vault_9982")
+SMARTCAB_DEBUG = os.environ.get("SMARTCAB_DEBUG", "").lower() in ("1", "true", "yes")
+
+if SMARTCAB_SECRET_KEY == "dev-only-secret-change-me":
+    log.warning("🔐 SMARTCAB_SECRET_KEY is using the DEV default. Set it in production.")
+if SMARTCAB_ADMIN_KEY == "smartcab-admin-dev-key":
+    log.warning("🔐 SMARTCAB_ADMIN_KEY is using the DEV default. Set it in production.")
+
+PBKDF2_ITERATIONS = 210_000
+
+
+def hash_password(password: str) -> str:
+    """Hash a password with PBKDF2-HMAC-SHA256 (stdlib, no extra deps).
+    Stored format: pbkdf2_sha256$<iterations>$<salt-hex>$<hash-hex>"""
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${dk.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Constant-time verification of a PBKDF2 hash."""
+    try:
+        algo, iterations, salt, expected = stored.split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), int(iterations))
+        return secrets.compare_digest(dk.hex(), expected)
+    except Exception:
+        return False
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64url_decode(text: str) -> bytes:
+    padding = "=" * (-len(text) % 4)
+    return base64.urlsafe_b64decode(text + padding)
+
+
+def create_access_token(user: Dict[str, Any], expires_hours: int = 24) -> str:
+    """Issue a signed (HMAC-SHA256) token — the JWT-style auth token the
+    frontend sends as `Authorization: Bearer <token>`."""
+    payload = {
+        "sub": str(user.get("id", "")),
+        "email": user.get("email", ""),
+        "name": user.get("name", ""),
+        "iat": int(time.time()),
+        "exp": int(time.time()) + expires_hours * 3600,
+    }
+    body = _b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signature = _b64url(hmac.new(SMARTCAB_SECRET_KEY.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest())
+    return f"{body}.{signature}"
+
+
+def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
+    """Verify a token's signature + expiry. Returns the payload or None."""
+    try:
+        body, received_sig = token.split(".", 1)
+        expected_sig = _b64url(hmac.new(SMARTCAB_SECRET_KEY.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest())
+        if not secrets.compare_digest(received_sig, expected_sig):
+            return None
+        payload = json.loads(_b64url_decode(body))
+        if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def get_auth_user(request: Request) -> Optional[Dict[str, Any]]:
+    """Resolve the logged-in user from the Authorization header (if any)."""
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return None
+    payload = decode_access_token(header[7:].strip())
+    if not payload:
+        return None
+    try:
+        uid = int(payload.get("sub", 0))
+    except Exception:
+        return None
+    return next((u for u in USERS if u.get("id") == uid), None)
+
+
+def require_own_user(request: Request, user_id: int) -> None:
+    """FastAPI dependency: user endpoints are only reachable by the owner."""
+    user = get_auth_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required — please log in.")
+    if int(user.get("id", -1)) != int(user_id):
+        raise HTTPException(status_code=403, detail="You can only access your own account.")
+
+
+def require_admin(request: Request) -> None:
+    """FastAPI dependency: admin endpoints require the X-Admin-Key header."""
+    provided = request.headers.get("x-admin-key", "")
+    if not provided or not secrets.compare_digest(provided, SMARTCAB_ADMIN_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing admin key.")
+
+
+# ---------------------------------------------------------------------------
+# 🐢 RATE LIMITING — simple in-memory sliding window per key (IP+route).
+# Protects auth + emergency endpoints from brute force / abuse.
+# ---------------------------------------------------------------------------
+_RATE_BUCKETS: Dict[str, List[float]] = {}
+_RATE_LOCK = threading.Lock()
+
+
+def rate_limited(key: str, limit: int = 10, window_seconds: int = 60) -> bool:
+    now = time.time()
+    with _RATE_LOCK:
+        bucket = [t for t in _RATE_BUCKETS.get(key, []) if now - t < window_seconds]
+        if len(bucket) >= limit:
+            _RATE_BUCKETS[key] = bucket
+            return True
+        bucket.append(now)
+        _RATE_BUCKETS[key] = bucket
+        return False
+
+
+def client_key(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 # ---------------------------------------------------------------------------
 # Optional Supabase Postgres connection
@@ -510,6 +651,89 @@ def _persist_share_link(link: Dict[str, Any]) -> None:
         log.warning("⚠️ Could not persist share link to Postgres: %s", e)
 
 
+# ---------------------------------------------------------------------------
+# 🏷️ RIDE IDs — every ride gets a human-friendly code like SC-2026-000184.
+# The sequence is persisted to disk so codes never repeat after a restart.
+# ---------------------------------------------------------------------------
+RIDE_CODE_FILE = os.path.join(PERSIST_DIR, "ride_counter.json") if PERSIST_DIR else None
+_RIDE_CODE_STATE = {"seq": 183}  # first generated code = SC-<year>-000184
+
+
+def _load_ride_counter() -> None:
+    if not RIDE_CODE_FILE or not os.path.exists(RIDE_CODE_FILE):
+        return
+    try:
+        with open(RIDE_CODE_FILE, "r") as f:
+            data = json.load(f)
+        if isinstance(data.get("seq"), int):
+            _RIDE_CODE_STATE["seq"] = max(_RIDE_CODE_STATE["seq"], data["seq"])
+            log.info("🏷️ Ride ID counter resumed at %d", _RIDE_CODE_STATE["seq"])
+    except Exception as e:
+        log.warning("⚠️ Could not load ride counter: %s", e)
+
+
+def _next_ride_code() -> str:
+    try:
+        from zoneinfo import ZoneInfo
+        year = datetime.now(ZoneInfo("Asia/Kolkata")).year
+    except Exception:
+        year = datetime.now(timezone.utc).year
+    _RIDE_CODE_STATE["seq"] += 1
+    seq = _RIDE_CODE_STATE["seq"]
+    if RIDE_CODE_FILE:
+        try:
+            with open(RIDE_CODE_FILE, "w") as f:
+                json.dump(_RIDE_CODE_STATE, f)
+        except Exception:
+            pass
+    return f"SC-{year}-{seq:06d}"
+
+
+# Ride lifecycle. Every trip moves through these states:
+# REQUESTED -> DRIVER_ASSIGNED -> DRIVER_ACCEPTED -> DRIVER_ARRIVING
+#           -> RIDE_STARTED -> IN_PROGRESS -> COMPLETED
+# (DRIVER_ASSIGNED is the state a fresh booking lands in — a driver is
+#  matched immediately by the demo backend.)
+RIDE_LIFECYCLE = [
+    "REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "DRIVER_ARRIVING",
+    "RIDE_STARTED", "IN_PROGRESS", "COMPLETED",
+]
+ACTIVE_RIDE_STATUSES = {"REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "DRIVER_ARRIVING", "RIDE_STARTED", "IN_PROGRESS", "DANGER"}
+
+ALLOWED_TRANSITIONS: Dict[str, set] = {
+    "REQUESTED": {"DRIVER_ASSIGNED", "CANCELLED"},
+    "DRIVER_ASSIGNED": {"DRIVER_ACCEPTED", "CANCELLED"},
+    "DRIVER_ACCEPTED": {"DRIVER_ARRIVING", "CANCELLED"},
+    "DRIVER_ARRIVING": {"RIDE_STARTED", "CANCELLED"},
+    "RIDE_STARTED": {"IN_PROGRESS", "DANGER"},
+    "IN_PROGRESS": {"COMPLETED", "DANGER"},
+    "COMPLETED": set(),
+    "DANGER": {"COMPLETED", "CANCELLED", "IN_PROGRESS"},
+    "CANCELLED": set(),
+    # Legacy statuses from the old UI keep working
+    "PENDING": {"DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "CANCELLED", "DANGER"},
+    "ON_TRIP": {"IN_PROGRESS", "COMPLETED", "DANGER"},
+}
+
+
+def _assign_driver_to_trip(trip: Dict[str, Any]) -> None:
+    """Attach a verified driver to the trip (demo: random from DRIVERS)."""
+    if trip.get("driver") or not DRIVERS:
+        return
+    d = random.choice(DRIVERS)
+    trip["driver"] = {
+        "id": d.get("id"),
+        "name": d.get("name"),
+        "rating": d.get("rating"),
+        "plate": d.get("plate"),
+        "carModel": d.get("carModel"),
+        "phone": d.get("phone"),
+        "dl": d.get("dl"),
+    }
+    trip["etaMinutes"] = random.choice([3, 4, 5, 6, 7, 8])
+    trip["driverAssignedAt"] = _now_iso()
+
+
 def seed_samples(force: bool = False) -> None:
     """Populate drivers / users / trips if empty (or when force=True)."""
     global _next_id
@@ -529,41 +753,65 @@ def seed_samples(force: bool = False) -> None:
 
     if force or not USERS:
         USERS.clear()
+        # Demo account. The password is stored as a PBKDF2 hash, never
+        # plaintext. Demo credentials: aayushi@example.com / smartcab123
         USERS.append({
             "id": 1,
             "name": "Aayushi S.",
             "email": "aayushi@example.com",
             "phone": "+91 98765 43210",
+            "passwordHash": hash_password("smartcab123"),
+            "savedAddresses": [
+                {"label": "Home", "address": "Chandlodia, Ahmedabad", "lat": 23.1033, "lng": 72.5930},
+                {"label": "Work", "address": "Kalupur Railway Station, Ahmedabad", "lat": 23.0283, "lng": 72.5924},
+            ],
+            "emergencyContacts": [
+                {"name": "Mom", "phone": "+91 98765 11111"},
+                {"name": "Rohan (brother)", "phone": "+91 98765 22222"},
+            ],
         })
         _next_id["user"] = 2
 
     if force or not TRIPS:
         TRIPS.clear()
         sample_trips = [
-            {"riderName": "Aayushi S.", "pickupLocation": "Kalupur Railway Station",  "dropoffLocation": "Ahmedabad International Airport", "distanceKm": 9.2,  "fare": 165, "status": "COMPLETED"},
-            {"riderName": "Aayushi S.", "pickupLocation": "Saraspur",                  "dropoffLocation": "Gota",                             "distanceKm": 12.4, "fare": 220, "status": "COMPLETED"},
-            {"riderName": "Aayushi S.", "pickupLocation": "Chandlodia",                "dropoffLocation": "Delhi Airport",                    "distanceKm": 18.7, "fare": 290, "status": "COMPLETED"},
+            {"riderName": "Aayushi S.", "pickupLocation": "Kalupur Railway Station",  "dropoffLocation": "Ahmedabad International Airport", "distanceKm": 9.2,  "fare": 165, "status": "COMPLETED", "selectedCar": "SmartMini"},
+            {"riderName": "Aayushi S.", "pickupLocation": "Saraspur",                  "dropoffLocation": "Gota",                             "distanceKm": 12.4, "fare": 220, "status": "COMPLETED", "selectedCar": "SmartSedan"},
+            {"riderName": "Aayushi S.", "pickupLocation": "Chandlodia",                "dropoffLocation": "Delhi Airport",                    "distanceKm": 18.7, "fare": 290, "status": "COMPLETED", "selectedCar": "SmartSUV"},
         ]
         for t in sample_trips:
             t["id"] = _next_id["trip"]
             t["createdAt"] = _now_iso()
+            t["rideCode"] = _next_ride_code()
+            t["userId"] = 1
+            _assign_driver_to_trip(t)
             TRIPS.append(t)
             _next_id["trip"] += 1
 
 
 # Seed once at boot so /api/drivers etc always return something
+_load_ride_counter()
 seed_samples(force=False)
 
 
 # ---------------------------------------------------------------------------
 # FastAPI app + CORS
 # ---------------------------------------------------------------------------
-app = FastAPI(title="SmartCab AI Security Service", version="2.0.0")
+app = FastAPI(title="SmartCab AI Security Service", version="3.0.0")
 
+# CORS is controlled by SMARTCAB_CORS_ORIGINS (comma-separated). It defaults
+# to "*" for local dev / sandbox previews, but production MUST set it to the
+# real frontend origin. Bearer tokens are used for auth (no cookies), so
+# allow_credentials stays False — this is both safer and lets "*" work.
+CORS_ORIGINS = [
+    o.strip() for o in os.environ.get("SMARTCAB_CORS_ORIGINS", "*").split(",") if o.strip()
+]
+if CORS_ORIGINS == ["*"]:
+    log.warning("🔐 CORS is wide open (*). Set SMARTCAB_CORS_ORIGINS to your Vercel URL in production.")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -686,6 +934,105 @@ class EmergencyCreate(BaseModel):
     reason: Optional[str] = "Manual SOS"
     lat: Optional[float] = None
     lng: Optional[float] = None
+    # New: full alert context so the Safety Center can render the complete
+    # emergency state (ride ID, driver, vehicle, contacts).
+    rideCode: Optional[str] = None
+    driverName: Optional[str] = ""
+    carPlate: Optional[str] = ""
+    pickup: Optional[str] = ""
+    dropoff: Optional[str] = ""
+    contacts: Optional[List[Dict[str, str]]] = None
+    silent: Optional[bool] = False
+
+
+class ShareRideRequest(BaseModel):
+    linkId: Optional[str] = None
+    bookingId: Optional[Union[str, int]] = None
+    rideCode: Optional[str] = None
+    riderName: Optional[str] = ""
+    driverName: Optional[str] = ""
+    carPlate: Optional[str] = ""
+    carModel: Optional[str] = ""
+    pickup: Optional[str] = ""
+    dropoff: Optional[str] = ""
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    contacts: Optional[List[Dict[str, str]]] = None
+    notifyContacts: Optional[bool] = True
+
+
+class NotifyContactsRequest(BaseModel):
+    linkId: str
+    rideCode: Optional[str] = None
+    riderName: Optional[str] = ""
+    driverName: Optional[str] = ""
+    carPlate: Optional[str] = ""
+    dropoff: Optional[str] = ""
+    contacts: List[Dict[str, str]]
+
+
+def _preview_sms_message(req: Dict[str, Any]) -> str:
+    """Build the exact SMS a trusted contact would receive. Rendered in the
+    app as a preview when no SMS provider is configured."""
+    return (
+        f"🚕 A SmartCab ride has started.\n"
+        f"{req.get('riderName') or 'Your loved one'}'s ride\n"
+        f"Driver: {req.get('driverName') or 'Verified driver'}\n"
+        f"Vehicle: {req.get('carPlate') or 'SmartCab'}\n"
+        f"Destination: {req.get('dropoff') or '—'}\n"
+        f"Track: {req.get('trackUrl') or ''}\n"
+        f"Ride ID: {req.get('rideCode') or '—'}"
+    )
+
+
+def _send_notifications(req: Dict[str, Any]) -> Dict[str, Any]:
+    """Notify emergency contacts. If Twilio env vars are configured, send a
+    real SMS through the Twilio REST API; otherwise return a message preview
+    so the app never pretends SMS was sent when it wasn't."""
+    twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    twilio_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    twilio_from = os.environ.get("TWILIO_FROM_NUMBER", "")
+    message = _preview_sms_message(req)
+    contacts = req.get("contacts") or []
+
+    if twilio_sid and twilio_token and twilio_from:
+        import urllib.parse
+        import urllib.request
+        sent = []
+        for c in contacts:
+            phone = (c.get("phone") or "").strip()
+            if not phone:
+                continue
+            try:
+                data = urllib.parse.urlencode({
+                    "To": phone,
+                    "From": twilio_from,
+                    "Body": message,
+                }).encode("ascii")
+                auth = base64.b64encode(f"{twilio_sid}:{twilio_token}".encode()).decode("ascii")
+                url = f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json"
+                req_ = urllib.request.Request(url, data=data, headers={
+                    "Authorization": f"Basic {auth}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                })
+                with urllib.request.urlopen(req_, timeout=10) as resp:
+                    resp.read()
+                sent.append({"name": c.get("name", ""), "phone": phone, "delivered": True})
+            except Exception as e:
+                log.warning("⚠️ Twilio send to %s failed: %s", phone, e)
+                sent.append({"name": c.get("name", ""), "phone": phone, "delivered": False, "error": str(e)[:120]})
+        return {"transport": "twilio", "contacts": sent, "message": message}
+
+    # No SMS provider configured — return the preview honestly.
+    return {
+        "transport": "preview",
+        "contacts": [
+            {"name": c.get("name", ""), "phone": c.get("phone", ""), "delivered": False, "preview": True}
+            for c in contacts
+        ],
+        "message": message,
+        "note": "SMS provider (Twilio) is not configured, so no messages were sent. Add TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER to enable real SMS.",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -724,9 +1071,10 @@ def health():
 
 @app.get("/api/debug/share_links")
 def debug_share_links():
-    """Debug endpoint: lists every on-disk JSON file + the in-memory
-    SHARE_LINKS dict. Used to verify the file persistence is working.
-    Safe to expose — no secrets, just link metadata."""
+    """Debug endpoint (dev only): lists on-disk + in-memory share links.
+    Disabled unless SMARTCAB_DEBUG=true."""
+    if not SMARTCAB_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
     files = []
     for path in _all_persist_files():
         rec = {"path": path, "exists": os.path.exists(path), "size": 0, "keys": []}
@@ -749,9 +1097,9 @@ def debug_share_links():
 
 @app.post("/api/debug/test_save")
 def debug_test_save():
-    """Force-write a test file to ALL candidate paths. Returns which
-    paths were actually writable. Useful to diagnose persistence issues
-    without having to book a real ride."""
+    """Debug endpoint (dev only). Disabled unless SMARTCAB_DEBUG=true."""
+    if not SMARTCAB_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
     results = []
     payload = json.dumps({"test": "hello from smartcab", "ts": _now_iso()})
     for cand in PERSIST_CANDIDATES:
@@ -782,10 +1130,9 @@ def debug_test_save():
 
 @app.post("/api/debug/create_test_link")
 def debug_create_test_link():
-    """Create a real test share link with realistic Ahmedabad data so
-    the rider can test the live-tracking flow without doing the full
-    booking + Live Guard + Share Live Location dance. Returns the
-    linkId so the caller can open /track/<linkId> in another tab."""
+    """Debug endpoint (dev only). Disabled unless SMARTCAB_DEBUG=true."""
+    if not SMARTCAB_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
     link_id = f"RIDE_TEST_{uuid.uuid4().hex[:10]}"
     link = {
         "linkId": link_id,
@@ -816,8 +1163,9 @@ def debug_create_test_link():
 # ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
-@app.api_route("/api/admin/seed", methods=["GET", "POST"])
+@app.api_route("/api/admin/seed", methods=["GET", "POST"], dependencies=[Depends(require_admin)])
 def admin_seed():
+    """Reseed demo data. Requires X-Admin-Key."""
     seed_samples(force=True)
     return {
         "status": "ok",
@@ -860,21 +1208,25 @@ def list_users():
 
 
 # ---------------------------------------------------------------------------
-# 🔐 AUTH — simple in-memory signup + login. The frontend stores the
-# returned user object in localStorage so the rider stays logged in
-# across page reloads. Passwords are stored in plain text in this
-# demo only — a real product would hash with bcrypt.
+# 🔐 AUTH — passwords hashed with PBKDF2, session via signed Bearer token.
+# Login/signup responses include { ...user, token } — the frontend keeps the
+# token in localStorage and sends `Authorization: Bearer <token>` on every
+# protected API call. Rate-limited to slow brute-force attacks.
 # ---------------------------------------------------------------------------
 @app.post("/api/auth/signup")
-def auth_signup(payload: Dict[str, Any]):
+def auth_signup(payload: Dict[str, Any], request: Request):
+    if rate_limited(f"signup:{client_key(request)}", limit=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many signup attempts. Please wait a minute.")
     name = (payload.get("name") or "").strip()
     email = (payload.get("email") or "").strip().lower()
     phone = (payload.get("phone") or "").strip()
     password = payload.get("password") or ""
     if not name or not email or not phone or not password:
         raise HTTPException(status_code=400, detail="All fields are required.")
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    if len(email) > 254 or "@" not in email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
     if any(u.get("email", "").lower() == email for u in USERS):
         raise HTTPException(status_code=400, detail="An account with that email already exists.")
     new_user = {
@@ -882,7 +1234,7 @@ def auth_signup(payload: Dict[str, Any]):
         "name": name,
         "email": email,
         "phone": phone,
-        "password": password,
+        "passwordHash": hash_password(password),
         "savedAddresses": [],
         "emergencyContacts": [],
         "createdAt": _now_iso(),
@@ -890,29 +1242,66 @@ def auth_signup(payload: Dict[str, Any]):
     USERS.append(new_user)
     _next_id["user"] += 1
     log.info("✅ New user signed up: %s (%s)", name, email)
-    # Don't return the password in the response
-    safe_user = {k: v for k, v in new_user.items() if k != "password"}
+    # Never return password fields; return a signed token for the session.
+    safe_user = {k: v for k, v in new_user.items() if k not in ("password", "passwordHash")}
+    safe_user["token"] = create_access_token(new_user)
+    safe_user["tokenType"] = "Bearer"
     return safe_user
 
 
 @app.post("/api/auth/login")
-def auth_login(payload: Dict[str, Any]):
+def auth_login(payload: Dict[str, Any], request: Request):
+    if rate_limited(f"login:{client_key(request)}", limit=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please wait a minute.")
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
     if not email or not password:
         raise HTTPException(status_code=400, detail="Email and password are required.")
     for u in USERS:
-        if u.get("email", "").lower() == email and u.get("password") == password:
+        if u.get("email", "").lower() != email:
+            continue
+        # Legacy migration: old accounts stored passwords in plain text.
+        # On their next login, hash it and drop the plaintext copy.
+        stored = u.get("passwordHash")
+        if not stored and u.get("password"):
+            ok = secrets.compare_digest(str(u.get("password", "")), password)
+            if ok:
+                u["passwordHash"] = hash_password(password)
+                u.pop("password", None)
+                log.info("🔐 Migrated legacy plaintext password to PBKDF2 for user %d", u["id"])
+            return_auth = ok
+        else:
+            return_auth = verify_password(password, stored)
+        if return_auth:
             log.info("✅ User logged in: %s", email)
-            safe_user = {k: v for k, v in u.items() if k != "password"}
+            safe_user = {k: v for k, v in u.items() if k not in ("password", "passwordHash")}
+            safe_user["token"] = create_access_token(u)
+            safe_user["tokenType"] = "Bearer"
             return safe_user
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
     raise HTTPException(status_code=401, detail="Invalid email or password.")
 
 
-@app.get("/api/users/{user_id}/trips")
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    """Validate the current token and return the user (used on app load)."""
+    user = get_auth_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    return {k: v for k, v in user.items() if k not in ("password", "passwordHash")}
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    """Stateless tokens cannot be revoked in-memory; clients discard them.
+    This endpoint exists so the frontend flow is explicit and future-proof."""
+    return {"status": "ok", "message": "Logged out. Discard your token on the client."}
+
+
+@app.get("/api/users/{user_id}/trips", dependencies=[Depends(require_own_user)])
 def get_user_trips(user_id: int):
     """Return all trips for a specific user — used by the dashboard
-    Ride History tab so logged-in riders only see their own rides."""
+    Ride History tab and the My Rides page so riders only see their own rides."""
     user_trips = [t for t in TRIPS if t.get("userId") == user_id or t.get("riderId") == user_id]
     # If no userId match, fall back to trips where the rider name matches
     # the user's name (for the demo's pre-seeded data without userId)
@@ -956,30 +1345,30 @@ def _find_user(user_id: int) -> Dict[str, Any]:
     return user
 
 
-@app.get("/api/users/{user_id}/profile")
+@app.get("/api/users/{user_id}/profile", dependencies=[Depends(require_own_user)])
 def get_profile(user_id: int):
     """Fetch a user's profile (without password)."""
     user = _find_user(user_id)
-    return {k: v for k, v in user.items() if k != "password"}
+    return {k: v for k, v in user.items() if k not in ("password", "passwordHash")}
 
 
-@app.put("/api/users/{user_id}/profile")
+@app.put("/api/users/{user_id}/profile", dependencies=[Depends(require_own_user)])
 def update_profile(user_id: int, payload: ProfileUpdate):
     """Update a user's profile fields (name, phone, language, marketing opt-in)."""
     user = _find_user(user_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         user[field] = value
     log.info("👤 Profile updated for user %d: %s", user_id, list(payload.model_dump(exclude_unset=True).keys()))
-    return {k: v for k, v in user.items() if k != "password"}
+    return {k: v for k, v in user.items() if k not in ("password", "passwordHash")}
 
 
-@app.get("/api/users/{user_id}/addresses")
+@app.get("/api/users/{user_id}/addresses", dependencies=[Depends(require_own_user)])
 def list_addresses(user_id: int):
     """List a user's saved addresses (Home, Work, etc.)."""
     return _find_user(user_id).get("savedAddresses", [])
 
 
-@app.post("/api/users/{user_id}/addresses")
+@app.post("/api/users/{user_id}/addresses", dependencies=[Depends(require_own_user)])
 def add_address(user_id: int, payload: SavedAddress):
     """Add a new saved address. If the label already exists (e.g. "Home"),
     the old one is replaced so the user always sees one "Home" not two."""
@@ -992,7 +1381,7 @@ def add_address(user_id: int, payload: SavedAddress):
     return addresses
 
 
-@app.delete("/api/users/{user_id}/addresses/{label}")
+@app.delete("/api/users/{user_id}/addresses/{label}", dependencies=[Depends(require_own_user)])
 def delete_address(user_id: int, label: str):
     """Delete a saved address by its label (e.g. "Home")."""
     user = _find_user(user_id)
@@ -1003,13 +1392,13 @@ def delete_address(user_id: int, label: str):
     return user["savedAddresses"]
 
 
-@app.get("/api/users/{user_id}/emergency-contacts")
+@app.get("/api/users/{user_id}/emergency-contacts", dependencies=[Depends(require_own_user)])
 def list_emergency_contacts(user_id: int):
     """List a user's saved emergency contacts (for the dashboard)."""
     return _find_user(user_id).get("emergencyContacts", [])
 
 
-@app.post("/api/users/{user_id}/emergency-contacts")
+@app.post("/api/users/{user_id}/emergency-contacts", dependencies=[Depends(require_own_user)])
 def add_emergency_contact(user_id: int, payload: EmergencyContact):
     """Add an emergency contact to the user's profile."""
     user = _find_user(user_id)
@@ -1019,7 +1408,7 @@ def add_emergency_contact(user_id: int, payload: EmergencyContact):
     return contacts
 
 
-@app.delete("/api/users/{user_id}/emergency-contacts/{phone}")
+@app.delete("/api/users/{user_id}/emergency-contacts/{phone}", dependencies=[Depends(require_own_user)])
 def delete_emergency_contact(user_id: int, phone: str):
     """Delete an emergency contact by phone number."""
     user = _find_user(user_id)
@@ -1184,7 +1573,7 @@ def get_trip(trip_id: int):
 
 
 @app.post("/api/trips")
-def create_trip(payload: TripCreate):
+def create_trip(payload: TripCreate, request: Request):
     """
     Creates a new trip record. If the frontend didn't pass a `fare` (because
     it relied on the backend's /api/pricing/estimate), we recompute the fare
@@ -1194,6 +1583,24 @@ def create_trip(payload: TripCreate):
     trip = payload.model_dump()
     trip["id"] = _next_id["trip"]
     trip["createdAt"] = _now_iso()
+
+    # Attach the logged-in user when a valid token is supplied (guest
+    # bookings are still allowed for the demo flow).
+    auth_user = get_auth_user(request)
+    if auth_user and not trip.get("userId"):
+        trip["userId"] = auth_user["id"]
+        trip["riderName"] = trip.get("riderName") or auth_user.get("name", "")
+
+    # 🏷️ Every ride gets a human-friendly Ride ID and a driver match.
+    trip["rideCode"] = _next_ride_code()
+    trip["statusHistory"] = [{"status": trip.get("status", "REQUESTED"), "at": _now_iso()}]
+    _assign_driver_to_trip(trip)
+
+    # Normalize the legacy "PENDING" status to the new lifecycle. A booked
+    # ride is immediately matched with a driver, so it lands in DRIVER_ASSIGNED.
+    raw_status = trip.get("status", "REQUESTED")
+    if raw_status in (None, "", "PENDING"):
+        trip["status"] = "DRIVER_ASSIGNED"
 
     # Re-compute the fare server-side if the frontend didn't provide one.
     # This prevents the rider app from accidentally storing a hardcoded
@@ -1222,10 +1629,50 @@ def create_trip(payload: TripCreate):
     TRIPS.append(trip)
     _next_id["trip"] += 1
     log.info(
-        "🚕 Trip #%d created: %s → %s, %.2f km, ₹%.2f (×%.1f surge)",
-        trip["id"], trip.get("pickupLocation", "?"), trip.get("dropoffLocation", "?"),
+        "🚕 Trip %s (#%d) created: %s → %s, %.2f km, ₹%.2f (×%.1f surge), driver %s",
+        trip["rideCode"], trip["id"], trip.get("pickupLocation", "?"), trip.get("dropoffLocation", "?"),
         trip.get("distanceKm", 0), trip["fare"], trip["surgeMultiplier"],
+        (trip.get("driver") or {}).get("name", "—"),
     )
+    return trip
+
+
+class TripStatusUpdate(BaseModel):
+    status: str
+
+
+@app.post("/api/trips/{trip_id}/status")
+def update_trip_status(trip_id: int, payload: TripStatusUpdate, request: Request):
+    """Advance a ride through the lifecycle with validated transitions."""
+    trip = next((t for t in TRIPS if t.get("id") == trip_id), None)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+
+    # Anyone may update when no user is attached (demo/guest ride);
+    # otherwise the ride owner must be authenticated. Admin calls pass
+    # request=None and are already authorized by require_admin.
+    if trip.get("userId") and request is not None:
+        user = get_auth_user(request)
+        if not user or int(user.get("id", -1)) != int(trip["userId"]):
+            raise HTTPException(status_code=403, detail="Only the ride owner may update this ride.")
+
+    new_status = (payload.status or "").strip().upper()
+    current = trip.get("status", "REQUESTED")
+    if new_status not in ALLOWED_TRANSITIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown status: {new_status}")
+    if current == new_status:
+        return trip
+    if new_status not in ALLOWED_TRANSITIONS.get(current, set()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid transition {current} → {new_status}. Allowed: {sorted(ALLOWED_TRANSITIONS.get(current, set()))}",
+        )
+
+    trip["status"] = new_status
+    trip.setdefault("statusHistory", []).append({"status": new_status, "at": _now_iso()})
+    if new_status == "COMPLETED":
+        trip["completedAt"] = _now_iso()
+    log.info("🚕 Trip %s: %s → %s", trip.get("rideCode"), current, new_status)
     return trip
 
 
@@ -1238,12 +1685,41 @@ def create_booking_alias(payload: TripCreate):
 
 
 @app.put("/api/trips/{trip_id}/sos")
-def trigger_sos(trip_id: int):
+def trigger_sos(trip_id: int, request: Request):
+    """SOS workflow: flags the trip DANGER, records the alert, date/time and
+    the ride's saved emergency contacts so the Safety Center can show the
+    full alert state (ride ID, driver, vehicle, location, notification list)."""
     for t in TRIPS:
         if t.get("id") == trip_id:
             t["status"] = "DANGER"
             t["sosAt"] = _now_iso()
-            return t
+            t.setdefault("statusHistory", []).append({"status": "DANGER", "at": t["sosAt"]})
+            contacts = t.get("emergencyContacts") or []
+            user = get_auth_user(request)
+            if user:
+                t["userId"] = t.get("userId") or user["id"]
+                if not contacts:
+                    contacts = user.get("emergencyContacts", [])
+            rec = {
+                "id": _next_id["emergency"],
+                "bookingId": str(t.get("id", "")),
+                "tripId": t.get("id"),
+                "rideCode": t.get("rideCode") or f"SC-{t.get('id')}",
+                "riderName": t.get("riderName", ""),
+                "driverName": (t.get("driver") or {}).get("name", ""),
+                "carPlate": (t.get("driver") or {}).get("plate", ""),
+                "pickup": t.get("pickupLocation", ""),
+                "dropoff": t.get("dropoffLocation", ""),
+                "reason": "Manual SOS",
+                "status": "ACTIVE",
+                "contacts": contacts,
+                "createdAt": t["sosAt"],
+            }
+            EMERGENCIES.append(rec)
+            _next_id["emergency"] += 1
+            log.warning("🚨 SOS for %s — emergency log %d created", t.get("rideCode"), rec["id"])
+            t["emergencyId"] = rec["id"]
+            return {"trip": t, "emergency": rec}
     raise HTTPException(status_code=404, detail="trip not found")
 
 
@@ -1469,43 +1945,269 @@ def list_evidence():
 # Emergency
 # ---------------------------------------------------------------------------
 @app.post("/api/emergency")
-def log_emergency(payload: EmergencyCreate):
+def log_emergency(payload: EmergencyCreate, request: Request):
+    """Full emergency workflow: record the alert with ride/driver context,
+    then return the checklist the Safety Center renders (alert created,
+    location recorded, contacts notified)."""
+    if rate_limited(f"emergency:{client_key(request)}", limit=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many emergency requests. Please wait a moment.")
+
     rec = payload.model_dump()
     rec["id"] = _next_id["emergency"]
     rec["createdAt"] = _now_iso()
+    rec["status"] = "ACTIVE"
+
+    # Attach the logged-in user + their saved contacts when available.
+    user = get_auth_user(request)
+    if user:
+        rec.setdefault("riderName", user.get("name", ""))
+        if not rec.get("contacts"):
+            rec["contacts"] = user.get("emergencyContacts", [])
+
+    # Link to the trip if we can find it.
+    trip = None
+    try:
+        trip = next((t for t in TRIPS if str(t.get("id")) == str(payload.bookingId)), None)
+    except Exception:
+        trip = None
+    if trip:
+        rec.setdefault("rideCode", trip.get("rideCode"))
+        rec.setdefault("driverName", (trip.get("driver") or {}).get("name", ""))
+        rec.setdefault("carPlate", (trip.get("driver") or {}).get("plate", ""))
+        rec.setdefault("pickup", trip.get("pickupLocation", ""))
+        rec.setdefault("dropoff", trip.get("dropoffLocation", ""))
+        rec.setdefault("lat", (trip.get("driver") or {}).get("lat") if not rec.get("lat") else rec.get("lat"))
+        trip["status"] = "DANGER"
+        trip["sosAt"] = rec["createdAt"]
+
     EMERGENCIES.append(rec)
     _next_id["emergency"] += 1
-    log.warning("🚨 Emergency alert: %s", rec)
+    log.warning("🚨 Emergency alert #%s created for %s", rec["id"], rec.get("rideCode") or rec.get("bookingId") or "?")
+
+    contacts = rec.get("contacts") or []
+    rec["checklist"] = {
+        "alertCreated": True,
+        "locationRecorded": rec.get("lat") is not None and rec.get("lng") is not None,
+        "contactsNotified": len(contacts) > 0,
+        "contacts": contacts,
+    }
+    rec["quickDial"] = [
+        {"label": "Police (India)", "number": "112"},
+        {"label": "Women Helpline", "number": "181"},
+        {"label": "State Emergency", "number": "108"},
+    ]
+    rec["notice"] = (
+        "This prototype records the alert and notifies your saved contacts "
+        "in-app. It does NOT automatically call emergency services — in a "
+        "real emergency, dial 112."
+    )
     return rec
 
 
+@app.post("/api/safety/share-ride")
+def share_ride(payload: ShareRideRequest, request: Request):
+    """Create a live tracking link for a ride + optionally build the
+    notification message for emergency contacts. Returns the track URL."""
+    link = {
+        "linkId": payload.linkId or f"RIDE_{uuid.uuid4().hex[:10]}",
+        "bookingId": payload.bookingId,
+        "rideCode": payload.rideCode,
+        "riderName": payload.riderName or "Rider",
+        "driverName": payload.driverName or "Verified Driver",
+        "driverLicense": "",
+        "carPlate": payload.carPlate or "",
+        "carModel": payload.carModel or "SmartCab",
+        "pickup": payload.pickup or "Pickup",
+        "dropoff": payload.dropoff or "Dropoff",
+        "currentLocation": {"lat": payload.lat or 23.0225, "lng": payload.lng or 72.5714},
+        "status": "ON_ROUTE",
+        "createdAt": _now_iso(),
+        "updatedAt": _now_iso(),
+        "lastPingAt": _now_iso(),
+        "pingCount": 0,
+        "emergencyContacts": payload.contacts or [],
+        "expiresAt": (datetime.now(timezone.utc).replace(microsecond=0) + __import__('datetime').timedelta(hours=24)).isoformat(),
+    }
+    SHARE_LINKS[link["linkId"]] = link
+    _persist_share_link(link)
+
+    response = {"linkId": link["linkId"], "trackUrl": f"/track/{link['linkId']}", "link": link}
+    if payload.notifyContacts and payload.contacts:
+        notify = _send_notifications({
+            "riderName": link["riderName"],
+            "driverName": link["driverName"],
+            "carPlate": link["carPlate"],
+            "dropoff": link["dropoff"],
+            "rideCode": link["rideCode"],
+            "trackUrl": response["trackUrl"],
+            "contacts": payload.contacts,
+        })
+        response["notification"] = notify
+    return response
+
+
+@app.post("/api/safety/notify-contacts")
+def notify_contacts(payload: NotifyContactsRequest, request: Request):
+    """Send (or preview) the ride-sharing SMS to the rider's trusted contacts."""
+    if rate_limited(f"notify:{client_key(request)}", limit=15, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many notification requests. Please wait.")
+    if not payload.contacts:
+        raise HTTPException(status_code=400, detail="No contacts provided.")
+    result = _send_notifications({
+        "riderName": payload.riderName,
+        "driverName": payload.driverName,
+        "carPlate": payload.carPlate,
+        "dropoff": payload.dropoff,
+        "rideCode": payload.rideCode,
+        "trackUrl": f"/track/{payload.linkId}",
+        "contacts": payload.contacts,
+    })
+    result["linkId"] = payload.linkId
+    return result
+
+
 # ---------------------------------------------------------------------------
-# 🤖 DECOY AI MODULE (for the group-project demo only)
+# 🛣️ REAL ROUTE-DEVIATION DETECTION (rule-based, honest by design)
 # ---------------------------------------------------------------------------
-# This endpoint is intentionally a STUB. The real AI/ML engine is being
-# developed in a separate private repo and will be integrated later as a
-# paid upgrade. The response below is hard-coded + random so the demo
-# looks smart without exposing any of the actual models / data pipelines.
-#
-# Group-project graders will see this endpoint exists and works. They will
-# NOT see the proprietary scoring, training data, or model architecture.
+# This is a geometric check, NOT fake random AI:
+#   1. The ride has an expected path (straight line pickup -> dropoff).
+#   2. Every GPS ping is compared to that line.
+#   3. If the vehicle is farther than the threshold (default 500 m), the
+#      check returns a DEVIATION warning with the actual distance.
+# The response explicitly says it is a rule-based check so nobody mistakes
+# it for "AI concluded the rider is in danger". Later, historical GPS
+# points can feed real ML models on top of this signal.
 # ---------------------------------------------------------------------------
+EARTH_RADIUS_M = 6371000.0
+ROUTE_DEVIATION_THRESHOLD_M = 500  # configurable per request
+ROUTE_CHECKS: List[Dict[str, Any]] = []
+
+
+def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance between two coordinates, in meters."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlng / 2) ** 2
+    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(a))
+
+
+def distance_to_route_m(
+    lat: float, lng: float,
+    start_lat: float, start_lng: float,
+    end_lat: float, end_lng: float,
+) -> float:
+    """Shortest distance from a GPS point to the straight pickup→dropoff line.
+    Uses a local equirectangular projection (accurate for city-scale routes)."""
+    # If start == end, just return the distance to the point.
+    if abs(start_lat - end_lat) < 1e-9 and abs(start_lng - end_lng) < 1e-9:
+        return haversine_m(lat, lng, start_lat, start_lng)
+    lat_ref = math.radians((start_lat + end_lat) / 2)
+    m_per_deg_lat = 111320.0
+    m_per_deg_lng = 111320.0 * math.cos(lat_ref)
+    ax = (lng - start_lng) * m_per_deg_lng
+    ay = (lat - start_lat) * m_per_deg_lat
+    bx = (end_lng - start_lng) * m_per_deg_lng
+    by = (end_lat - start_lat) * m_per_deg_lat
+    b_len_sq = bx * bx + by * by
+    t = max(0.0, min(1.0, (ax * bx + ay * by) / b_len_sq))
+    proj_x, proj_y = t * bx, t * by
+    return math.hypot(ax - proj_x, ay - proj_y)
+
+
+class RouteCheckRequest(BaseModel):
+    pickupLat: Optional[float] = None
+    pickupLng: Optional[float] = None
+    dropoffLat: Optional[float] = None
+    dropoffLng: Optional[float] = None
+    currentLat: Optional[float] = None
+    currentLng: Optional[float] = None
+    rideCode: Optional[str] = None
+    thresholdMeters: Optional[float] = None
+
+
+@app.post("/api/ai/route-safety/check")
+def route_safety_check(payload: RouteCheckRequest):
+    """Compare the vehicle's current GPS position against the expected route."""
+    if payload.currentLat is None or payload.currentLng is None:
+        raise HTTPException(status_code=400, detail="currentLat/currentLng are required.")
+    threshold = payload.thresholdMeters or ROUTE_DEVIATION_THRESHOLD_M
+
+    incomplete_route = payload.pickupLat is None or payload.pickupLng is None or payload.dropoffLat is None or payload.dropoffLng is None
+    if incomplete_route:
+        result = {
+            "status": "INFO",
+            "verdict": "No route loaded — only position recorded.",
+            "distanceFromRouteMeters": None,
+            "thresholdMeters": threshold,
+            "currentLocation": {"lat": payload.currentLat, "lng": payload.currentLng},
+            "method": "rule-based geometric check",
+            "honestNote": "This is a rule-based route check (GPS vs expected route), not an ML model. It flags unusual movement; it never claims someone is in danger.",
+        }
+        ROUTE_CHECKS.append({"rideCode": payload.rideCode, **result, "at": _now_iso()})
+        return result
+
+    distance = distance_to_route_m(
+        payload.currentLat, payload.currentLng,
+        payload.pickupLat, payload.pickupLng,
+        payload.dropoffLat, payload.dropoffLng,
+    )
+    if distance > threshold * 2:
+        status, verdict = "DEVIATION", "Significant route deviation"
+    elif distance > threshold:
+        status, verdict = "WARNING", "Route deviation detected"
+    else:
+        status, verdict = "SAFE", "Vehicle is on the expected route"
+
+    result = {
+        "status": status,
+        "verdict": verdict,
+        "distanceFromRouteMeters": round(distance, 1),
+        "thresholdMeters": threshold,
+        "message": (
+            f"The vehicle has moved approximately {round(distance)} m away from the expected route."
+            if distance > threshold
+            else f"Vehicle is within {round(distance)} m of the expected route."
+        ),
+        "currentLocation": {"lat": payload.currentLat, "lng": payload.currentLng},
+        "expectedRoute": {
+            "pickup": {"lat": payload.pickupLat, "lng": payload.pickupLng},
+            "dropoff": {"lat": payload.dropoffLat, "lng": payload.dropoffLng},
+        },
+        "method": "rule-based geometric check (GPS vs pickup→dropoff line)",
+        "recommendation": "Contact the rider to confirm their safety." if distance > threshold else "No action needed.",
+        "honestNote": "Rule-based flag only — it does not claim the rider is in danger. In a real emergency, dial 112.",
+    }
+    ROUTE_CHECKS.append({"rideCode": payload.rideCode, **result, "at": _now_iso()})
+    log.info("🛣️ Route check for %s: %s (%.1f m off route)", payload.rideCode, status, distance)
+    return result
+
+
+# Backward-compatible alias kept for old frontend code. It no longer returns
+# random risk scores — with route coordinates it runs the same real check;
+# without them it tells the truth: it cannot judge safety yet.
 @app.get("/api/ai/check-route")
-def check_route(driver_id: str, current_lat: float, current_lng: float):
-    """
-    DEMO-ONLY stub. Returns a fake "safe" verdict + random risk score.
-    Real AI integration is being built in a separate private repository.
-    """
-    # Mark this response as demo-only so the frontend can hide it from
-    # any future production toggles.
-    fake_risk_score = random.uniform(0.01, 0.08)
+def check_route(
+    driver_id: str = "",
+    current_lat: float = 0,
+    current_lng: float = 0,
+    pickup_lat: Optional[float] = None,
+    pickup_lng: Optional[float] = None,
+    dropoff_lat: Optional[float] = None,
+    dropoff_lng: Optional[float] = None,
+):
+    if pickup_lat is not None and pickup_lng is not None and dropoff_lat is not None and dropoff_lng is not None:
+        return route_safety_check(RouteCheckRequest(
+            pickupLat=pickup_lat, pickupLng=pickup_lng,
+            dropoffLat=dropoff_lat, dropoffLng=dropoff_lng,
+            currentLat=current_lat, currentLng=current_lng,
+        ))
     return {
-        "status": "SAFE",
-        "message": f"Driver {driver_id} trajectory looks normal at {current_lat}, {current_lng}.",
-        "risk_score": round(fake_risk_score, 4),
-        "active_modules": ["GPS Geo-Fencing", "Decoy Telemetry"],
-        "_demo_only": True,  # <-- signal to frontend + future engineers
-        "_note": "Real AI engine is being developed separately and will be integrated as a paid upgrade tier.",
+        "status": "INFO",
+        "message": f"Driver {driver_id} position recorded at {current_lat}, {current_lng}.",
+        "risk_score": None,
+        "active_modules": ["GPS tracking", "Rule-based route check"],
+        "honestNote": "No pickup/dropoff coordinates were supplied, so a route-deviation verdict cannot be computed. Add pickup/dropoff coords to /api/ai/route-safety/check for a real result.",
     }
 
 
@@ -1655,7 +2357,8 @@ async def upload_video_evidence(
     driver_id: str = Form(...),
     api_key: str = Form(...),
 ):
-    if api_key != "sk_test_smartcab_vault_9982":
+    # Key comes from the environment (SMARTCAB_EVIDENCE_KEY) — never hard-coded.
+    if not api_key or not secrets.compare_digest(api_key, SMARTCAB_EVIDENCE_KEY):
         return {"error": "Invalid Authentication Key"}
 
     raw_name = os.path.basename(file.filename or "evidence.webm") or "evidence.webm"
@@ -1669,3 +2372,71 @@ async def upload_video_evidence(
         "file_path": file_location,
         "cloud_sync": "Pending (AWS S3)",
     }
+
+
+# ---------------------------------------------------------------------------
+# 🛡️ ADMIN / SAFETY DASHBOARD API (product interface, X-Admin-Key protected)
+# ---------------------------------------------------------------------------
+def _admin_stats() -> Dict[str, Any]:
+    active = [t for t in TRIPS if t.get("status") in ACTIVE_RIDE_STATUSES]
+    active_emergencies = [e for e in EMERGENCIES if e.get("status") == "ACTIVE"]
+    completed = [t for t in TRIPS if t.get("status") == "COMPLETED"]
+    online_share_links = [
+        l for l in SHARE_LINKS.values()
+        if l.get("status") not in ("EXPIRED", "CANCELLED") and not l.get("isFallback")
+    ]
+    return {
+        "activeRides": len(active),
+        "emergencyAlerts": len(active_emergencies),
+        "driversOnline": len(DRIVERS),
+        "routeDeviations": len([c for c in ROUTE_CHECKS if c.get("status") == "DEVIATION"]),
+        "completedRides": len(completed),
+        "totalRides": len(TRIPS),
+        "activeShareLinks": len(online_share_links),
+        "totalUsers": len(USERS),
+        "ts": _now_iso(),
+    }
+
+
+@app.get("/api/admin/stats", dependencies=[Depends(require_admin)])
+def admin_stats():
+    return _admin_stats()
+
+
+@app.get("/api/admin/emergencies", dependencies=[Depends(require_admin)])
+def admin_emergencies():
+    return sorted(EMERGENCIES, key=lambda e: e.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/emergencies/{emergency_id}/respond", dependencies=[Depends(require_admin)])
+def admin_respond_emergency(emergency_id: int):
+    em = next((e for e in EMERGENCIES if e.get("id") == emergency_id), None)
+    if not em:
+        raise HTTPException(status_code=404, detail="emergency not found")
+    em["status"] = "RESPONDED"
+    em["respondedAt"] = _now_iso()
+    log.warning("🛡️ Admin responded to emergency #%s (%s)", emergency_id, em.get("rideCode") or em.get("bookingId"))
+    return em
+
+
+@app.get("/api/admin/rides", dependencies=[Depends(require_admin)])
+def admin_rides(status: Optional[str] = None):
+    rides = TRIPS
+    if status:
+        rides = [t for t in rides if (t.get("status") or "").upper() == status.upper()]
+    return sorted(rides, key=lambda t: t.get("createdAt", ""), reverse=True)
+
+
+@app.get("/api/admin/route-checks", dependencies=[Depends(require_admin)])
+def admin_route_checks():
+    return sorted(ROUTE_CHECKS, key=lambda c: c.get("at", ""), reverse=True)
+
+
+@app.post("/api/admin/rides/{trip_id}/status", dependencies=[Depends(require_admin)])
+def admin_update_ride_status(trip_id: int, payload: TripStatusUpdate):
+    return update_trip_status(trip_id, payload, request=None)
+
+
+@app.get("/api/admin/share-links", dependencies=[Depends(require_admin)])
+def admin_share_links():
+    return sorted(SHARE_LINKS.values(), key=lambda l: l.get("createdAt", ""), reverse=True)

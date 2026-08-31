@@ -405,6 +405,10 @@ const TrackRide = () => {
                   onClick={async () => {
                     try {
                       const res = await fetch(`${API_BASE}/api/debug/create_test_link`, { method: 'POST' });
+                      if (res.status === 404) {
+                        alert("Demo tools are disabled on this server. Ask the rider to book a ride and share their link instead.");
+                        return;
+                      }
                       const data = await res.json();
                       if (data && data.linkId) {
                         window.open(`${window.location.origin}/track/${data.linkId}`, '_blank');
@@ -417,7 +421,7 @@ const TrackRide = () => {
                   }}
                   className="mt-4 bg-yellow-600 hover:bg-yellow-700 text-white font-bold py-2 px-4 rounded-lg text-sm transition"
                 >
-                  🧪 Create Test Ride (for demo)
+                  🧪 Create Test Ride (developer only)
                 </button>
               </div>
             </div>

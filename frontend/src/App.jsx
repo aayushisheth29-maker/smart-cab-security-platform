@@ -3,8 +3,11 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import Login from './Login';
 import Signup from './Signup';
-import Help from './Help'; 
+import Help from './Help';
 import BookRide from './BookRide';
+import MyRides from './MyRides';
+import SafetyCenter from './SafetyCenter';
+import AdminDashboard from './AdminDashboard';
 
 function App() {
   return (
@@ -15,9 +18,10 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/help" element={<Help />} />
-        
-        {/* ⭐ NEW: Your Smart Cab Radar & Booking Page! */}
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/rides" element={<MyRides />} />
+        <Route path="/safety" element={<SafetyCenter />} />
+        <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
     </Router>
   );
