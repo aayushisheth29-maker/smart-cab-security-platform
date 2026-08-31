@@ -48,6 +48,33 @@ function StatCard({ icon: Icon, label, value, tone = 'slate' }) {
   );
 }
 
+// Thumbnail that fetches the vault photo WITH the admin key (plain <img>
+// cannot send headers). Only the owner/admin session can load these.
+function DocThumb({ appId, docId, label }) {
+  const [url, setUrl] = useState('');
+  useEffect(() => {
+    let objectUrl = '';
+    let alive = true;
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/admin/driver-applications/${appId}/documents/${docId}`, {
+          headers: { 'X-Admin-Key': getAdminKey() },
+        });
+        if (!res.ok) return;
+        const blob = await res.blob();
+        if (!alive) return;
+        objectUrl = URL.createObjectURL(blob);
+        setUrl(objectUrl);
+      } catch (e) { /* thumbnail is optional */ }
+    })();
+    return () => { alive = false; if (objectUrl) URL.revokeObjectURL(objectUrl); };
+  }, [appId, docId]);
+  if (!url) {
+    return <div className="h-full w-full flex items-center justify-center text-slate-300 text-xs font-bold">…</div>;
+  }
+  return <img src={url} alt={label || 'document'} className="h-full w-full object-cover" />;
+}
+
 function fmtTime(iso) {
   if (!iso) return '—';
   try {
@@ -174,18 +201,40 @@ export default function AdminDashboard() {
   };
 
   // Fetch a vault document with the admin key and open it for review.
-  const openDriverDocument = async (appId, docId) => {
+  const [previewDoc, setPreviewDoc] = useState(null); // {url, name, kind, app}
+
+  const fetchDocBlob = async (appId, docId) => {
+    const res = await fetch(`${API_BASE}/api/admin/driver-applications/${appId}/documents/${docId}`, {
+      headers: { 'X-Admin-Key': getAdminKey() },
+    });
+    if (!res.ok) throw new Error(`Document fetch failed (${res.status})`);
+    return await res.blob();
+  };
+
+  // 👁 INLINE PREVIEW (owner sees the photo without leaving the dashboard)
+  const previewDriverDocument = async (app, doc) => {
     try {
-      const res = await fetch(`${API_BASE}/api/admin/driver-applications/${appId}/documents/${docId}`, {
-        headers: { 'X-Admin-Key': getAdminKey() },
-      });
-      if (!res.ok) throw new Error(`Document fetch failed (${res.status})`);
-      const blob = await res.blob();
+      const blob = await fetchDocBlob(app.id, doc.id);
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
+      setPreviewDoc({ url, name: doc.label || doc.type, kind: doc.contentType, app, doc });
+    } catch (err) {
+      setError(`Could not preview document: ${err.message}`);
+    }
+  };
+
+  const downloadDriverDocument = async (app, doc) => {
+    try {
+      const blob = await fetchDocBlob(app.id, doc.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${doc.label || doc.type}-${app.reference}.${doc.contentType === 'application/pdf' ? 'pdf' : 'jpg'}`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
-      setError(`Could not open document: ${err.message}`);
+      setError(`Could not download document: ${err.message}`);
     }
   };
 
@@ -395,22 +444,80 @@ export default function AdminDashboard() {
                         </div>
                       </div>
 
-                      {/* 🛡️ Documents — admin reviews before approval */}
+                      {/* 🛡️ Documents — owner reviews BEFORE approval. Each upload shows
+                          the automatic screening result + inline photo preview. */}
                       <div className="mb-3">
-                        <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-1.5">Verification documents</p>
+                        <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-1.5">
+                          Verification documents
+                          <span className="normal-case font-semibold text-slate-400">
+                            {' '}— {(app.documents || []).length}/3 (licence + vehicle required)
+                          </span>
+                        </p>
                         {(app.documents || []).length === 0 ? (
-                          <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">No documents uploaded yet.</p>
+                          <p className="text-xs text-slate-400 bg-slate-50 rounded-lg px-3 py-2">No documents uploaded yet — ask the driver to upload licence + vehicle photos.</p>
                         ) : (
-                          <div className="flex flex-wrap gap-1.5">
-                            {(app.documents || []).map((doc) => (
-                              <button
-                                key={doc.id}
-                                onClick={() => openDriverDocument(app.id, doc.id)}
-                                className="text-xs font-bold text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg px-2.5 py-1.5 transition"
-                              >
-                                📄 {doc.name || doc.type} <span className="text-[9px]">({Math.round((doc.size || 0) / 1024)} KB)</span>
-                              </button>
-                            ))}
+                          <div className="space-y-2">
+                            {(app.documents || []).map((doc) => {
+                              const chk = doc.check || {};
+                              const st = chk.status || 'OK';
+                              return (
+                                <div key={doc.id} className={`rounded-xl border p-2.5 flex items-center gap-3 ${
+                                  st === 'REJECTED' ? 'border-red-200 bg-red-50/40' :
+                                  st === 'REVIEW' ? 'border-amber-200 bg-amber-50/40' :
+                                  'border-slate-200 bg-slate-50/60'
+                                }`}>
+                                  {doc.contentType === 'application/pdf' ? (
+                                    <div className="h-14 w-14 rounded-lg bg-white border border-slate-200 flex items-center justify-center text-lg shrink-0">📄</div>
+                                  ) : (
+                                    <button
+                                      onClick={() => previewDriverDocument(app, doc)}
+                                      className="h-14 w-14 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 shrink-0 hover:opacity-80 transition"
+                                      title="Tap to view full photo"
+                                    >
+                                      <DocThumb appId={app.id} docId={doc.id} label={doc.label} />
+                                    </button>
+                                  )}
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                      <span className="text-xs font-extrabold text-slate-800">{doc.label || doc.type}</span>
+                                      <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full ${
+                                        st === 'OK' ? 'bg-green-100 text-green-700' :
+                                        st === 'REVIEW' ? 'bg-amber-100 text-amber-700' :
+                                        'bg-red-100 text-red-600'
+                                      }`}>
+                                        {st === 'OK' ? '✓ AUTO CHECK PASSED' : st === 'REVIEW' ? '⚠ CHECK: REVIEW' : '✗ CHECK FAILED'}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 mt-0.5">
+                                      {Math.round((doc.size || 0) / 1024)} KB
+                                      {chk.width && chk.height ? ` · ${chk.width}×${chk.height}px` : ''}
+                                      {' · '}{fmtTime(doc.uploadedAt)}
+                                    </div>
+                                    {Array.isArray(chk.issues) && chk.issues.length > 0 && (
+                                      <div className={`text-[10px] font-semibold mt-1 ${
+                                        st === 'REJECTED' ? 'text-red-600' : 'text-amber-700'
+                                      }`}>
+                                        {chk.issues[0]}
+                                      </div>
+                                    )}
+                                  </div>
+                                  <div className="flex flex-col gap-1">
+                                    <button
+                                      onClick={() => previewDriverDocument(app, doc)}
+                                      className="text-[10px] font-bold text-blue-600 bg-blue-50 border border-blue-200 hover:bg-blue-100 rounded-lg px-2 py-1 transition"
+                                    >
+                                      👁 View
+                                    </button>
+                                    <button
+                                      onClick={() => downloadDriverDocument(app, doc)}
+                                      className="text-[10px] font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 rounded-lg px-2 py-1 transition"
+                                    >
+                                      ↓ Save
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
                         )}
                       </div>
@@ -485,7 +592,7 @@ export default function AdminDashboard() {
                           </div>
                           {app.backgroundCheck?.status !== 'CLEARED' && (
                             <p className="text-[11px] text-amber-600 mt-2">
-                              🔒 Approve unlocks after: licence + vehicle photo uploaded <strong>and</strong> background check marked CLEARED.
+                              🔒 Approve unlocks after: licence + vehicle photo uploaded <strong>and passed the automatic photo check</strong>, <strong>and</strong> background check marked CLEARED. Tap 👁 View to inspect each photo yourself.
                             </p>
                           )}
                         </>
@@ -683,6 +790,43 @@ export default function AdminDashboard() {
           </>
         )}
       </main>
+
+      {/* 👁 DOCUMENT PREVIEW MODAL — owner inspects the actual photo */}
+      {previewDoc && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[500] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setPreviewDoc(null)}>
+          <div className="bg-white rounded-3xl p-5 max-w-2xl w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h3 className="font-extrabold text-slate-900">{previewDoc.name}</h3>
+                <p className="text-xs text-slate-400 font-mono">
+                  {previewDoc.app.reference} · {previewDoc.app.fullName} · {fmtTime(previewDoc.doc.uploadedAt)}
+                </p>
+              </div>
+              <button onClick={() => setPreviewDoc(null)} className="p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition">
+                <LogOut className="h-5 w-5" />
+              </button>
+            </div>
+            <div className="bg-slate-900 rounded-2xl overflow-hidden max-h-[70vh] flex items-center justify-center">
+              {previewDoc.kind === 'application/pdf' ? (
+                <iframe title="document" src={previewDoc.url} className="w-full h-[70vh]" />
+              ) : (
+                <img src={previewDoc.url} alt={previewDoc.name} className="max-h-[70vh] w-auto" />
+              )}
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <p className="text-[11px] text-slate-400">
+                🛡️ Private vault — this photo is only visible to you (owner/admin).
+              </p>
+              <button
+                onClick={() => { const a = document.createElement('a'); a.href = previewDoc.url; a.download = `${previewDoc.name}.${previewDoc.kind === 'application/pdf' ? 'pdf' : 'jpg'}`; a.click(); }}
+                className="bg-slate-900 text-white text-xs font-bold px-4 py-2 rounded-xl hover:bg-slate-700 transition"
+              >
+                ↓ Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

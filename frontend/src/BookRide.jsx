@@ -289,7 +289,19 @@ const BookRide = () => {
         return;
       }
       setDriverDocsStatus((prev) => ({ ...prev, [docType]: 'uploaded' }));
-      setDriverDocsMessage('✅ Document uploaded securely. Our team will review it.');
+      // 🔍 Show the automatic screening result for THIS document
+      const uploads = data.uploaded || data.documents || [];
+      const mine = uploads.find((d) => d.type === docType) || uploads[0];
+      const check = mine?.check || {};
+      const status = check.status || 'OK';
+      const issues = Array.isArray(check.issues) ? check.issues : [];
+      if (status === 'REJECTED') {
+        setDriverDocsMessage(`❌ ${issues[0] || 'Photo check failed.'} Please upload a clear, real photo of the document.`);
+      } else if (status === 'REVIEW') {
+        setDriverDocsMessage(`⚠️ Uploaded. Auto-check: ${issues[0] || 'unusual photo shape'} — our team will look at it carefully.`);
+      } else {
+        setDriverDocsMessage('✅ Document uploaded and passed the automatic check. Our team will review it.');
+      }
     } catch (err) {
       setDriverDocsMessage('Could not reach the server. Please try again.');
     } finally {
@@ -2576,6 +2588,13 @@ const BookRide = () => {
         </div>
         <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
           <button
+            onClick={() => { window.location.href = '/admin'; }}
+            className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full text-amber-300"
+            title="Owner control room: review driver applications, photos, background checks & support tickets"
+          >
+            🛡️ <span className="ml-1.5">Owner Admin</span>
+          </button>
+          <button
             onClick={() => setIsLangModalOpen(true)}
             className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"
             title="🌐 International languages: Русский · 日本語 · 中文 · Français · Deutsch"
@@ -4439,7 +4458,10 @@ const BookRide = () => {
                     <ShieldCheck className="h-4 w-4 text-amber-600" />
                     <h4 className="text-sm font-extrabold text-slate-800">Step 2 · Upload verification documents</h4>
                   </div>
-                  <p className="text-xs text-slate-500 mb-3">JPG / PNG / PDF, max 12 MB. Stored securely and reviewed before approval.</p>
+                  <p className="text-xs text-slate-500 mb-3">
+                    JPG / PNG / PDF, max 12 MB. 🔍 Each photo is automatically checked (real photo, clear resolution, correct shape, no duplicate upload)
+                    before our owner reviews it.
+                  </p>
                   <div className="space-y-2.5">
                     {[
                       { key: 'licence', label: '📄 Driving licence photo', field: 'licencePhoto' },
@@ -4465,7 +4487,11 @@ const BookRide = () => {
                     ))}
                   </div>
                   {driverDocsMessage && (
-                    <p className={`mt-3 text-xs font-semibold ${driverDocsMessage.startsWith('✅') ? 'text-green-700' : 'text-red-600'}`}>
+                    <p className={`mt-3 text-xs font-semibold rounded-xl px-3 py-2 border ${
+                      driverDocsMessage.startsWith('✅') ? 'text-green-700 bg-green-50 border-green-200' :
+                      driverDocsMessage.startsWith('⚠️') ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                      'text-red-700 bg-red-50 border-red-200'
+                    }`}>
                       {driverDocsMessage}
                     </p>
                   )}

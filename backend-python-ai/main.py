@@ -609,6 +609,67 @@ os.makedirs(DRIVER_DOCS_DIR, exist_ok=True)
 MAX_DOC_BYTES = 12 * 1024 * 1024  # 12 MB per document
 ALLOWED_DOC_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
 
+# 🔍 Automatic document screening (Pillow, server-side).
+# This is a HONEST quick check — valid image, minimum resolution, sensible
+# aspect ratio, duplicate-photo detection. It does NOT claim to read text or
+# identify the document type; the owner always makes the final judgement.
+try:
+    from PIL import Image as _PILImage  # type: ignore
+    HAVE_PIL = True
+except Exception:  # pragma: no cover - Pillow should be installed
+    HAVE_PIL = False
+
+# Minimum clarity: at least this many pixels on the long side.
+DOC_MIN_LONG = 480
+# Ratio per document type that looks plausible for a real photo of that item.
+_DOC_RATIO_RANGE = {
+    "licence": (0.95, 3.4),           # ID card / licence = wide card or landscape photo
+    "vehicle": (0.55, 3.0),           # car photos: landscape or portrait
+    "police_certificate": (0.5, 2.2), # A4-style certificate
+}
+
+
+def _verify_doc_bytes(doc_type: str, data: bytes, content_type: str) -> Dict[str, Any]:
+    """Returns {status: OK|REVIEW|REJECTED, issues: [...], width, height, ratio}."""
+    issues: List[str] = []
+    width = height = ratio = None
+    if content_type == "application/pdf":
+        if not data.startswith(b"%PDF-"):
+            issues.append("File is not a valid PDF.")
+            return {"status": "REJECTED", "issues": issues, "width": None, "height": None, "ratio": None}
+        return {"status": "OK", "issues": [], "width": None, "height": None, "ratio": None}
+
+    if not HAVE_PIL:
+        issues.append("Automatic image scan unavailable — owner must review manually.")
+        return {"status": "REVIEW", "issues": issues, "width": None, "height": None, "ratio": None}
+
+    try:
+        from io import BytesIO
+        with _PILImage.open(BytesIO(data)) as img:
+            width, height = img.size
+            img.verify()
+    except Exception:
+        issues.append("File is not a readable photo (wrong file or corrupted upload).")
+        return {"status": "REJECTED", "issues": issues, "width": None, "height": None, "ratio": None}
+
+    long_side = max(width or 0, height or 0)
+    if long_side < DOC_MIN_LONG or (width or 0) < 200 or (height or 0) < 150:
+        issues.append(
+            f"Photo is too small ({width or 0}x{height or 0} px). Upload a clear photo — min {DOC_MIN_LONG} px on the long side."
+        )
+        return {"status": "REJECTED", "issues": issues, "width": width, "height": height, "ratio": None}
+
+    ratio = round(width / height, 3) if height else None
+    lo, hi = _DOC_RATIO_RANGE.get(doc_type, (0.5, 3.4))
+    if ratio is not None and not (lo <= ratio <= hi):
+        issues.append(
+            f"Unusual photo shape ({width}x{height} px, ratio {ratio}). "
+            f"Expected {doc_type.replace('_', ' ')} photo; please double-check it shows the right document."
+        )
+        return {"status": "REVIEW", "issues": issues, "width": width, "height": height, "ratio": ratio}
+
+    return {"status": "OK", "issues": [], "width": width, "height": height, "ratio": ratio}
+
 
 def _load_list_from_disk(path: Optional[str]) -> Optional[List[Dict[str, Any]]]:
     if not path or not os.path.exists(path):
@@ -1443,19 +1504,48 @@ def _save_driver_doc(app_id: int, doc_type: str, file: UploadFile) -> Dict[str, 
     abs_dir = os.path.join(DRIVER_DOCS_DIR, f"app_{app_id}")
     os.makedirs(abs_dir, exist_ok=True)
     path = os.path.join(abs_dir, safe_name)
+
+    # 🔍 AUTO-CHECK the upload BEFORE storing: readable image, resolution,
+    # aspect ratio + duplicate-photo detection (same file used twice).
+    check = _verify_doc_bytes(doc_type, data, content_type)
+    try:
+        sha = hashlib.sha256(data).hexdigest()
+    except Exception:
+        sha = ""
+    label = {"licence": "Driving licence", "vehicle": "Vehicle photo",
+             "police_certificate": "Police clearance"}.get(doc_type, doc_type)
+    if sha:
+        for other in app_docs(app_id):
+            if other.get("type") == doc_type:
+                continue
+            if other.get("sha256") == sha and check.get("status") != "REJECTED":
+                check["status"] = "REJECTED"
+                check["issues"].append(
+                    f"This is the same photo as the {other.get('label', 'other')} upload. "
+                    f"Please upload a separate, real photo of your {label.lower()}."
+                )
+                break
+
     with open(path, "wb") as f:
         f.write(data)
-    return {
+    rec = {
         "id": len(app_docs(app_id)) + 1,
         "type": doc_type,          # licence / vehicle / police_certificate
-        "label": {"licence": "Driving licence", "vehicle": "Vehicle photo",
-                  "police_certificate": "Police clearance"}.get(doc_type, doc_type),
+        "label": label,
         "filename": safe_name,
         "path": path,
         "size": len(data),
         "contentType": content_type,
         "uploadedAt": _now_iso(),
+        "sha256": sha,
+        "check": check,
     }
+    log.info(
+        "🔍 Doc %s for app #%s → %s%s",
+        doc_type, app_id, check.get("status"),
+        f" ({', '.join(check.get('issues', []))})" if check.get("issues") else "",
+    )
+    return rec
 
 
 def app_docs(app_id: int) -> List[Dict[str, Any]]:
@@ -2820,6 +2910,19 @@ def admin_approve_driver_application(app_id: int):
         raise HTTPException(
             status_code=400,
             detail="Driver must upload driving licence + vehicle photos before approval.",
+        )
+    # 🔍 Auto-screening gate: a document that failed the automatic check
+    # (wrong/corrupt file, too small, duplicated photo) cannot be approved
+    # until the driver re-uploads a real, clear photo.
+    rejected = [
+        d for d in app.get("documents", [])
+        if (d.get("check") or {}).get("status") == "REJECTED"
+    ]
+    if rejected:
+        names = ", ".join(d.get("label", d.get("type")) for d in rejected)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Automatic document check FAILED for: {names}. Ask the driver to re-upload a clear photo of the real document.",
         )
 
     app["status"] = "APPROVED"

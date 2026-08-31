@@ -278,9 +278,12 @@ def test_admin_approves_application_into_fleet():
     # Admin-only: no key -> 401
     assert client.post(f"/api/admin/driver-applications/{app_id}/approve").status_code == 401
     # Gated flow: docs + cleared background check, then approval.
-    client.post(f"/api/drivers/apply/{app_id}/documents",
-                files={"licencePhoto": ("l.png", _fake_png_bytes(), "image/png"),
-                       "vehiclePhoto": ("v.png", _fake_png_bytes(), "image/png")})
+    res_docs = client.post(f"/api/drivers/apply/{app_id}/documents",
+                files={"licencePhoto": ("l.png", _fake_png_bytes((200, 60, 60)), "image/png"),
+                       "vehiclePhoto": ("v.png", _fake_png_bytes((60, 120, 200)), "image/png")})
+    assert res_docs.status_code == 200, res_docs.text
+    for d in res_docs.json()["documents"]:
+        assert d["check"]["status"] == "OK", d
     client.post(f"/api/admin/driver-applications/{app_id}/background-check",
                 headers={"X-Admin-Key": ADMIN_KEY}, json={"status": "CLEARED"})
     ok = client.post(f"/api/admin/driver-applications/{app_id}/approve",
@@ -306,12 +309,13 @@ def _apply_driver(full_name="Vetted Driver", **overrides):
     return client.post("/api/drivers/apply", json=payload).json()
 
 
-def _fake_png_bytes():
-    # Minimal 1x1 PNG so the multipart upload passes size/content checks.
-    import base64
-    return base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-    )
+def _fake_png_bytes(color=(200, 60, 60), size=(800, 600)):
+    """A REAL 800x600 PNG so the automatic document screening passes."""
+    from io import BytesIO
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", size, color).save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def test_apply_requires_criminal_declaration():
@@ -328,13 +332,15 @@ def test_documents_upload_and_admin_download():
     res = client.post(
         f"/api/drivers/apply/{app_id}/documents",
         files={
-            "licencePhoto": ("licence.png", _fake_png_bytes(), "image/png"),
-            "vehiclePhoto": ("vehicle.png", _fake_png_bytes(), "image/png"),
+            "licencePhoto": ("licence.png", _fake_png_bytes((200, 60, 60)), "image/png"),
+            "vehiclePhoto": ("vehicle.png", _fake_png_bytes((60, 120, 200)), "image/png"),
         },
     )
     assert res.status_code == 200, res.text
     docs = res.json()["documents"]
     assert {d["type"] for d in docs} == {"licence", "vehicle"}
+    # 🔍 auto-screening passes for real, distinct photos
+    assert all((d.get("check") or {}).get("status") == "OK" for d in docs), docs
     # Admin can download; no key -> 401
     doc_id = docs[0]["id"]
     assert client.get(f"/api/admin/driver-applications/{app_id}/documents/{doc_id}").status_code == 401
@@ -355,10 +361,10 @@ def test_approval_requires_cleared_background_and_docs():
     res = client.post(f"/api/admin/driver-applications/{app_id}/approve",
                       headers={"X-Admin-Key": ADMIN_KEY})
     assert res.status_code == 400
-    # 2) Upload docs
+    # 2) Upload docs (distinct real photos → auto-check OK)
     client.post(f"/api/drivers/apply/{app_id}/documents",
-                files={"licencePhoto": ("l.png", _fake_png_bytes(), "image/png"),
-                       "vehiclePhoto": ("v.png", _fake_png_bytes(), "image/png")})
+                files={"licencePhoto": ("l.png", _fake_png_bytes((200, 60, 60)), "image/png"),
+                       "vehiclePhoto": ("v.png", _fake_png_bytes((60, 120, 200)), "image/png")})
     # 3) Clear background check
     bg = client.post(f"/api/admin/driver-applications/{app_id}/background-check",
                      headers={"X-Admin-Key": ADMIN_KEY},
@@ -505,3 +511,63 @@ def test_support_request_rejects_empty_message():
         "category": "other", "message": "   ",
     })
     assert res.status_code == 400
+
+
+# ---------------------------------------------------------------------------
+# 🔍 Automatic document screening (wrong/corrupt/tiny/duplicate photos)
+# ---------------------------------------------------------------------------
+
+def test_doc_screening_rejects_corrupt_or_tiny_upload_and_blocks_approval():
+    app = _apply_driver(full_name="Bad Uploader")
+    app_id = app["application"]["id"]
+    # Corrupt file renamed to .png → server accepts (>50 bytes), auto-check REJECTED
+    res = client.post(f"/api/drivers/apply/{app_id}/documents",
+                      files={"licencePhoto": ("licence.png", b"not-a-png-just-text-bytes-padded-" * 3, "image/png")})
+    assert res.status_code == 200, res.text
+    assert res.json()["documents"][0]["check"]["status"] == "REJECTED"
+    # Tiny 1x1 photo → REJECTED (too small)
+    from io import BytesIO
+    from PIL import Image
+    tiny = BytesIO()
+    Image.new("RGB", (1, 1), (0, 0, 0)).save(tiny, format="PNG")
+    res2 = client.post(f"/api/drivers/apply/{app_id}/documents",
+                       files={"vehiclePhoto": ("v.png", tiny.getvalue(), "image/png")})
+    assert res2.status_code == 200
+    assert res2.json()["documents"][0]["check"]["status"] == "REJECTED"
+    # Even a CLEARED background check cannot approve while a doc is REJECTED
+    client.post(f"/api/admin/driver-applications/{app_id}/background-check",
+                headers={"X-Admin-Key": ADMIN_KEY}, json={"status": "CLEARED"})
+    ok = client.post(f"/api/admin/driver-applications/{app_id}/approve",
+                     headers={"X-Admin-Key": ADMIN_KEY})
+    assert ok.status_code == 400
+    assert "re-upload" in ok.json()["detail"].lower()
+
+
+def test_doc_screening_detects_duplicate_photo_across_types():
+    app = _apply_driver(full_name="Same Photo Guy")
+    app_id = app["application"]["id"]
+    same = _fake_png_bytes((120, 40, 40))  # identical bytes for both slots
+    res = client.post(f"/api/drivers/apply/{app_id}/documents",
+                      files={"licencePhoto": ("l.png", same, "image/png"),
+                             "vehiclePhoto": ("v.png", same, "image/png")})
+    assert res.status_code == 200, res.text
+    by_type = {d["type"]: d for d in res.json()["documents"]}
+    assert by_type["licence"]["check"]["status"] == "OK"
+    assert by_type["vehicle"]["check"]["status"] == "REJECTED"
+    assert "same photo" in " ".join(by_type["vehicle"]["check"]["issues"]).lower()
+    # Approve still blocked
+    client.post(f"/api/admin/driver-applications/{app_id}/background-check",
+                headers={"X-Admin-Key": ADMIN_KEY}, json={"status": "CLEARED"})
+    ok = client.post(f"/api/admin/driver-applications/{app_id}/approve",
+                     headers={"X-Admin-Key": ADMIN_KEY})
+    assert ok.status_code == 400
+
+
+def test_doc_screening_marks_unusual_shape_as_review_not_rejected():
+    app = _apply_driver(full_name="Portrait Vehicle")
+    app_id = app["application"]["id"]
+    # Very tall, narrow "photo" → REVIEW, but still owner-decidable (not blocked)
+    res = client.post(f"/api/drivers/apply/{app_id}/documents",
+                      files={"vehiclePhoto": ("v.png", _fake_png_bytes((200, 60, 60), size=(300, 2000)), "image/png")})
+    assert res.status_code == 200
+    assert res.json()["documents"][0]["check"]["status"] == "REVIEW"
