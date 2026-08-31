@@ -24,6 +24,11 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/rides" element={<MyRides />} />
         <Route path="/safety" element={<SafetyCenter />} />
+        {/* 🔒 OWNER / FLEET PORTAL — PRIVATE. Not linked anywhere in the rider
+            app (no button, no footer link). Only reachable by typing the URL:
+            /owner  (alias /admin for older saved bookmarks). The admin key
+            gate protects it. Riders never see this page in navigation. */}
+        <Route path="/owner" element={<AdminDashboard />} />
         <Route path="/admin" element={<AdminDashboard />} />
       </Routes>
       <FloatingHelp />

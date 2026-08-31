@@ -2588,13 +2588,6 @@ const BookRide = () => {
         </div>
         <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
           <button
-            onClick={() => { window.location.href = '/admin'; }}
-            className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full text-amber-300"
-            title="Owner control room: review driver applications, photos, background checks & support tickets"
-          >
-            🛡️ <span className="ml-1.5">Owner Admin</span>
-          </button>
-          <button
             onClick={() => setIsLangModalOpen(true)}
             className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"
             title="🌐 International languages: Русский · 日本語 · 中文 · Français · Deutsch"

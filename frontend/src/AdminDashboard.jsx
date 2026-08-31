@@ -289,8 +289,8 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-3 mb-6 justify-center">
             <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-14 w-14 rounded-2xl object-cover ring-2 ring-amber-400/40" />
             <div>
-              <h1 className="text-2xl font-extrabold text-slate-900">Smart Security AI Cab Admin</h1>
-              <p className="text-xs text-slate-400 font-bold tracking-widest uppercase">Safety Dashboard</p>
+              <h1 className="text-2xl font-extrabold text-slate-900">Smart Security AI Cab</h1>
+              <p className="text-xs text-amber-600 font-bold tracking-widest uppercase">🔒 Owner Portal · Private</p>
             </div>
           </div>
           <form onSubmit={handleUnlock} className="space-y-4">
@@ -309,7 +309,9 @@ export default function AdminDashboard() {
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Lock className="h-5 w-5" />} Unlock dashboard
             </button>
           </form>
-          <p className="text-xs text-slate-400 mt-4 text-center">Dev key: smartcab-admin-dev-key (set SMARTCAB_ADMIN_KEY in production)</p>
+          <p className="text-xs text-slate-400 mt-4 text-center">
+            🔒 Owner-only link — never shown inside the rider app. Keep this URL and your access key private.
+          </p>
           <Link to="/" className="block text-center text-sm text-slate-500 hover:underline mt-3">← Back to app</Link>
         </div>
       </div>
@@ -325,8 +327,8 @@ export default function AdminDashboard() {
           <div className="flex items-center gap-2">
             <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-10 w-10 rounded-lg object-cover ring-1 ring-amber-400/40" />
             <div>
-              <div className="font-extrabold text-lg leading-tight">SMART SECURITY AI CAB ADMIN</div>
-              <div className="text-[10px] text-slate-400 tracking-widest uppercase">Safety Dashboard</div>
+              <div className="font-extrabold text-lg leading-tight">SMART SECURITY AI CAB — OWNER PORTAL</div>
+              <div className="text-[10px] text-amber-400/80 tracking-widest uppercase">Private · Owner & Fleet Control</div>
             </div>
           </div>
           <div className="flex items-center gap-3">
