@@ -3206,13 +3206,13 @@ const BookRide = () => {
                         <ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring
                       </h2>
                       
-                      <div className="w-full flex-1 bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200 mb-4">
+                      <div className="w-full h-[520px] bg-white rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200 mb-4">
                         <div className="absolute inset-0 z-0">
                           <MapContainer 
                             center={mapCenter} 
                             zoom={mapZoom} 
                             scrollWheelZoom={false} 
-                            style={{ height: '100%', width: '100%', minHeight: 300, zIndex: 0 }} 
+                            style={{ height: '100%', width: '100%', zIndex: 0 }} 
                             zoomControl={false}
                           >
                             <ResilientTileLayer onStatus={setMapStatus} />
