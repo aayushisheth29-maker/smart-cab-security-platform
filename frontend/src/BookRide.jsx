@@ -1488,8 +1488,22 @@ const BookRide = () => {
   // turn into a booking with a ₹7000 fare.
   const isSuspiciousLocalTrip = (distKm, pickupText, dropoffText) => {
     if (distKm == null || distKm <= 150) return false;
-    const outstationHint = /(mumbai|delhi|bangalore|bengaluru|pune|chennai|kolkata|hyderabad|surat|jaipur|vadodara|baroda|rajkot|udaipur|outstation)/i;
-    return !outstationHint.test(`${pickupText} ${dropoffText}`);
+    const text = `${pickupText} ${dropoffText}`.toLowerCase();
+    // Genuine intercity trips are never "suspicious": any airport
+    // name/IATA code in the address, an explicit "outstation", or a
+    // known city (including all 62 airport cities) means this is a real
+    // long-distance trip — allow it.
+    if (/(airport|outstation)/.test(text)) return false;
+    const mentionsKnownCity = (t) => {
+      const lower = t.toLowerCase();
+      return Object.keys(CITY_GEO).some((k) => lower.includes(k)) ||
+        airportList.some((a) => lower.includes(a.city.toLowerCase()) || lower.includes(a.code.toLowerCase()));
+    };
+    if (mentionsKnownCity(pickupText) || mentionsKnownCity(dropoffText)) return false;
+    // Both fields look like plain locality names with no city: if the
+    // geocoder placed them >150 km apart it almost certainly resolved a
+    // wrong same-named place (the old "Saraspur" bug) — block that.
+    return true;
   };
 
   // 📍 USE MY LOCATION — asks the browser for the rider's real GPS
