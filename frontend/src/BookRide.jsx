@@ -40,6 +40,75 @@ const carIcon = new L.DivIcon({
   iconAnchor: [18, 18]
 });
 
+// ✈️ OFFLINE AIRPORT COORDINATES — exact IATA-code → [lat, lng] for every
+// airport in the search list. When a rider picks an airport, we prefill the
+// pin/fare from here directly (no geocoder needed, works even on flaky
+// networks). Approximate to ~1 km — plenty for a fare estimate.
+const AIRPORT_GEO = {
+  VTZ: [17.7212, 83.2245],  // Visakhapatnam
+  VGA: [16.5304, 80.7968],  // Vijayawada
+  HGI: [27.3030, 93.8270],  // Itanagar (Donyi Polo)
+  GAU: [26.1061, 91.5859],  // Guwahati
+  PAT: [25.5912, 85.0880],  // Patna
+  GAY: [24.7443, 84.9514],  // Gaya
+  RPR: [21.1804, 81.7388],  // Raipur
+  IXC: [30.6735, 76.7885],  // Chandigarh
+  DEL: [28.5562, 77.1000],  // New Delhi
+  GOI: [15.3809, 73.8314],  // Goa – Dabolim
+  GOX: [15.7447, 73.8628],  // Goa – Mopa
+  AMD: [23.0772, 72.6347],  // Ahmedabad
+  HSR: [22.3090, 70.7790],  // Rajkot
+  HSS: [29.1780, 75.7550],  // Hisar
+  SLV: [31.0818, 77.0680],  // Shimla
+  DHM: [32.1651, 76.2634],  // Kangra
+  SXR: [33.9871, 74.7742],  // Srinagar
+  IXJ: [32.6892, 74.8375],  // Jammu
+  IXR: [23.3143, 85.3259],  // Ranchi
+  BLR: [13.1986, 77.7066],  // Bengaluru
+  IXE: [12.9613, 74.8901],  // Mangaluru
+  HBX: [15.3617, 75.0849],  // Hubballi
+  COK: [10.1520, 76.4019],  // Kochi
+  TRV: [8.4821, 76.9201],   // Thiruvananthapuram
+  CCJ: [11.1368, 75.9550],  // Kozhikode
+  BHO: [23.2875, 77.3374],  // Bhopal
+  IDR: [22.7218, 75.8011],  // Indore
+  JLR: [23.1778, 80.0520],  // Jabalpur
+  BOM: [19.0896, 72.8656],  // Mumbai
+  PNQ: [18.5793, 73.9089],  // Pune
+  NAG: [21.0922, 79.0472],  // Nagpur
+  ISK: [20.1192, 73.9129],  // Nashik
+  IXU: [19.8627, 75.3981],  // Chhatrapati Sambhajinagar
+  IMF: [24.7600, 93.8967],  // Imphal
+  SHL: [25.7035, 91.9787],  // Shillong
+  AJL: [23.8406, 92.6197],  // Aizawl
+  DMU: [25.8839, 93.7711],  // Dimapur
+  BBI: [20.2444, 85.8176],  // Bhubaneswar
+  JRG: [21.9139, 84.0506],  // Jharsuguda
+  ATQ: [31.7096, 74.7973],  // Amritsar
+  LUH: [30.8547, 75.9526],  // Ludhiana
+  JAI: [26.8242, 75.8122],  // Jaipur
+  UDR: [24.6179, 73.8922],  // Udaipur
+  JDH: [26.2512, 73.0489],  // Jodhpur
+  PYG: [27.3095, 88.5881],  // Pakyong
+  MAA: [12.9941, 80.1709],  // Chennai
+  CJB: [11.0300, 77.0434],  // Coimbatore
+  IXM: [9.8345, 78.0934],   // Madurai
+  TRZ: [10.7657, 78.7097],  // Tiruchirappalli
+  HYD: [17.2403, 78.4294],  // Hyderabad
+  IXA: [23.8866, 91.2404],  // Agartala
+  LKO: [26.7606, 80.8893],  // Lucknow
+  VNS: [25.4524, 82.8593],  // Varanasi
+  AYJ: [26.8350, 81.8250],  // Ayodhya
+  KNU: [26.4415, 80.3623],  // Kanpur
+  IXD: [25.4381, 81.7390],  // Prayagraj
+  DED: [30.1897, 78.1803],  // Dehradun
+  PGH: [29.0334, 79.4737],  // Pantnagar
+  CCU: [22.6547, 88.4467],  // Kolkata
+  IXB: [26.6812, 88.3282],  // Bagdogra
+  RDP: [23.6250, 87.2350],  // Durgapur
+  AGX: [10.8236, 72.1760],  // Agatti
+};
+
 const MapUpdater = ({ center, zoom }) => {
   const map = useMap();
   useEffect(() => {
@@ -396,6 +465,7 @@ const BookRide = () => {
       const text = (e.results[0][0].transcript || '').trim();
       if (text) {
         if (type === 'pickup') setPickup(text); else setDropoff(text);
+        setPresetCoords((prev) => ({ ...prev, [type]: null }));
       }
     };
     rec.onerror = (e) => {
@@ -411,6 +481,9 @@ const BookRide = () => {
   
   const [mapCenter, setMapCenter] = useState([23.0225, 72.5714]); // Ahmedabad
   const [mapZoom, setMapZoom] = useState(11);
+  // Exact coordinates pre-filled when an airport is picked from the search
+  // modal, so the pin + fare are correct without needing a geocoder.
+  const [presetCoords, setPresetCoords] = useState({ pickup: null, dropoff: null });
   const [mapStatus, setMapStatus] = useState(''); // shows which tile provider is live
 
   // 📍 User's live GPS location (lat, lng) — populated when they tap
@@ -685,10 +758,69 @@ const BookRide = () => {
   ];
 
   const airportList = [
+    // ✈️ 62 operational DGCA airports — search by airport name, IATA code, city or state.
+    { name: "Visakhapatnam International Airport (VTZ)", code: "VTZ", city: "Visakhapatnam", state: "Andhra Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Vijayawada International Airport (VGA)", code: "VGA", city: "Vijayawada", state: "Andhra Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Donyi Polo Airport (HGI)", code: "HGI", city: "Itanagar", state: "Arunachal Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Lokpriya Gopinath Bordoloi International Airport (GAU)", code: "GAU", city: "Guwahati", state: "Assam", activeCabs: "Airport transfers available" },
+    { name: "Jay Prakash Narayan International Airport (PAT)", code: "PAT", city: "Patna", state: "Bihar", activeCabs: "Airport transfers available" },
+    { name: "Gaya Airport (GAY)", code: "GAY", city: "Gaya", state: "Bihar", activeCabs: "Airport transfers available" },
+    { name: "Swami Vivekananda Airport (RPR)", code: "RPR", city: "Raipur", state: "Chhattisgarh", activeCabs: "Airport transfers available" },
+    { name: "Chandigarh International Airport (IXC)", code: "IXC", city: "Chandigarh", state: "Chandigarh", activeCabs: "Airport transfers available" },
     { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ Smart Security AI Cabs Nearby" },
-    { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ Smart Security AI Cabs Nearby" },
+    { name: "Dabolim Airport (GOI)", code: "GOI", city: "Goa – Dabolim", state: "Goa", activeCabs: "Airport transfers available" },
+    { name: "Manohar International Airport (GOX)", code: "GOX", city: "Goa – Mopa", state: "Goa", activeCabs: "Airport transfers available" },
+    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ Smart Security AI Cabs Nearby" },
+    { name: "Rajkot International Airport (HSR)", code: "HSR", city: "Rajkot", state: "Gujarat", activeCabs: "Airport transfers available" },
+    { name: "Hisar Airport (HSS)", code: "HSS", city: "Hisar", state: "Haryana", activeCabs: "Airport transfers available" },
+    { name: "Shimla Airport (SLV)", code: "SLV", city: "Shimla", state: "Himachal Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Kangra Airport (DHM)", code: "DHM", city: "Kangra", state: "Himachal Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Sheikh ul Alam International Airport (SXR)", code: "SXR", city: "Srinagar", state: "Jammu & Kashmir", activeCabs: "Airport transfers available" },
+    { name: "Jammu Airport (IXJ)", code: "IXJ", city: "Jammu", state: "Jammu & Kashmir", activeCabs: "Airport transfers available" },
+    { name: "Birsa Munda Airport (IXR)", code: "IXR", city: "Ranchi", state: "Jharkhand", activeCabs: "Airport transfers available" },
     { name: "Kempegowda International Airport (BLR)", code: "BLR", city: "Bengaluru", state: "Karnataka", activeCabs: "120+ Smart Security AI Cabs Nearby" },
-    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ Smart Security AI Cabs Nearby" }
+    { name: "Mangaluru International Airport (IXE)", code: "IXE", city: "Mangaluru", state: "Karnataka", activeCabs: "Airport transfers available" },
+    { name: "Hubballi Airport (HBX)", code: "HBX", city: "Hubballi", state: "Karnataka", activeCabs: "Airport transfers available" },
+    { name: "Cochin International Airport (COK)", code: "COK", city: "Kochi", state: "Kerala", activeCabs: "Airport transfers available" },
+    { name: "Trivandrum International Airport (TRV)", code: "TRV", city: "Thiruvananthapuram", state: "Kerala", activeCabs: "Airport transfers available" },
+    { name: "Calicut International Airport (CCJ)", code: "CCJ", city: "Kozhikode", state: "Kerala", activeCabs: "Airport transfers available" },
+    { name: "Raja Bhoj Airport (BHO)", code: "BHO", city: "Bhopal", state: "Madhya Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Devi Ahilyabai Holkar International Airport (IDR)", code: "IDR", city: "Indore", state: "Madhya Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Jabalpur Airport (JLR)", code: "JLR", city: "Jabalpur", state: "Madhya Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ Smart Security AI Cabs Nearby" },
+    { name: "Pune Airport (PNQ)", code: "PNQ", city: "Pune", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Dr. Babasaheb Ambedkar International Airport (NAG)", code: "NAG", city: "Nagpur", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Nashik Airport (ISK)", code: "ISK", city: "Nashik", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Chhatrapati Sambhajinagar Airport (IXU)", code: "IXU", city: "Chhatrapati Sambhajinagar", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Bir Tikendrajit International Airport (IMF)", code: "IMF", city: "Imphal", state: "Manipur", activeCabs: "Airport transfers available" },
+    { name: "Shillong Airport (SHL)", code: "SHL", city: "Shillong", state: "Meghalaya", activeCabs: "Airport transfers available" },
+    { name: "Lengpui Airport (AJL)", code: "AJL", city: "Aizawl", state: "Mizoram", activeCabs: "Airport transfers available" },
+    { name: "Dimapur Airport (DMU)", code: "DMU", city: "Dimapur", state: "Nagaland", activeCabs: "Airport transfers available" },
+    { name: "Biju Patnaik International Airport (BBI)", code: "BBI", city: "Bhubaneswar", state: "Odisha", activeCabs: "Airport transfers available" },
+    { name: "Veer Surendra Sai Airport (JRG)", code: "JRG", city: "Jharsuguda", state: "Odisha", activeCabs: "Airport transfers available" },
+    { name: "Sri Guru Ram Dass Jee International Airport (ATQ)", code: "ATQ", city: "Amritsar", state: "Punjab", activeCabs: "Airport transfers available" },
+    { name: "Ludhiana Airport (LUH)", code: "LUH", city: "Ludhiana", state: "Punjab", activeCabs: "Airport transfers available" },
+    { name: "Jaipur International Airport (JAI)", code: "JAI", city: "Jaipur", state: "Rajasthan", activeCabs: "Airport transfers available" },
+    { name: "Maharana Pratap Airport (UDR)", code: "UDR", city: "Udaipur", state: "Rajasthan", activeCabs: "Airport transfers available" },
+    { name: "Jodhpur Airport (JDH)", code: "JDH", city: "Jodhpur", state: "Rajasthan", activeCabs: "Airport transfers available" },
+    { name: "Pakyong Airport (PYG)", code: "PYG", city: "Pakyong", state: "Sikkim", activeCabs: "Airport transfers available" },
+    { name: "Chennai International Airport (MAA)", code: "MAA", city: "Chennai", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Coimbatore International Airport (CJB)", code: "CJB", city: "Coimbatore", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Madurai Airport (IXM)", code: "IXM", city: "Madurai", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Tiruchirappalli International Airport (TRZ)", code: "TRZ", city: "Tiruchirappalli", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Rajiv Gandhi International Airport (HYD)", code: "HYD", city: "Hyderabad", state: "Telangana", activeCabs: "Airport transfers available" },
+    { name: "Maharaja Bir Bikram Airport (IXA)", code: "IXA", city: "Agartala", state: "Tripura", activeCabs: "Airport transfers available" },
+    { name: "Chaudhary Charan Singh International Airport (LKO)", code: "LKO", city: "Lucknow", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Lal Bahadur Shastri International Airport (VNS)", code: "VNS", city: "Varanasi", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Maharishi Valmiki International Airport (AYJ)", code: "AYJ", city: "Ayodhya", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Kanpur Airport (KNU)", code: "KNU", city: "Kanpur", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Prayagraj Airport (IXD)", code: "IXD", city: "Prayagraj", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Jolly Grant Airport (DED)", code: "DED", city: "Dehradun", state: "Uttarakhand", activeCabs: "Airport transfers available" },
+    { name: "Pantnagar Airport (PGH)", code: "PGH", city: "Pantnagar", state: "Uttarakhand", activeCabs: "Airport transfers available" },
+    { name: "Netaji Subhas Chandra Bose International Airport (CCU)", code: "CCU", city: "Kolkata", state: "West Bengal", activeCabs: "Airport transfers available" },
+    { name: "Bagdogra Airport (IXB)", code: "IXB", city: "Bagdogra", state: "West Bengal", activeCabs: "Airport transfers available" },
+    { name: "Kazi Nazrul Islam Airport (RDP)", code: "RDP", city: "Durgapur", state: "West Bengal", activeCabs: "Airport transfers available" },
+    { name: "Agatti Airport (AGX)", code: "AGX", city: "Agatti", state: "Lakshadweep", activeCabs: "Airport transfers available" },
   ];
 
   const cityList = [
@@ -739,11 +871,17 @@ const BookRide = () => {
     };
   }, [showLiveGuardModal, facingMode]); // Re-runs when facingMode changes!
 
-  const handleSelectLocationFromModal = (locationName) => {
-    if (!pickup) {
+  const handleSelectLocationFromModal = (locationName, coords = null) => {
+    const field = pickup ? 'dropoff' : 'pickup';
+    if (field === 'pickup') {
       setPickup(locationName);
     } else {
       setDropoff(locationName);
+    }
+    setPresetCoords((prev) => ({ ...prev, [field]: coords }));
+    if (coords) {
+      setMapCenter(coords);
+      setMapZoom(11);
     }
     setSearchModalType(null);
     setSearchQuery('');
@@ -1542,7 +1680,10 @@ const BookRide = () => {
   const handleSearchPrices = async () => {
     setShowPrices(true);
     setPricingLoading(true);
-    const [p, d] = await Promise.all([geocodeLocation(pickup), geocodeLocation(dropoff)]);
+    const [p, d] = await Promise.all([
+      presetCoords.pickup || geocodeLocation(pickup),
+      presetCoords.dropoff || geocodeLocation(dropoff),
+    ]);
     setPricingLoading(false);
     if (p && d) {
       const distKm = haversineKm(p, d);
@@ -1571,8 +1712,8 @@ const BookRide = () => {
 
   const handleConfirmRide = async () => {
     setIsSearching(true);
-    const pCoords = await geocodeLocation(pickup);
-    const dCoords = await geocodeLocation(dropoff);
+    const pCoords = presetCoords.pickup || await geocodeLocation(pickup);
+    const dCoords = presetCoords.dropoff || await geocodeLocation(dropoff);
     setIsSearching(false);
 
     if (pCoords && dCoords) {
@@ -1788,6 +1929,7 @@ const BookRide = () => {
     setCurrentBookingId(null);
     setMapCenter([20.5937, 78.9629]); 
     setMapZoom(5);
+    setPresetCoords({ pickup: null, dropoff: null });
     setShowSOSPopup(false);
     setShowDeviationPopup(false);
     setShowGPSLostPopup(false);
@@ -1810,7 +1952,10 @@ const BookRide = () => {
           type="text"
           placeholder={placeholder}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setPresetCoords((prev) => ({ ...prev, [type]: null }));
+          }}
           onFocus={() => setFocusedInput(type)}
           onBlur={() => setTimeout(() => setFocusedInput(null), 200)}
           className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium"
@@ -1830,7 +1975,8 @@ const BookRide = () => {
                 key={idx} 
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  setValue(loc.title); 
+                  setValue(loc.title);
+                  setPresetCoords((prev) => ({ ...prev, [type]: null }));
                   setFocusedInput(null);
                 }} 
                 className="flex items-center px-4 py-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 text-left transition-colors"
@@ -1918,9 +2064,9 @@ const BookRide = () => {
                 }
                 <div>
                   <h3 className="text-2xl font-bold">
-                    {searchModalType === 'airports' ? '700+ Airports Supported' : '15,000+ Cities Active'}
+                    {searchModalType === 'airports' ? 'Airports Across India' : '15,000+ Cities Active'}
                   </h3>
-                  <p className="text-xs text-gray-300">Select any location across India to pre-fill your trip</p>
+                  <p className="text-xs text-gray-300">{searchModalType === 'airports' ? '62 operational DGCA airports — search by name, code, city or state' : 'Select any location across India to pre-fill your trip'}</p>
                 </div>
               </div>
               <button 
@@ -1960,15 +2106,19 @@ const BookRide = () => {
             <div className="p-6 overflow-y-auto space-y-3 flex-1">
               {searchModalType === 'airports' ? (
                 airportList
-                  .filter(a => 
-                    a.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                    a.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    a.code.toLowerCase().includes(searchQuery.toLowerCase())
-                  )
+                  .filter(a => {
+                    const q = searchQuery.trim().toLowerCase();
+                    return (
+                      a.name.toLowerCase().includes(q) ||
+                      a.city.toLowerCase().includes(q) ||
+                      a.code.toLowerCase().includes(q) ||
+                      a.state.toLowerCase().includes(q)
+                    );
+                  })
                   .map((airport, idx) => (
                     <div 
                       key={idx} 
-                      onClick={() => handleSelectLocationFromModal(airport.name)}
+                      onClick={() => handleSelectLocationFromModal(airport.name, AIRPORT_GEO[airport.code] || null)}
                       className="p-4 rounded-2xl border border-gray-200 hover:border-black hover:bg-green-50/50 cursor-pointer transition flex justify-between items-center group"
                     >
                       <div className="flex items-center space-x-4">
@@ -3872,7 +4022,7 @@ const BookRide = () => {
                     className="w-full h-full object-cover hover:scale-105 transition duration-500" 
                   />
                 </div>
-                <h3 className="text-xl font-bold mb-3">700+ airports</h3>
+                <h3 className="text-xl font-bold mb-3">Airports across India</h3>
                 <p className="text-gray-600 mb-6 flex-grow">
                   You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.
                 </p>
