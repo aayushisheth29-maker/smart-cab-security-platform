@@ -113,27 +113,38 @@ export default function AdminDashboard() {
     setError('');
     setKeyError('');
     try {
-      const [s, e, r, da, als, sr] = await Promise.all([
-        apiFetch('/api/admin/stats'),
+      // The stats call is the gate: 401 = wrong key, anything else means the
+      // backend is unreachable (usually CORS). The LIST endpoints below load
+      // best-effort — older backend versions may not have the newest ones
+      // (driver-alerts / support-requests), and the dashboard must still open.
+      const stats = await apiFetch('/api/admin/stats');
+      const results = await Promise.allSettled([
         apiFetch('/api/admin/emergencies'),
         apiFetch('/api/admin/rides'),
         apiFetch('/api/admin/driver-applications'),
         apiFetch('/api/admin/driver-alerts'),
         apiFetch('/api/admin/support-requests'),
       ]);
-      setStats(s);
-      setEmergencies(Array.isArray(e) ? e : []);
-      setRides(Array.isArray(r) ? r : []);
-      setDriverApps(Array.isArray(da) ? da : []);
-      setDriverAlerts(Array.isArray(als) ? als : []);
-      setSupportReqs(Array.isArray(sr) ? sr : []);
+      const [e, r, da, als, sr] = results.map((x) => (x.status === 'fulfilled' && Array.isArray(x.value) ? x.value : []));
+      setStats(stats);
+      setEmergencies(e);
+      setRides(r);
+      setDriverApps(da);
+      setDriverAlerts(als);
+      setSupportReqs(sr);
       setAuthenticated(true);
     } catch (err) {
       if (err.status === 401) {
         setKeyError('Invalid admin key.');
         setAuthenticated(false);
       } else {
-        setError(`Could not load the admin dashboard: ${err.message}`);
+        // fetch failures (TypeError) = network/CORS block from the browser.
+        const isNetwork = !err.status || (err.message && /fetch|network|failed to fetch/i.test(err.message));
+        setError(
+          isNetwork
+            ? 'Could not reach the backend from this site. ⚠️ CORS: open Render → backend → Settings → Environment → SMARTCAB_CORS_ORIGINS and add https://smart-cab-owner-portal.vercel.app (keep the rider app URL too), then Save & let it redeploy.'
+            : `Could not load the admin dashboard: ${err.message}`
+        );
       }
     } finally {
       setLoading(false);
@@ -361,6 +372,11 @@ export default function AdminDashboard() {
               />
               {keyError && <p className="text-red-600 text-sm mt-2">⚠️ {keyError}</p>}
             </div>
+            {error && (
+              <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2.5">
+                <p className="text-xs font-semibold text-amber-800">⚠️ {error}</p>
+              </div>
+            )}
             <button type="submit" disabled={loading} className="w-full bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition disabled:opacity-60 inline-flex items-center justify-center gap-2">
               {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : <Lock className="h-5 w-5" />} Unlock dashboard
             </button>
