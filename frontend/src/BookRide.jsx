@@ -589,6 +589,11 @@ const BookRide = () => {
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
   const [showGPSLostPopup, setShowGPSLostPopup] = useState(false);
+  // Real alert behaviour: sosStatus shows what the backend actually answered
+  // ('sent' | 'failed'); alertCountdown powers the live 60s auto-SOS timer.
+  const [sosStatus, setSosStatus] = useState(null);
+  const [alertCountdown, setAlertCountdown] = useState(60);
+  const autoSosFiredRef = useRef(false);
   const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false); 
 
   // 🛡️ TWO-WAY SAFETY — driver records rider identity verification at pickup
@@ -1409,7 +1414,7 @@ const BookRide = () => {
   const triggerBackendSOS = async () => {
     if (!currentBookingId) {
       console.warn("No booking ID yet — book a ride first so the backend has a row to update");
-      return;
+      return 'no-ride';
     }
     try {
       const res = await fetch(`${PYTHON_API}/api/bookings/${currentBookingId}/sos`, {
@@ -1418,11 +1423,46 @@ const BookRide = () => {
       if (res.ok) {
         const updated = await res.json();
         console.log("✅ SOS updated to DANGER:", updated);
+        return true;
       }
+      console.error("Backend SOS returned", res.status);
+      return false;
     } catch (err) {
       console.error("Backend SOS failed:", err);
+      return false;
     }
   };
+
+  // Send a real SOS and show the full-screen emergency screen with the
+  // actual backend result (sent ✓ / failed ⚠️) — no fake promises.
+  const fireSOSAndOpen = async () => {
+    const ok = await triggerBackendSOS();
+    setSosStatus(ok === true ? 'sent' : ok === false ? 'failed' : 'no-ride');
+    setShowSOSPopup(true);
+  };
+
+  // ⏱️ Real 60-second watch: route-deviation / GPS-lost alerts show a live
+  // countdown; if the rider doesn't answer in time, the SOS auto-fires.
+  useEffect(() => {
+    if (!showDeviationPopup && !showGPSLostPopup) return;
+    setAlertCountdown(60);
+    autoSosFiredRef.current = false;
+    const t = setInterval(() => setAlertCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [showDeviationPopup, showGPSLostPopup]);
+
+  useEffect(() => {
+    if (alertCountdown > 0 || autoSosFiredRef.current) return;
+    if (!showDeviationPopup && !showGPSLostPopup) return;
+    autoSosFiredRef.current = true;
+    (async () => {
+      const ok = await triggerBackendSOS();
+      setSosStatus(ok === true ? 'sent' : ok === false ? 'failed' : 'no-ride');
+      setShowGPSLostPopup(false);
+      setShowDeviationPopup(false);
+      setShowSOSPopup(true);
+    })();
+  }, [alertCountdown, showDeviationPopup, showGPSLostPopup]);
 
   // 🛡️ DRIVER verifies the rider's identity at pickup — recorded on the trip
   // as proof, so the driver cannot be blamed if a rider behaves badly.
@@ -2092,8 +2132,17 @@ const BookRide = () => {
             <div className="absolute top-0 left-0 right-0 bg-orange-500 h-2 animate-pulse"></div>
             <Globe className="h-20 w-20 text-orange-500 mb-6 mx-auto opacity-50" />
             <h2 className="text-3xl font-bold text-center mb-4">GPS Signal Lost</h2>
-            <p className="text-gray-600 text-center text-lg mb-8">
-              Smart Security AI Cab has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe?
+            <p className="text-gray-600 text-center text-lg mb-4">
+              Smart Security AI Cab has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe? Auto-alert in <span className="font-bold text-orange-600">{alertCountdown}s</span>.
+            </p>
+            <div className="w-full h-2 bg-gray-100 rounded-full mb-4 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-orange-400 to-red-500 transition-all duration-1000 ease-linear" 
+                style={{ width: `${(alertCountdown / 60) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 text-center mb-8">
+              Last known location: {pickup || 'GPS unavailable'} • {new Date().toLocaleTimeString()}
             </p>
             <div className="flex flex-col gap-3">
               <button 
@@ -2103,7 +2152,7 @@ const BookRide = () => {
                 Yes, I am fine
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowGPSLostPopup(false); setShowSOSPopup(true); }} 
+                onClick={() => { setShowGPSLostPopup(false); fireSOSAndOpen(); }} 
                 className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"
               >
                 <Siren className="h-6 w-6 mr-2" /> No, trigger SOS
@@ -2120,8 +2169,17 @@ const BookRide = () => {
             <div className="absolute top-0 left-0 right-0 bg-yellow-400 h-2 animate-pulse"></div>
             <AlertCircle className="h-20 w-20 text-yellow-500 mb-6 mx-auto" />
             <h2 className="text-3xl font-bold text-center mb-4">Route Deviation Detected</h2>
-            <p className="text-gray-600 text-center text-lg mb-8">
-              Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in 60 seconds, we will alert your emergency contacts.
+            <p className="text-gray-600 text-center text-lg mb-4">
+              Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in <span className="font-bold text-yellow-600">{alertCountdown}s</span>, we will alert your emergency contacts.
+            </p>
+            <div className="w-full h-2 bg-gray-100 rounded-full mb-4 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-yellow-400 to-red-500 transition-all duration-1000 ease-linear" 
+                style={{ width: `${(alertCountdown / 60) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 text-center mb-8">
+              Driver {assignedDriver?.name || '—'} ({selectedCar}) • {pickup || 'Pickup'} → {dropoff || 'Dropoff'}
             </p>
             <div className="flex flex-col gap-3">
               <button 
@@ -2131,7 +2189,7 @@ const BookRide = () => {
                 Yes, I am fine
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowDeviationPopup(false); setShowSOSPopup(true); }} 
+                onClick={() => { setShowDeviationPopup(false); fireSOSAndOpen(); }} 
                 className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"
               >
                 <Siren className="h-6 w-6 mr-2" /> No, trigger SOS
@@ -2534,9 +2592,25 @@ const BookRide = () => {
         <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[450] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
           <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
           <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
-          <p className="text-red-100 text-xl text-center max-w-lg mb-12">
-            Your live location and dashcam feed have been sent to the Smart Security AI Cab Security Center. Do you need immediate police assistance?
+          <p className="text-red-100 text-xl text-center max-w-lg mb-6">
+            Your live location and dashcam feed are being shared with the Smart Security AI Cab Security Center. Do you need immediate police assistance?
           </p>
+          {sosStatus === 'sent' && (
+            <p className="text-green-300 text-lg text-center font-bold max-w-lg mb-6 bg-green-900/40 border border-green-500/40 rounded-2xl px-4 py-3">
+              ✅ SOS signal received by the Security Center — your live location is being tracked.
+            </p>
+          )}
+          {sosStatus === 'failed' && (
+            <p className="text-yellow-200 text-lg text-center font-bold max-w-lg mb-6 bg-yellow-900/40 border border-yellow-500/40 rounded-2xl px-4 py-3">
+              ⚠️ Could not reach the Security Center right now. Please call the police immediately.
+            </p>
+          )}
+          {sosStatus === 'no-ride' && (
+            <p className="text-gray-200 text-lg text-center font-bold max-w-lg mb-6 bg-white/10 border border-white/30 rounded-2xl px-4 py-3">
+              🧪 This is a test alert — no active ride yet. Book a ride and the SOS will reach the Security Center for real.
+            </p>
+          )}
+          <div className="mb-8"></div>
           <div className="flex flex-col w-full max-w-md gap-4">
             <a 
               href="tel:112" 
@@ -3230,7 +3304,7 @@ const BookRide = () => {
 
                         {/* SOS BUTTON */}
                         <button 
-                          onClick={() => { triggerBackendSOS(); setShowSOSPopup(true); }}
+                          onClick={() => { setSosStatus(null); fireSOSAndOpen(); }}
                           className="absolute top-6 right-6 bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-5 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-2xl animate-pulse transition transform hover:scale-105"
                         >
                           <Siren className="mr-3 h-8 w-8" /> SOS
@@ -3268,18 +3342,18 @@ const BookRide = () => {
                           </div>
                           
                           <div className="w-full md:w-1/3 border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-8">
-                            <div className="flex justify-between items-center mb-4">
-                              <p className="text-base font-bold text-gray-700">Emergency Safety</p>
-                              <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center items-start gap-3 mb-4">
+                              <p className="text-base font-bold text-gray-700 shrink-0">Emergency Safety</p>
+                              <div className="flex flex-wrap items-center gap-2">
                                 <button
                                   onClick={() => setShowLiveGuardModal(true)}
-                                  className="text-sm font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg hover:bg-pink-100 flex items-center transition border border-pink-200"
+                                  className="text-sm font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg hover:bg-pink-100 flex items-center transition border border-pink-200 whitespace-nowrap"
                                 >
                                   <Video className="h-4 w-4 mr-1" /> Live Guard
                                 </button>
                                 <button
                                   onClick={() => setShowSilentSOSModal(true)}
-                                  className="text-sm font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 flex items-center transition border border-red-200"
+                                  className="text-sm font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 flex items-center transition border border-red-200 whitespace-nowrap"
                                 >
                                   <Siren className="h-4 w-4 mr-1" /> Silent SOS
                                 </button>
@@ -4317,11 +4391,12 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* DEMO PANEL */}
-      <div className="fixed bottom-6 right-4 z-[300] flex flex-col items-end">
+      {/* SAFETY-ALERT TEST PANEL (bottom-LEFT so it never covers the
+          Emergency Safety buttons on the right) */}
+      <div className="fixed bottom-6 left-4 z-[300] flex flex-col items-start">
         {isDemoPanelOpen ? (
-          <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-bottom-2">
-            <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+          <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 w-72 animate-in slide-in-from-bottom-2">
+            <div className="flex items-center justify-between mb-1 border-b border-gray-100 pb-2">
               <span className="text-xs font-bold text-gray-500 tracking-wider uppercase">Mentor Controls</span>
               <button 
                 onClick={() => setIsDemoPanelOpen(false)} 
@@ -4330,24 +4405,27 @@ const BookRide = () => {
                 <X className="h-4 w-4 text-gray-500" />
               </button>
             </div>
+            <p className="text-[11px] text-gray-400 mb-3">
+              See exactly what the rider sees. No alert is sent until you answer or confirm.
+            </p>
             <div className="space-y-2">
               <button 
-                onClick={() => { triggerBackendSOS(); setShowDeviationPopup(true); }} 
+                onClick={() => { setSosStatus(null); setShowDeviationPopup(true); }} 
                 className="w-full text-left text-sm font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-700 px-3 py-2 rounded-lg transition border border-yellow-200"
               >
-                🟡 500m Deviation
+                🟡 500m Deviation — real 60s countdown
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowGPSLostPopup(true); }} 
+                onClick={() => { setSosStatus(null); setShowGPSLostPopup(true); }} 
                 className="w-full text-left text-sm font-bold bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg transition border border-orange-200"
               >
-                📡 GPS Lost
+                📡 GPS Lost — real 60s countdown
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowSOSPopup(true); }} 
+                onClick={() => { setSosStatus(null); fireSOSAndOpen(); }} 
                 className="w-full text-left text-sm font-bold bg-red-50 hover:bg-red-100 text-red-700 px-3 py-2 rounded-lg transition border border-red-200"
               >
-                🚨 Police / SOS
+                🚨 Police / SOS — sends real SOS to backend
               </button>
             </div>
           </div>
@@ -4355,7 +4433,7 @@ const BookRide = () => {
           <button 
             onClick={() => setIsDemoPanelOpen(true)} 
             className="bg-black text-white p-3 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition border-2 border-white/20"
-            title="Open Demo Panel"
+            title="Open the Safety Alert Test Panel"
           >
             <Settings className="h-6 w-6 text-green-400" />
           </button>
