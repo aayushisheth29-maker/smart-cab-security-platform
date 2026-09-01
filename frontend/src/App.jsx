@@ -20,11 +20,15 @@ const OWNER_MODE = import.meta.env.VITE_OWNER_MODE === 'true';
 
 function App() {
   if (OWNER_MODE) {
+    // AdminDashboard uses React Router (Link), so it must stay INSIDE the
+    // Router even in owner mode.
     return (
-      <>
+      <Router>
         <I18nLoader />
-        <AdminDashboard />
-      </>
+        <Routes>
+          <Route path="/*" element={<AdminDashboard />} />
+        </Routes>
+      </Router>
     );
   }
   return (

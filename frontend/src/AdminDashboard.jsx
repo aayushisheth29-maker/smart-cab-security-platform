@@ -85,6 +85,7 @@ function fmtTime(iso) {
 }
 
 export default function AdminDashboard() {
+  const OWNER_MODE = import.meta.env.VITE_OWNER_MODE === 'true';
   const [key, setKey] = useState(getAdminKey());
   const [authenticated, setAuthenticated] = useState(false);
   const [keyError, setKeyError] = useState('');
@@ -367,7 +368,9 @@ export default function AdminDashboard() {
           <p className="text-xs text-slate-400 mt-4 text-center">
             🔒 Owner-only link — never shown inside the rider app. Keep this URL and your access key private.
           </p>
-          <Link to="/" className="block text-center text-sm text-slate-500 hover:underline mt-3">← Back to app</Link>
+          {!OWNER_MODE && (
+            <Link to="/" className="block text-center text-sm text-slate-500 hover:underline mt-3">← Back to app</Link>
+          )}
         </div>
       </div>
     );
@@ -393,9 +396,11 @@ export default function AdminDashboard() {
             <button onClick={logoutAdmin} className="text-sm flex items-center gap-1.5 bg-red-600 hover:bg-red-700 px-3 py-2 rounded-xl transition">
               <LogOut className="h-4 w-4" /> Lock
             </button>
-            <Link to="/" className="text-sm flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-xl transition">
-              <ArrowLeft className="h-4 w-4" /> App
-            </Link>
+            {!OWNER_MODE && (
+              <Link to="/" className="text-sm flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-xl transition">
+                <ArrowLeft className="h-4 w-4" /> App
+              </Link>
+            )}
           </div>
         </div>
       </header>
