@@ -135,7 +135,7 @@ export default function AdminDashboard() {
       setAuthenticated(true);
     } catch (err) {
       if (err.status === 401) {
-        setKeyError('Invalid admin key.');
+        setKeyError('Invalid admin key. If you changed it earlier inside this portal, that key has OVERRIDDEN the SMARTCAB_ADMIN_KEY in Render. Recovery: Render → backend → Settings → Environment → add SMARTCAB_ADMIN_KEY_RESET=true → Save → wait for redeploy → unlock with the key in SMARTCAB_ADMIN_KEY.');
         setAuthenticated(false);
       } else {
         // fetch failures (TypeError) = network/CORS block from the browser.
