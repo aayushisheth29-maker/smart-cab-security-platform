@@ -1326,6 +1326,9 @@ def home():
 @app.get("/api/health")
 def health():
     return {
+        "version": "3.2.0",
+        "keyResetFlag": os.environ.get("SMARTCAB_ADMIN_KEY_RESET", "").lower() in ("1", "true", "yes"),
+        "keyHashActive": bool(_admin_credentials.get("hash")),
         "status": "ok",
         "database": "connected" if db_enabled else "in-memory",
         "share_links_count": len(SHARE_LINKS),
