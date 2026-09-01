@@ -48,9 +48,56 @@ const MapUpdater = ({ center, zoom }) => {
   useEffect(() => {
     const t1 = setTimeout(() => map.invalidateSize(), 200);
     const t2 = setTimeout(() => map.invalidateSize(), 600);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // Re-measure when the container resizes (tabs, mobile, animations) so the
+    // map never stays blank because it was mounted before its box had size.
+    const ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => map.invalidateSize())
+      : null;
+    const el = map.getContainer();
+    if (ro && el) ro.observe(el);
+    return () => { clearTimeout(t1); clearTimeout(t2); if (ro) ro.disconnect(); };
   }, [map, center, zoom]);
   return null;
+};
+
+// 🗺️ RESILIENT TILE LAYER — OpenStreetMap first; if OSM is blocked/has an
+// outage (some regions/networks get refused), switch automatically to CARTO's
+// free CDN so the live-trip map never shows a blank screen.
+const TILE_PROVIDERS = [
+  {
+    name: 'OpenStreetMap',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  {
+    name: 'CARTO Voyager',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  },
+];
+const ResilientTileLayer = () => {
+  const [providerIdx, setProviderIdx] = useState(0);
+  const failures = useRef(0);
+  const provider = TILE_PROVIDERS[providerIdx];
+  return (
+    <TileLayer
+      key={provider.name}
+      url={provider.url}
+      attribution={provider.attribution}
+      crossOrigin
+      eventHandlers={{
+        tileerror: () => {
+          failures.current += 1;
+          // Switch provider after a few failed tiles (avoid flipping on a
+          // single transient network blip).
+          if (failures.current >= 3 && providerIdx < TILE_PROVIDERS.length - 1) {
+            setProviderIdx((i) => Math.min(i + 1, TILE_PROVIDERS.length - 1));
+            failures.current = 0;
+          }
+        },
+      }}
+    />
+  );
 };
 
 const MapClickHandler = ({ onMapClick }) => {
@@ -3156,7 +3203,7 @@ const BookRide = () => {
                             style={{ height: '100%', width: '100%', zIndex: 0 }} 
                             zoomControl={false}
                           >
-                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <ResilientTileLayer />
                             <MapUpdater center={mapCenter} zoom={mapZoom} />
                             {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
                             {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
@@ -3478,7 +3525,7 @@ const BookRide = () => {
                       scrollWheelZoom={true} 
                       style={{ height: '100%', width: '100%' }}
                     >
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <ResilientTileLayer />
                       <MapClickHandler onMapClick={handleMapClick} />
                     </MapContainer>
                   </div>
