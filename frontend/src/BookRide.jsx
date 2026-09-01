@@ -60,9 +60,11 @@ const MapUpdater = ({ center, zoom }) => {
   return null;
 };
 
-// 🗺️ RESILIENT TILE LAYER — OpenStreetMap first; if OSM is blocked/has an
-// outage (some regions/networks get refused), switch automatically to CARTO's
-// free CDN so the live-trip map never shows a blank screen.
+// 🗺️ RESILIENT TILE LAYER — three free map providers. Starts with
+// OpenStreetMap; if its tiles are refused/blocked (some networks, ISPs or
+// regions get rate-limited), it automatically switches to CARTO's CDN, then
+// Esri's World Street Map. A small status badge (bottom-left) shows which
+// provider is active, so the live-trip map never silently stays blank.
 const TILE_PROVIDERS = [
   {
     name: 'OpenStreetMap',
@@ -74,8 +76,13 @@ const TILE_PROVIDERS = [
     url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
     attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
   },
+  {
+    name: 'Esri World Street Map',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri — Source: Esri, USGS, NOAA',
+  },
 ];
-const ResilientTileLayer = () => {
+const ResilientTileLayer = ({ onStatus }) => {
   const [providerIdx, setProviderIdx] = useState(0);
   const failures = useRef(0);
   const provider = TILE_PROVIDERS[providerIdx];
@@ -84,15 +91,19 @@ const ResilientTileLayer = () => {
       key={provider.name}
       url={provider.url}
       attribution={provider.attribution}
-      crossOrigin
       eventHandlers={{
+        tileload: () => {
+          failures.current = 0;
+          if (onStatus) onStatus(`Map loaded · ${provider.name}`);
+        },
         tileerror: () => {
           failures.current += 1;
-          // Switch provider after a few failed tiles (avoid flipping on a
-          // single transient network blip).
-          if (failures.current >= 3 && providerIdx < TILE_PROVIDERS.length - 1) {
+          if (failures.current >= 2 && providerIdx < TILE_PROVIDERS.length - 1) {
+            if (onStatus) onStatus(`Switching to ${TILE_PROVIDERS[providerIdx + 1].name}…`);
             setProviderIdx((i) => Math.min(i + 1, TILE_PROVIDERS.length - 1));
             failures.current = 0;
+          } else if (providerIdx >= TILE_PROVIDERS.length - 1 && onStatus) {
+            onStatus('All map providers blocked — check internet connection');
           }
         },
       }}
@@ -400,6 +411,7 @@ const BookRide = () => {
   
   const [mapCenter, setMapCenter] = useState([23.0225, 72.5714]); // Ahmedabad
   const [mapZoom, setMapZoom] = useState(11);
+  const [mapStatus, setMapStatus] = useState(''); // shows which tile provider is live
 
   // 📍 User's live GPS location (lat, lng) — populated when they tap
   // "Use my location" so the map can show their actual position.
@@ -3200,10 +3212,10 @@ const BookRide = () => {
                             center={mapCenter} 
                             zoom={mapZoom} 
                             scrollWheelZoom={false} 
-                            style={{ height: '100%', width: '100%', zIndex: 0 }} 
+                            style={{ height: '100%', width: '100%', minHeight: 300, zIndex: 0 }} 
                             zoomControl={false}
                           >
-                            <ResilientTileLayer />
+                            <ResilientTileLayer onStatus={setMapStatus} />
                             <MapUpdater center={mapCenter} zoom={mapZoom} />
                             {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
                             {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
@@ -3211,6 +3223,11 @@ const BookRide = () => {
                               <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />
                             )}
                           </MapContainer>
+                          {mapStatus && (
+                            <div className="absolute bottom-2 left-2 z-[30] bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full pointer-events-none">
+                              🗺️ {mapStatus}
+                            </div>
+                          )}
                         </div>
 
                         {/* SOS BUTTON */}
@@ -3523,11 +3540,16 @@ const BookRide = () => {
                       center={[20.5937, 78.9629]} 
                       zoom={5} 
                       scrollWheelZoom={true} 
-                      style={{ height: '100%', width: '100%' }}
+                      style={{ height: '100%', width: '100%', minHeight: 300 }}
                     >
-                      <ResilientTileLayer />
+                      <ResilientTileLayer onStatus={setMapStatus} />
                       <MapClickHandler onMapClick={handleMapClick} />
                     </MapContainer>
+                    {mapStatus && (
+                      <div className="absolute bottom-2 left-2 z-[30] bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full pointer-events-none">
+                        🗺️ {mapStatus}
+                      </div>
+                    )}
                   </div>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8 pointer-events-none">
                     <h3 className="text-white text-3xl font-bold w-3/4">Travel safely anywhere in India.</h3>
