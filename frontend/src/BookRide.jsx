@@ -3201,18 +3201,17 @@ const BookRide = () => {
               {(['request', 'reserve', 'explore'].includes(activeTab) || showPrices || rideConfirmed) && (
                 <>
                   {rideConfirmed ? (
-                    <div className="w-full h-[600px] flex flex-col animate-in fade-in duration-500">
+                    <div className="w-full flex flex-col animate-in fade-in duration-500">
                       <h2 className="text-3xl font-bold mb-4 flex items-center">
                         <ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring
                       </h2>
                       
                       <div className="w-full h-[520px] bg-white rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200 mb-4">
-                        <div className="absolute inset-0 z-0">
-                          <MapContainer 
+                        <MapContainer 
                             center={mapCenter} 
                             zoom={mapZoom} 
                             scrollWheelZoom={false} 
-                            style={{ height: '100%', width: '100%', zIndex: 0 }} 
+                            style={{ height: '100%', width: '100%' }} 
                             zoomControl={false}
                           >
                             <ResilientTileLayer onStatus={setMapStatus} />
@@ -3228,7 +3227,6 @@ const BookRide = () => {
                               🗺️ {mapStatus}
                             </div>
                           )}
-                        </div>
 
                         {/* SOS BUTTON */}
                         <button 
@@ -3237,9 +3235,12 @@ const BookRide = () => {
                         >
                           <Siren className="mr-3 h-8 w-8" /> SOS
                         </button>
+                      </div>
 
-                        {/* BOTTOM PANEL */}
-                        <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-8 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10 flex flex-col md:flex-row gap-8 items-center">
+                        {/* BOTTOM PANEL — normal flow below the map so it can
+                            never cover it (the old absolute-bottom panel grew
+                            taller than the map box and hid it). */}
+                        <div className="w-full bg-white/95 backdrop-blur-md p-8 rounded-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border border-gray-100 flex flex-col md:flex-row gap-8 items-center mb-4">
                           <div className="w-full md:w-2/3">
                             <div className="flex justify-between items-center mb-2">
                               <h2 className="text-2xl font-bold text-gray-900">
@@ -3386,7 +3387,6 @@ const BookRide = () => {
                           </div>
                         </div>
                       </div>
-                    </div>
 
                   ) : showPrices ? (
                     <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md h-full flex flex-col">
