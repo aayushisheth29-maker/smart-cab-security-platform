@@ -3,3 +3,9 @@ uvicorn
 python-multipart
 psycopg2-binary
 Pillow>=10
+# AI Safety Agent (LangChain ReAct + Gemini). The app runs without these
+# installed — /api/agent simply falls back to the scripted assistant.
+langchain-core>=0.3
+langchain>=0.3
+langgraph>=0.2
+langchain-google-genai>=2.0
