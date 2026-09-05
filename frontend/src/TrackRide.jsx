@@ -143,7 +143,9 @@ const TrackRide = () => {
         const res = await fetch(`${API_BASE}/api/video/stream/${linkId}/latest`, { cache: 'no-store' });
         const contentType = res.headers.get('content-type') || '';
         const chunkId = res.headers.get('X-Chunk-Id');
-        if (res.ok && contentType.includes('video/webm')) {
+        // Accept whatever the rider's phone recorded — MP4 (iOS/newer
+        // Android) or WebM (desktop/older Android).
+        if (res.ok && contentType.startsWith('video/')) {
           const sameChunk = chunkId && chunkId === loadedChunkIdRef.current;
           const knownBad = chunkId && badChunkIdsRef.current.has(Number(chunkId));
           if (sameChunk || knownBad) {

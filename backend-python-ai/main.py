@@ -2761,6 +2761,11 @@ async def upload_video_chunk(
         "ts": _now_iso(),
         "data": data,
         "size": len(data),
+        # Record what the rider's phone actually encoded (video/mp4 on
+        # iOS, video/webm on most Android/desktop) so /latest can return
+        # the correct Content-Type — mislabeling mp4 as webm left the
+        # family feed black on phones.
+        "mediaType": (file.content_type or "video/webm").split(";")[0].strip() or "video/webm",
         "durationMs": int(durationMs or 0),
         "lat": float(lat) if lat else None,
         "lng": float(lng) if lng else None,
@@ -2805,7 +2810,7 @@ async def get_latest_video_chunk(link_id: str):
     from fastapi.responses import Response
     return Response(
         content=latest["data"],
-        media_type="video/webm",
+        media_type=latest.get("mediaType") or "video/webm",
         headers={
             "X-Chunk-Id": str(latest["id"]),
             "X-Chunk-Ts": latest["ts"],
@@ -2854,7 +2859,7 @@ async def get_video_chunk_by_id(link_id: str, chunk_id: int):
     from fastapi.responses import Response
     return Response(
         content=target["data"],
-        media_type="video/webm",
+        media_type=target.get("mediaType") or "video/webm",
         headers={
             "X-Chunk-Id": str(target["id"]),
             "X-Chunk-Ts": target["ts"],
