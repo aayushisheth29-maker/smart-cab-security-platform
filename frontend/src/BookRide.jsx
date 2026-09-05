@@ -3,15 +3,17 @@ import { Link } from 'react-router-dom';
 import { 
   Clock, Navigation, MapPin, Square, ChevronDown, Globe, 
   ShieldCheck, X, Car, Calendar, Map, Package, Bike, CalendarDays, Shield,
-  User, Phone, Mail, Building, CheckCircle, ArrowLeft, Loader2,
+  User, Phone, Mail, Building, CheckCircle, CheckCircle2, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
-  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic 
+  Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
+  FileWarning
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 
-import { API_BASE } from './api';
+import { API_BASE, authHeaders } from './api';
+import { LANGS, getGoogleLang, setSiteLanguage } from './i18n';
 
 // --- CUSTOM MAP ICONS ---
 // Small pickup dot — just a black circle so the car isn't covered
@@ -38,6 +40,75 @@ const carIcon = new L.DivIcon({
   iconAnchor: [18, 18]
 });
 
+// ✈️ OFFLINE AIRPORT COORDINATES — exact IATA-code → [lat, lng] for every
+// airport in the search list. When a rider picks an airport, we prefill the
+// pin/fare from here directly (no geocoder needed, works even on flaky
+// networks). Approximate to ~1 km — plenty for a fare estimate.
+const AIRPORT_GEO = {
+  VTZ: [17.7212, 83.2245],  // Visakhapatnam
+  VGA: [16.5304, 80.7968],  // Vijayawada
+  HGI: [27.3030, 93.8270],  // Itanagar (Donyi Polo)
+  GAU: [26.1061, 91.5859],  // Guwahati
+  PAT: [25.5912, 85.0880],  // Patna
+  GAY: [24.7443, 84.9514],  // Gaya
+  RPR: [21.1804, 81.7388],  // Raipur
+  IXC: [30.6735, 76.7885],  // Chandigarh
+  DEL: [28.5562, 77.1000],  // New Delhi
+  GOI: [15.3809, 73.8314],  // Goa – Dabolim
+  GOX: [15.7447, 73.8628],  // Goa – Mopa
+  AMD: [23.0772, 72.6347],  // Ahmedabad
+  HSR: [22.3090, 70.7790],  // Rajkot
+  HSS: [29.1780, 75.7550],  // Hisar
+  SLV: [31.0818, 77.0680],  // Shimla
+  DHM: [32.1651, 76.2634],  // Kangra
+  SXR: [33.9871, 74.7742],  // Srinagar
+  IXJ: [32.6892, 74.8375],  // Jammu
+  IXR: [23.3143, 85.3259],  // Ranchi
+  BLR: [13.1986, 77.7066],  // Bengaluru
+  IXE: [12.9613, 74.8901],  // Mangaluru
+  HBX: [15.3617, 75.0849],  // Hubballi
+  COK: [10.1520, 76.4019],  // Kochi
+  TRV: [8.4821, 76.9201],   // Thiruvananthapuram
+  CCJ: [11.1368, 75.9550],  // Kozhikode
+  BHO: [23.2875, 77.3374],  // Bhopal
+  IDR: [22.7218, 75.8011],  // Indore
+  JLR: [23.1778, 80.0520],  // Jabalpur
+  BOM: [19.0896, 72.8656],  // Mumbai
+  PNQ: [18.5793, 73.9089],  // Pune
+  NAG: [21.0922, 79.0472],  // Nagpur
+  ISK: [20.1192, 73.9129],  // Nashik
+  IXU: [19.8627, 75.3981],  // Chhatrapati Sambhajinagar
+  IMF: [24.7600, 93.8967],  // Imphal
+  SHL: [25.7035, 91.9787],  // Shillong
+  AJL: [23.8406, 92.6197],  // Aizawl
+  DMU: [25.8839, 93.7711],  // Dimapur
+  BBI: [20.2444, 85.8176],  // Bhubaneswar
+  JRG: [21.9139, 84.0506],  // Jharsuguda
+  ATQ: [31.7096, 74.7973],  // Amritsar
+  LUH: [30.8547, 75.9526],  // Ludhiana
+  JAI: [26.8242, 75.8122],  // Jaipur
+  UDR: [24.6179, 73.8922],  // Udaipur
+  JDH: [26.2512, 73.0489],  // Jodhpur
+  PYG: [27.3095, 88.5881],  // Pakyong
+  MAA: [12.9941, 80.1709],  // Chennai
+  CJB: [11.0300, 77.0434],  // Coimbatore
+  IXM: [9.8345, 78.0934],   // Madurai
+  TRZ: [10.7657, 78.7097],  // Tiruchirappalli
+  HYD: [17.2403, 78.4294],  // Hyderabad
+  IXA: [23.8866, 91.2404],  // Agartala
+  LKO: [26.7606, 80.8893],  // Lucknow
+  VNS: [25.4524, 82.8593],  // Varanasi
+  AYJ: [26.8350, 81.8250],  // Ayodhya
+  KNU: [26.4415, 80.3623],  // Kanpur
+  IXD: [25.4381, 81.7390],  // Prayagraj
+  DED: [30.1897, 78.1803],  // Dehradun
+  PGH: [29.0334, 79.4737],  // Pantnagar
+  CCU: [22.6547, 88.4467],  // Kolkata
+  IXB: [26.6812, 88.3282],  // Bagdogra
+  RDP: [23.6250, 87.2350],  // Durgapur
+  AGX: [10.8236, 72.1760],  // Agatti
+};
+
 const MapUpdater = ({ center, zoom }) => {
   const map = useMap();
   useEffect(() => {
@@ -46,9 +117,67 @@ const MapUpdater = ({ center, zoom }) => {
   useEffect(() => {
     const t1 = setTimeout(() => map.invalidateSize(), 200);
     const t2 = setTimeout(() => map.invalidateSize(), 600);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
+    // Re-measure when the container resizes (tabs, mobile, animations) so the
+    // map never stays blank because it was mounted before its box had size.
+    const ro = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => map.invalidateSize())
+      : null;
+    const el = map.getContainer();
+    if (ro && el) ro.observe(el);
+    return () => { clearTimeout(t1); clearTimeout(t2); if (ro) ro.disconnect(); };
   }, [map, center, zoom]);
   return null;
+};
+
+// 🗺️ RESILIENT TILE LAYER — three free map providers. Starts with
+// OpenStreetMap; if its tiles are refused/blocked (some networks, ISPs or
+// regions get rate-limited), it automatically switches to CARTO's CDN, then
+// Esri's World Street Map. A small status badge (bottom-left) shows which
+// provider is active, so the live-trip map never silently stays blank.
+const TILE_PROVIDERS = [
+  {
+    name: 'OpenStreetMap',
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  },
+  {
+    name: 'CARTO Voyager',
+    url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+    attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+  },
+  {
+    name: 'Esri World Street Map',
+    url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+    attribution: 'Tiles &copy; Esri — Source: Esri, USGS, NOAA',
+  },
+];
+const ResilientTileLayer = ({ onStatus }) => {
+  const [providerIdx, setProviderIdx] = useState(0);
+  const failures = useRef(0);
+  const provider = TILE_PROVIDERS[providerIdx];
+  return (
+    <TileLayer
+      key={provider.name}
+      url={provider.url}
+      attribution={provider.attribution}
+      eventHandlers={{
+        tileload: () => {
+          failures.current = 0;
+          if (onStatus) onStatus(`Map loaded · ${provider.name}`);
+        },
+        tileerror: () => {
+          failures.current += 1;
+          if (failures.current >= 2 && providerIdx < TILE_PROVIDERS.length - 1) {
+            if (onStatus) onStatus(`Switching to ${TILE_PROVIDERS[providerIdx + 1].name}…`);
+            setProviderIdx((i) => Math.min(i + 1, TILE_PROVIDERS.length - 1));
+            failures.current = 0;
+          } else if (providerIdx >= TILE_PROVIDERS.length - 1 && onStatus) {
+            onStatus('All map providers blocked — check internet connection');
+          }
+        },
+      }}
+    />
+  );
 };
 
 const MapClickHandler = ({ onMapClick }) => {
@@ -82,7 +211,7 @@ const BookRide = () => {
   const [isLangModalOpen, setIsLangModalOpen] = useState(false);
 
   // 📱 PHONE COMPATIBILITY CHECK — runs a real diagnostic on the user's
-  // device so they know if their phone/browser can run SmartCab's live
+  // device so they know if their phone/browser can run Smart Security AI Cab's live
   // tracking + camera features. Honest pass/fail per capability.
   const [compatCheck, setCompatCheck] = useState(null);
   const [compatRunning, setCompatRunning] = useState(false);
@@ -143,6 +272,170 @@ const BookRide = () => {
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
+  // 🚗 DRIVER APPLICATION — real form payload + submit state
+  const [driverForm, setDriverForm] = useState({
+    fullName: '', phone: '', email: '', city: 'Ahmedabad',
+    vehicleType: 'SmartMini', licenseNumber: '', experienceYears: '',
+    ownVehicle: true, agreeTerms: false,
+    criminalRecordDeclaration: false, policeVerificationNumber: '',
+  });
+  // 🛡️ Vet documents (licence / vehicle / police certificate) — uploaded after
+  // the application is created so they can be reviewed before approval.
+  const [driverDocs, setDriverDocs] = useState({
+    licence: null, vehicle: null, police_certificate: null,
+  });
+  const [driverDocsStatus, setDriverDocsStatus] = useState({});
+  const [driverDocsMessage, setDriverDocsMessage] = useState('');
+  const [driverDocsBusy, setDriverDocsBusy] = useState(null);
+  const [driverSubmitLoading, setDriverSubmitLoading] = useState(false);
+  const [driverSubmitError, setDriverSubmitError] = useState('');
+  const [driverApplicationResult, setDriverApplicationResult] = useState(null);
+  const readDriverAppRef = () => {
+    try { return localStorage.getItem('smartcab_driver_app_ref') || ''; } catch (e) { return ''; }
+  };
+  const [driverAppRef, setDriverAppRef] = useState(readDriverAppRef);
+  const [driverAppStatus, setDriverAppStatus] = useState(null);
+  const [driverStatusLoading, setDriverStatusLoading] = useState(false);
+
+  const handleDriverFormChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    setDriverForm((prev) => ({ ...prev, [name]: type === 'checkbox' ? checked : value }));
+  };
+
+  const handleDriverFormNext = () => {
+    setDriverSubmitError('');
+    if (formStep === 1) {
+      if (!driverForm.fullName.trim() || !driverForm.phone.trim()) {
+        setDriverSubmitError('Please enter your full name and phone number.');
+        return;
+      }
+      if (driverForm.phone.replace(/[^0-9]/g, '').length < 7) {
+        setDriverSubmitError('Please enter a valid phone number (e.g. +91 98765 43210).');
+        return;
+      }
+      setFormStep(2);
+    } else if (formStep === 2) {
+      if (!driverForm.licenseNumber.trim()) {
+        setDriverSubmitError('Please enter your driving licence number.');
+        return;
+      }
+      if (!driverForm.agreeTerms) {
+        setDriverSubmitError('Please accept the Driver Terms to continue.');
+        return;
+      }
+      if (!driverForm.criminalRecordDeclaration) {
+        setDriverSubmitError('Please confirm your criminal-record declaration to continue.');
+        return;
+      }
+      submitDriverApplication();
+    }
+  };
+
+  const submitDriverApplication = async () => {
+    setDriverSubmitLoading(true);
+    setDriverSubmitError('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/drivers/apply`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fullName: driverForm.fullName.trim(),
+          phone: driverForm.phone.trim(),
+          email: driverForm.email.trim(),
+          city: driverForm.city.trim(),
+          vehicleType: driverForm.vehicleType,
+          licenseNumber: driverForm.licenseNumber.trim(),
+          experienceYears: parseFloat(driverForm.experienceYears || 0),
+          ownVehicle: driverForm.ownVehicle,
+          agreeTerms: driverForm.agreeTerms,
+          criminalRecordDeclaration: driverForm.criminalRecordDeclaration,
+          policeVerificationNumber: driverForm.policeVerificationNumber.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Application failed. Please try again.';
+        setDriverSubmitError(typeof detail === 'string' ? detail : 'Application failed. Please try again.');
+        return;
+      }
+      setDriverApplicationResult(data.application);
+      try { localStorage.setItem('smartcab_driver_app_ref', data.application.reference); } catch (e) { /* noop */ }
+      setDriverAppRef(data.application.reference);
+      setFormSubmitted(true);
+      setFormStep(1);
+    } catch (err) {
+      setDriverSubmitError('Could not reach the server. Please check your connection and try again.');
+    } finally {
+      setDriverSubmitLoading(false);
+    }
+  };
+
+  const checkDriverApplicationStatus = async () => {
+    if (!driverAppRef) return;
+    setDriverStatusLoading(true);
+    setDriverSubmitError('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/drivers/application/${encodeURIComponent(driverAppRef)}`);
+      const data = await res.json();
+      if (res.ok && data.application) {
+        setDriverAppStatus(data.application.status);
+      } else {
+        setDriverSubmitError('Could not find that application. Check the reference and try again.');
+      }
+    } catch (err) {
+      setDriverSubmitError('Could not reach the server. Please try again later.');
+    } finally {
+      setDriverStatusLoading(false);
+    }
+  };
+
+  // 🛡️ UPLOAD A VETTING DOCUMENT (licence / vehicle / police certificate)
+  const uploadDriverDocument = async (docType) => {
+    const file = driverDocs[docType];
+    if (!file || !driverApplicationResult?.id) {
+      setDriverDocsMessage('Select a file first.');
+      return;
+    }
+    setDriverDocsBusy(docType);
+    setDriverDocsMessage('');
+    try {
+      const fd = new FormData();
+      fd.append(
+        docType === 'licence' ? 'licencePhoto' :
+        docType === 'vehicle' ? 'vehiclePhoto' : 'policeCertificate',
+        file
+      );
+      const res = await fetch(`${PYTHON_API}/api/drivers/apply/${driverApplicationResult.id}/documents`, {
+        method: 'POST',
+        body: fd,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Upload failed.';
+        setDriverDocsMessage(typeof detail === 'string' ? detail : 'Upload failed (check file type/size).');
+        return;
+      }
+      setDriverDocsStatus((prev) => ({ ...prev, [docType]: 'uploaded' }));
+      // 🔍 Show the automatic screening result for THIS document
+      const uploads = data.uploaded || data.documents || [];
+      const mine = uploads.find((d) => d.type === docType) || uploads[0];
+      const check = mine?.check || {};
+      const status = check.status || 'OK';
+      const issues = Array.isArray(check.issues) ? check.issues : [];
+      if (status === 'REJECTED') {
+        setDriverDocsMessage(`❌ ${issues[0] || 'Photo check failed.'} Please upload a clear, real photo of the document.`);
+      } else if (status === 'REVIEW') {
+        setDriverDocsMessage(`⚠️ Uploaded. Auto-check: ${issues[0] || 'unusual photo shape'} — our team will look at it carefully.`);
+      } else {
+        setDriverDocsMessage('✅ Document uploaded and passed the automatic check. Our team will review it.');
+      }
+    } catch (err) {
+      setDriverDocsMessage('Could not reach the server. Please try again.');
+    } finally {
+      setDriverDocsBusy(null);
+    }
+  };
+
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
   const [showPrices, setShowPrices] = useState(false);
@@ -172,6 +465,7 @@ const BookRide = () => {
       const text = (e.results[0][0].transcript || '').trim();
       if (text) {
         if (type === 'pickup') setPickup(text); else setDropoff(text);
+        setPresetCoords((prev) => ({ ...prev, [type]: null }));
       }
     };
     rec.onerror = (e) => {
@@ -187,6 +481,10 @@ const BookRide = () => {
   
   const [mapCenter, setMapCenter] = useState([23.0225, 72.5714]); // Ahmedabad
   const [mapZoom, setMapZoom] = useState(11);
+  // Exact coordinates pre-filled when an airport is picked from the search
+  // modal, so the pin + fare are correct without needing a geocoder.
+  const [presetCoords, setPresetCoords] = useState({ pickup: null, dropoff: null });
+  const [mapStatus, setMapStatus] = useState(''); // shows which tile provider is live
 
   // 📍 User's live GPS location (lat, lng) — populated when they tap
   // "Use my location" so the map can show their actual position.
@@ -264,7 +562,7 @@ const BookRide = () => {
       setLoggedInUser(data);
       setSignupForm({ name: '', email: '', phone: '', password: '' });
       setMainView('dashboard');
-      alert(`Welcome to SmartCab, ${data.name}! 🎉`);
+      alert(`Welcome to Smart Security AI Cab, ${data.name}! 🎉`);
     } catch (err) {
       console.error('Signup error:', err);
       setAuthError('Could not reach the server. Please try again.');
@@ -308,10 +606,33 @@ const BookRide = () => {
     setLoggedInUser(null);
     setUserProfile({ name: 'Guest', email: '', phone: '', address: '' });
     localStorage.removeItem('smartcab_user');
+    localStorage.removeItem('smartcab_token');
     setDashboardBookings([]);
     setMainView('ride');
     console.log('👋 Logged out');
   };
+
+  // 🔐 SESSION VALIDATION — on app load, if we think we're logged in but the
+  // backend no longer knows this user/token (e.g. the service restarted and
+  // reset in-memory data), clear the stale session so the app never crashes.
+  useEffect(() => {
+    if (!loggedInUser || !loggedInUser.id) return;
+    let cancelled = false;
+    fetch(`${PYTHON_API}/api/auth/me`, { headers: authHeaders() })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 401) {
+          localStorage.removeItem('smartcab_user');
+          localStorage.removeItem('smartcab_token');
+          setLoggedInUser(null);
+          setUserProfile({ name: 'Guest', email: '', phone: '', address: '' });
+          setAuthError("Your session has expired. Please log in again.");
+        }
+      })
+      .catch(() => { /* backend unreachable — keep the session and try later */ });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (mainView === 'dashboard' && dashTab === 'history') {
@@ -319,9 +640,21 @@ const BookRide = () => {
         setDashboardBookings([]);
         return;
       }
-      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/trips`)
-        .then(res => res.json())
-        .then(data => setDashboardBookings(data))
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/trips`, { headers: authHeaders() })
+        .then(async (res) => {
+          if (res.status === 401) {
+            // Session is no longer valid (token expired / user removed after
+            // a backend restart). Clear it gracefully instead of crashing.
+            localStorage.removeItem('smartcab_user');
+            localStorage.removeItem('smartcab_token');
+            setLoggedInUser(null);
+            setDashboardBookings([]);
+            setAuthError('Your session has expired. Please log in again.');
+            return;
+          }
+          const data = await res.json();
+          setDashboardBookings(Array.isArray(data) ? data : []);
+        })
         .catch(err => console.error("Error fetching history:", err));
     }
   }, [mainView, dashTab, loggedInUser]);
@@ -329,7 +662,25 @@ const BookRide = () => {
   const [showSOSPopup, setShowSOSPopup] = useState(false);
   const [showDeviationPopup, setShowDeviationPopup] = useState(false);
   const [showGPSLostPopup, setShowGPSLostPopup] = useState(false);
+  // Real alert behaviour: sosStatus shows what the backend actually answered
+  // ('sent' | 'failed'); alertCountdown powers the live 60s auto-SOS timer.
+  const [sosStatus, setSosStatus] = useState(null);
+  const [alertCountdown, setAlertCountdown] = useState(60);
+  const autoSosFiredRef = useRef(false);
   const [isDemoPanelOpen, setIsDemoPanelOpen] = useState(false); 
+
+  // 🛡️ TWO-WAY SAFETY — driver records rider identity verification at pickup
+  // and can report a rider concern (e.g. suspicious/illegal items). The
+  // report is attached to the trip and an admin can EXONERATE the driver.
+  const [riderVerified, setRiderVerified] = useState(false);
+  const [riderVerifyBusy, setRiderVerifyBusy] = useState(false);
+  const [riderVerifyMessage, setRiderVerifyMessage] = useState('');
+  const [showDriverAlertModal, setShowDriverAlertModal] = useState(false);
+  const [driverAlertReason, setDriverAlertReason] = useState('');
+  const [driverAlertNotes, setDriverAlertNotes] = useState('');
+  const [driverAlertBusy, setDriverAlertBusy] = useState(false);
+  const [driverAlertResult, setDriverAlertResult] = useState('');
+  const [driverAlertError, setDriverAlertError] = useState('');
 
   const [showLiveGuardModal, setShowLiveGuardModal] = useState(false);
   const [showSilentSOSModal, setShowSilentSOSModal] = useState(false);
@@ -355,7 +706,7 @@ const BookRide = () => {
   const [emergencyContacts, setEmergencyContacts] = useState(readGuestContacts);
   useEffect(() => {
     if (loggedInUser && loggedInUser.id) {
-      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`)
+      fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`, { headers: authHeaders() })
         .then(res => (res.ok ? res.json() : []))
         .then(contacts => setEmergencyContacts(Array.isArray(contacts) ? contacts : []))
         .catch(() => { /* keep whatever is currently shown */ });
@@ -407,10 +758,69 @@ const BookRide = () => {
   ];
 
   const airportList = [
-    { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ SmartCabs Nearby" },
-    { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ SmartCabs Nearby" },
-    { name: "Kempegowda International Airport (BLR)", code: "BLR", city: "Bengaluru", state: "Karnataka", activeCabs: "120+ SmartCabs Nearby" },
-    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ SmartCabs Nearby" }
+    // ✈️ 62 operational DGCA airports — search by airport name, IATA code, city or state.
+    { name: "Visakhapatnam International Airport (VTZ)", code: "VTZ", city: "Visakhapatnam", state: "Andhra Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Vijayawada International Airport (VGA)", code: "VGA", city: "Vijayawada", state: "Andhra Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Donyi Polo Airport (HGI)", code: "HGI", city: "Itanagar", state: "Arunachal Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Lokpriya Gopinath Bordoloi International Airport (GAU)", code: "GAU", city: "Guwahati", state: "Assam", activeCabs: "Airport transfers available" },
+    { name: "Jay Prakash Narayan International Airport (PAT)", code: "PAT", city: "Patna", state: "Bihar", activeCabs: "Airport transfers available" },
+    { name: "Gaya Airport (GAY)", code: "GAY", city: "Gaya", state: "Bihar", activeCabs: "Airport transfers available" },
+    { name: "Swami Vivekananda Airport (RPR)", code: "RPR", city: "Raipur", state: "Chhattisgarh", activeCabs: "Airport transfers available" },
+    { name: "Chandigarh International Airport (IXC)", code: "IXC", city: "Chandigarh", state: "Chandigarh", activeCabs: "Airport transfers available" },
+    { name: "Indira Gandhi International Airport (DEL)", code: "DEL", city: "New Delhi", state: "Delhi", activeCabs: "140+ Smart Security AI Cabs Nearby" },
+    { name: "Dabolim Airport (GOI)", code: "GOI", city: "Goa – Dabolim", state: "Goa", activeCabs: "Airport transfers available" },
+    { name: "Manohar International Airport (GOX)", code: "GOX", city: "Goa – Mopa", state: "Goa", activeCabs: "Airport transfers available" },
+    { name: "Sardar Vallabhbhai Patel International Airport (AMD)", code: "AMD", city: "Ahmedabad", state: "Gujarat", activeCabs: "95+ Smart Security AI Cabs Nearby" },
+    { name: "Rajkot International Airport (HSR)", code: "HSR", city: "Rajkot", state: "Gujarat", activeCabs: "Airport transfers available" },
+    { name: "Hisar Airport (HSS)", code: "HSS", city: "Hisar", state: "Haryana", activeCabs: "Airport transfers available" },
+    { name: "Shimla Airport (SLV)", code: "SLV", city: "Shimla", state: "Himachal Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Kangra Airport (DHM)", code: "DHM", city: "Kangra", state: "Himachal Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Sheikh ul Alam International Airport (SXR)", code: "SXR", city: "Srinagar", state: "Jammu & Kashmir", activeCabs: "Airport transfers available" },
+    { name: "Jammu Airport (IXJ)", code: "IXJ", city: "Jammu", state: "Jammu & Kashmir", activeCabs: "Airport transfers available" },
+    { name: "Birsa Munda Airport (IXR)", code: "IXR", city: "Ranchi", state: "Jharkhand", activeCabs: "Airport transfers available" },
+    { name: "Kempegowda International Airport (BLR)", code: "BLR", city: "Bengaluru", state: "Karnataka", activeCabs: "120+ Smart Security AI Cabs Nearby" },
+    { name: "Mangaluru International Airport (IXE)", code: "IXE", city: "Mangaluru", state: "Karnataka", activeCabs: "Airport transfers available" },
+    { name: "Hubballi Airport (HBX)", code: "HBX", city: "Hubballi", state: "Karnataka", activeCabs: "Airport transfers available" },
+    { name: "Cochin International Airport (COK)", code: "COK", city: "Kochi", state: "Kerala", activeCabs: "Airport transfers available" },
+    { name: "Trivandrum International Airport (TRV)", code: "TRV", city: "Thiruvananthapuram", state: "Kerala", activeCabs: "Airport transfers available" },
+    { name: "Calicut International Airport (CCJ)", code: "CCJ", city: "Kozhikode", state: "Kerala", activeCabs: "Airport transfers available" },
+    { name: "Raja Bhoj Airport (BHO)", code: "BHO", city: "Bhopal", state: "Madhya Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Devi Ahilyabai Holkar International Airport (IDR)", code: "IDR", city: "Indore", state: "Madhya Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Jabalpur Airport (JLR)", code: "JLR", city: "Jabalpur", state: "Madhya Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Chhatrapati Shivaji Maharaj International Airport (BOM)", code: "BOM", city: "Mumbai", state: "Maharashtra", activeCabs: "185+ Smart Security AI Cabs Nearby" },
+    { name: "Pune Airport (PNQ)", code: "PNQ", city: "Pune", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Dr. Babasaheb Ambedkar International Airport (NAG)", code: "NAG", city: "Nagpur", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Nashik Airport (ISK)", code: "ISK", city: "Nashik", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Chhatrapati Sambhajinagar Airport (IXU)", code: "IXU", city: "Chhatrapati Sambhajinagar", state: "Maharashtra", activeCabs: "Airport transfers available" },
+    { name: "Bir Tikendrajit International Airport (IMF)", code: "IMF", city: "Imphal", state: "Manipur", activeCabs: "Airport transfers available" },
+    { name: "Shillong Airport (SHL)", code: "SHL", city: "Shillong", state: "Meghalaya", activeCabs: "Airport transfers available" },
+    { name: "Lengpui Airport (AJL)", code: "AJL", city: "Aizawl", state: "Mizoram", activeCabs: "Airport transfers available" },
+    { name: "Dimapur Airport (DMU)", code: "DMU", city: "Dimapur", state: "Nagaland", activeCabs: "Airport transfers available" },
+    { name: "Biju Patnaik International Airport (BBI)", code: "BBI", city: "Bhubaneswar", state: "Odisha", activeCabs: "Airport transfers available" },
+    { name: "Veer Surendra Sai Airport (JRG)", code: "JRG", city: "Jharsuguda", state: "Odisha", activeCabs: "Airport transfers available" },
+    { name: "Sri Guru Ram Dass Jee International Airport (ATQ)", code: "ATQ", city: "Amritsar", state: "Punjab", activeCabs: "Airport transfers available" },
+    { name: "Ludhiana Airport (LUH)", code: "LUH", city: "Ludhiana", state: "Punjab", activeCabs: "Airport transfers available" },
+    { name: "Jaipur International Airport (JAI)", code: "JAI", city: "Jaipur", state: "Rajasthan", activeCabs: "Airport transfers available" },
+    { name: "Maharana Pratap Airport (UDR)", code: "UDR", city: "Udaipur", state: "Rajasthan", activeCabs: "Airport transfers available" },
+    { name: "Jodhpur Airport (JDH)", code: "JDH", city: "Jodhpur", state: "Rajasthan", activeCabs: "Airport transfers available" },
+    { name: "Pakyong Airport (PYG)", code: "PYG", city: "Pakyong", state: "Sikkim", activeCabs: "Airport transfers available" },
+    { name: "Chennai International Airport (MAA)", code: "MAA", city: "Chennai", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Coimbatore International Airport (CJB)", code: "CJB", city: "Coimbatore", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Madurai Airport (IXM)", code: "IXM", city: "Madurai", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Tiruchirappalli International Airport (TRZ)", code: "TRZ", city: "Tiruchirappalli", state: "Tamil Nadu", activeCabs: "Airport transfers available" },
+    { name: "Rajiv Gandhi International Airport (HYD)", code: "HYD", city: "Hyderabad", state: "Telangana", activeCabs: "Airport transfers available" },
+    { name: "Maharaja Bir Bikram Airport (IXA)", code: "IXA", city: "Agartala", state: "Tripura", activeCabs: "Airport transfers available" },
+    { name: "Chaudhary Charan Singh International Airport (LKO)", code: "LKO", city: "Lucknow", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Lal Bahadur Shastri International Airport (VNS)", code: "VNS", city: "Varanasi", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Maharishi Valmiki International Airport (AYJ)", code: "AYJ", city: "Ayodhya", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Kanpur Airport (KNU)", code: "KNU", city: "Kanpur", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Prayagraj Airport (IXD)", code: "IXD", city: "Prayagraj", state: "Uttar Pradesh", activeCabs: "Airport transfers available" },
+    { name: "Jolly Grant Airport (DED)", code: "DED", city: "Dehradun", state: "Uttarakhand", activeCabs: "Airport transfers available" },
+    { name: "Pantnagar Airport (PGH)", code: "PGH", city: "Pantnagar", state: "Uttarakhand", activeCabs: "Airport transfers available" },
+    { name: "Netaji Subhas Chandra Bose International Airport (CCU)", code: "CCU", city: "Kolkata", state: "West Bengal", activeCabs: "Airport transfers available" },
+    { name: "Bagdogra Airport (IXB)", code: "IXB", city: "Bagdogra", state: "West Bengal", activeCabs: "Airport transfers available" },
+    { name: "Kazi Nazrul Islam Airport (RDP)", code: "RDP", city: "Durgapur", state: "West Bengal", activeCabs: "Airport transfers available" },
+    { name: "Agatti Airport (AGX)", code: "AGX", city: "Agatti", state: "Lakshadweep", activeCabs: "Airport transfers available" },
   ];
 
   const cityList = [
@@ -461,11 +871,17 @@ const BookRide = () => {
     };
   }, [showLiveGuardModal, facingMode]); // Re-runs when facingMode changes!
 
-  const handleSelectLocationFromModal = (locationName) => {
-    if (!pickup) {
+  const handleSelectLocationFromModal = (locationName, coords = null) => {
+    const field = pickup ? 'dropoff' : 'pickup';
+    if (field === 'pickup') {
       setPickup(locationName);
     } else {
       setDropoff(locationName);
+    }
+    setPresetCoords((prev) => ({ ...prev, [field]: coords }));
+    if (coords) {
+      setMapCenter(coords);
+      setMapZoom(11);
     }
     setSearchModalType(null);
     setSearchQuery('');
@@ -493,7 +909,7 @@ const BookRide = () => {
     if (loggedInUser && loggedInUser.id) {
       fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
         body: JSON.stringify({ name, phone }),
       }).catch(err => console.warn('Could not save contact to profile:', err.message));
     }
@@ -508,6 +924,7 @@ const BookRide = () => {
     if (loggedInUser && loggedInUser.id) {
       fetch(`${PYTHON_API}/api/users/${loggedInUser.id}/emergency-contacts/${encodeURIComponent(phone)}`, {
         method: 'DELETE',
+        headers: authHeaders(),
       }).catch(err => console.warn('Could not remove contact from profile:', err.message));
     }
   };
@@ -690,7 +1107,7 @@ const BookRide = () => {
     const url = URL.createObjectURL(mp4Blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `SmartCab_Evidence_${Date.now()}.mp4`;
+    a.download = `Smart Security AI Cab_Evidence_${Date.now()}.mp4`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -771,28 +1188,9 @@ const BookRide = () => {
   });
 };
 
-  useEffect(() => {
-    if (!document.getElementById('google-translate-script')) {
-      const addScript = document.createElement('script');
-      addScript.id = 'google-translate-script';
-      addScript.setAttribute('src', 'https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit');
-      document.body.appendChild(addScript);
-      window.googleTranslateElementInit = () => {
-        new window.google.translate.TranslateElement({pageLanguage: 'en', autoDisplay: false}, 'google_translate_element');
-      };
-    }
-  }, []);
-
   const handleLanguageChange = (langCode) => {
-    if (langCode === 'en') {
-      document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname};`;
-    } else {
-      document.cookie = `googtrans=/en/${langCode}; path=/;`;
-      document.cookie = `googtrans=/en/${langCode}; path=/; domain=${window.location.hostname};`;
-    }
+    setSiteLanguage(langCode); // shared helper: cookie + reload (whole site)
     setIsLangModalOpen(false);
-    window.location.reload(); 
   };
 
   useEffect(() => {
@@ -1026,7 +1424,7 @@ const BookRide = () => {
     if (addrLower.includes('bhavnagar')) return 'bhavnagar';
     if (addrLower.includes('jamnagar')) return 'jamnagar';
     if (addrLower.includes('udaipur')) return 'udaipur';
-    return 'ahmedabad'; // SmartCab's home city — the safe default
+    return 'ahmedabad'; // Smart Security AI Cab's home city — the safe default
   };
 
   const geocodeLocation = async (address) => {
@@ -1090,8 +1488,22 @@ const BookRide = () => {
   // turn into a booking with a ₹7000 fare.
   const isSuspiciousLocalTrip = (distKm, pickupText, dropoffText) => {
     if (distKm == null || distKm <= 150) return false;
-    const outstationHint = /(mumbai|delhi|bangalore|bengaluru|pune|chennai|kolkata|hyderabad|surat|jaipur|vadodara|baroda|rajkot|udaipur|outstation)/i;
-    return !outstationHint.test(`${pickupText} ${dropoffText}`);
+    const text = `${pickupText} ${dropoffText}`.toLowerCase();
+    // Genuine intercity trips are never "suspicious": any airport
+    // name/IATA code in the address, an explicit "outstation", or a
+    // known city (including all 62 airport cities) means this is a real
+    // long-distance trip — allow it.
+    if (/(airport|outstation)/.test(text)) return false;
+    const mentionsKnownCity = (t) => {
+      const lower = t.toLowerCase();
+      return Object.keys(CITY_GEO).some((k) => lower.includes(k)) ||
+        airportList.some((a) => lower.includes(a.city.toLowerCase()) || lower.includes(a.code.toLowerCase()));
+    };
+    if (mentionsKnownCity(pickupText) || mentionsKnownCity(dropoffText)) return false;
+    // Both fields look like plain locality names with no city: if the
+    // geocoder placed them >150 km apart it almost certainly resolved a
+    // wrong same-named place (the old "Saraspur" bug) — block that.
+    return true;
   };
 
   // 📍 USE MY LOCATION — asks the browser for the rider's real GPS
@@ -1154,7 +1566,7 @@ const BookRide = () => {
   const triggerBackendSOS = async () => {
     if (!currentBookingId) {
       console.warn("No booking ID yet — book a ride first so the backend has a row to update");
-      return;
+      return 'no-ride';
     }
     try {
       const res = await fetch(`${PYTHON_API}/api/bookings/${currentBookingId}/sos`, {
@@ -1163,9 +1575,115 @@ const BookRide = () => {
       if (res.ok) {
         const updated = await res.json();
         console.log("✅ SOS updated to DANGER:", updated);
+        return true;
       }
+      console.error("Backend SOS returned", res.status);
+      return false;
     } catch (err) {
       console.error("Backend SOS failed:", err);
+      return false;
+    }
+  };
+
+  // Send a real SOS and show the full-screen emergency screen with the
+  // actual backend result (sent ✓ / failed ⚠️) — no fake promises.
+  const fireSOSAndOpen = async () => {
+    const ok = await triggerBackendSOS();
+    setSosStatus(ok === true ? 'sent' : ok === false ? 'failed' : 'no-ride');
+    setShowSOSPopup(true);
+  };
+
+  // ⏱️ Real 60-second watch: route-deviation / GPS-lost alerts show a live
+  // countdown; if the rider doesn't answer in time, the SOS auto-fires.
+  useEffect(() => {
+    if (!showDeviationPopup && !showGPSLostPopup) return;
+    setAlertCountdown(60);
+    autoSosFiredRef.current = false;
+    const t = setInterval(() => setAlertCountdown((c) => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [showDeviationPopup, showGPSLostPopup]);
+
+  useEffect(() => {
+    if (alertCountdown > 0 || autoSosFiredRef.current) return;
+    if (!showDeviationPopup && !showGPSLostPopup) return;
+    autoSosFiredRef.current = true;
+    (async () => {
+      const ok = await triggerBackendSOS();
+      setSosStatus(ok === true ? 'sent' : ok === false ? 'failed' : 'no-ride');
+      setShowGPSLostPopup(false);
+      setShowDeviationPopup(false);
+      setShowSOSPopup(true);
+    })();
+  }, [alertCountdown, showDeviationPopup, showGPSLostPopup]);
+
+  // 🛡️ DRIVER verifies the rider's identity at pickup — recorded on the trip
+  // as proof, so the driver cannot be blamed if a rider behaves badly.
+  const verifyRiderIdentity = async () => {
+    if (!currentBookingId) {
+      setRiderVerifyMessage('Ride not saved yet — try again in a moment.');
+      return;
+    }
+    setRiderVerifyBusy(true);
+    setRiderVerifyMessage('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/trips/${currentBookingId}/rider-verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ verified: true, method: 'In-person ID check at pickup' }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Verification failed.';
+        setRiderVerifyMessage(typeof detail === 'string' ? detail : 'Verification failed.');
+        return;
+      }
+      setRiderVerified(true);
+      setRiderVerifyMessage('✅ Rider identity verified — recorded on this trip.');
+    } catch (err) {
+      setRiderVerifyMessage('Could not reach the server. Please try again.');
+    } finally {
+      setRiderVerifyBusy(false);
+    }
+  };
+
+  // 🛡️ DRIVER reports a rider concern (e.g. suspicious / illegal items) —
+  // tied to the ride so an admin can review and EXONERATE the driver.
+  const submitDriverAlert = async () => {
+    if (!driverAlertReason.trim()) {
+      setDriverAlertError('Please select or describe your concern.');
+      return;
+    }
+    if (!currentBookingId) {
+      setDriverAlertError('Ride not saved yet — try again in a moment.');
+      return;
+    }
+    setDriverAlertBusy(true);
+    setDriverAlertError('');
+    setDriverAlertResult('');
+    try {
+      const res = await fetch(`${PYTHON_API}/api/trips/${currentBookingId}/driver-alert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          reason: driverAlertReason.trim(),
+          notes: driverAlertNotes.trim(),
+          riderName: loggedInUser ? loggedInUser.name : 'Guest Rider',
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        const detail = (data && data.detail) || 'Report failed.';
+        setDriverAlertError(typeof detail === 'string' ? detail : 'Report failed.');
+        return;
+      }
+      setDriverAlertResult(
+        `✅ Concern reported as ${data.alert?.reference || 'ALERT'}. Support has been notified — ` +
+        'if you were not at fault, an admin will review and mark you EXONERATED.'
+      );
+    } catch (err) {
+      setDriverAlertError('Could not reach the server. Please try again.');
+    } finally {
+      setDriverAlertBusy(false);
     }
   };
 
@@ -1176,7 +1694,10 @@ const BookRide = () => {
   const handleSearchPrices = async () => {
     setShowPrices(true);
     setPricingLoading(true);
-    const [p, d] = await Promise.all([geocodeLocation(pickup), geocodeLocation(dropoff)]);
+    const [p, d] = await Promise.all([
+      presetCoords.pickup || geocodeLocation(pickup),
+      presetCoords.dropoff || geocodeLocation(dropoff),
+    ]);
     setPricingLoading(false);
     if (p && d) {
       const distKm = haversineKm(p, d);
@@ -1205,8 +1726,8 @@ const BookRide = () => {
 
   const handleConfirmRide = async () => {
     setIsSearching(true);
-    const pCoords = await geocodeLocation(pickup);
-    const dCoords = await geocodeLocation(dropoff);
+    const pCoords = presetCoords.pickup || await geocodeLocation(pickup);
+    const dCoords = presetCoords.dropoff || await geocodeLocation(dropoff);
     setIsSearching(false);
 
     if (pCoords && dCoords) {
@@ -1284,29 +1805,64 @@ const BookRide = () => {
         const tripResponse = await fetch(`${PYTHON_API}/api/trips`, {
           method: "POST",
           headers: {
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            ...authHeaders()
           },
           body: JSON.stringify(bookingData)
         });
 
+        let savedBooking = null;
         if (tripResponse.ok) {
-          const savedBooking = await tripResponse.json();
+          savedBooking = await tripResponse.json();
           // If the backend returned a real ID, use it instead
           if (savedBooking && savedBooking.id) {
             setCurrentBookingId(savedBooking.id);
-            console.log("✅ Booking saved to SmartCab Python backend:", savedBooking);
+            console.log("✅ Booking saved to Smart Security AI Cab Python backend:", savedBooking);
           }
         }
+        // 🏷️ Remember this ride (Ride ID, driver, route, coords) so the
+        // Safety Center + My Rides can show it without another booking.
+        try {
+          localStorage.setItem('smartcab_last_ride', JSON.stringify({
+            bookingId: savedBooking?.id || localId,
+            rideCode: savedBooking?.rideCode || null,
+            riderName: bookingData.riderName,
+            driver: {
+              name: randomDriver.name,
+              plate: randomDriver.plate,
+              carModel: randomDriver.carModel,
+              rating: randomDriver.rating,
+            },
+            pickup,
+            dropoff,
+            pickupLat: pCoords[0], pickupLng: pCoords[1],
+            dropoffLat: dCoords[0], dropoffLng: dCoords[1],
+            lat: pCoords[0], lng: pCoords[1],
+          }));
+        } catch (e) { /* storage may be unavailable */ }
         const surgeNote = estimate.surgeMultiplier > 1
           ? ` (${estimate.surgeMultiplier}x — ${estimate.surgeReason || 'surge pricing'})`
           : '';
-        alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}${surgeNote}\n\nTap 'Live Guard' to share your ride with family!`);
+        const rideIdLine = savedBooking?.rideCode ? `\n🏷️ Ride ID: ${savedBooking.rideCode}\n` : '';
+        alert(`🎉 ${selectedCar} Booked Successfully!${rideIdLine}\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}${surgeNote}\n\nTap 'Live Guard' to share your ride with family!`);
 
       } catch (error) {
-        console.warn("Could not reach SmartCab Python backend:", error);
+        console.warn("Could not reach Smart Security AI Cab Python backend:", error);
         // setCurrentBookingId is already set above (localId), so Share
         // Live Location will still work. The link will use the local
         // ID as a fallback if the backend doesn't have it.
+        try {
+          localStorage.setItem('smartcab_last_ride', JSON.stringify({
+            bookingId: localId,
+            rideCode: null,
+            riderName: bookingData.riderName,
+            driver: { name: randomDriver.name, plate: randomDriver.plate, carModel: randomDriver.carModel, rating: randomDriver.rating },
+            pickup, dropoff,
+            pickupLat: pCoords[0], pickupLng: pCoords[1],
+            dropoffLat: dCoords[0], dropoffLng: dCoords[1],
+            lat: pCoords[0], lng: pCoords[1],
+          }));
+        } catch (e) { /* storage may be unavailable */ }
         alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}\n\n(Booking saved locally — backend sync will retry)`);
       }
 
@@ -1356,7 +1912,7 @@ const BookRide = () => {
       setSelectedCard({
         title: 'SmartBike',
         subtitle: 'Fast and affordable bike rides',
-        description: 'Beat city traffic with quick SmartBike rides. SmartCab adds safety checks, helmet verification, live tracking, and SOS support for a safer two-wheeler experience.',
+        description: 'Beat city traffic with quick SmartBike rides. Smart Security AI Cab adds safety checks, helmet verification, live tracking, and SOS support for a safer two-wheeler experience.',
         benefits: [
           'Quick rides through traffic',
           'Affordable short-distance travel',
@@ -1387,6 +1943,7 @@ const BookRide = () => {
     setCurrentBookingId(null);
     setMapCenter([20.5937, 78.9629]); 
     setMapZoom(5);
+    setPresetCoords({ pickup: null, dropoff: null });
     setShowSOSPopup(false);
     setShowDeviationPopup(false);
     setShowGPSLostPopup(false);
@@ -1409,7 +1966,10 @@ const BookRide = () => {
           type="text"
           placeholder={placeholder}
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            setPresetCoords((prev) => ({ ...prev, [type]: null }));
+          }}
           onFocus={() => setFocusedInput(type)}
           onBlur={() => setTimeout(() => setFocusedInput(null), 200)}
           className="bg-transparent outline-none w-full text-lg placeholder-gray-500 font-medium"
@@ -1429,7 +1989,8 @@ const BookRide = () => {
                 key={idx} 
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  setValue(loc.title); 
+                  setValue(loc.title);
+                  setPresetCoords((prev) => ({ ...prev, [type]: null }));
                   setFocusedInput(null);
                 }} 
                 className="flex items-center px-4 py-4 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-0 text-left transition-colors"
@@ -1467,7 +2028,7 @@ const BookRide = () => {
         .hide-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
 
-      <div id="google_translate_element" style={{ display: 'none' }}></div>
+      {/* 🌐 in-page translator element is mounted globally in App.jsx (I18nLoader) */}
 
       {/* ---- SELECTED CARD MODAL ---- */}
       {selectedCard && (
@@ -1517,9 +2078,9 @@ const BookRide = () => {
                 }
                 <div>
                   <h3 className="text-2xl font-bold">
-                    {searchModalType === 'airports' ? '700+ Airports Supported' : '15,000+ Cities Active'}
+                    {searchModalType === 'airports' ? 'Airports Across India' : '15,000+ Cities Active'}
                   </h3>
-                  <p className="text-xs text-gray-300">Select any location across India to pre-fill your trip</p>
+                  <p className="text-xs text-gray-300">{searchModalType === 'airports' ? '62 operational DGCA airports — search by name, code, city or state' : 'Select any location across India to pre-fill your trip'}</p>
                 </div>
               </div>
               <button 
@@ -1559,15 +2120,19 @@ const BookRide = () => {
             <div className="p-6 overflow-y-auto space-y-3 flex-1">
               {searchModalType === 'airports' ? (
                 airportList
-                  .filter(a => 
-                    a.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                    a.city.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                    a.code.toLowerCase().includes(searchQuery.toLowerCase())
-                  )
+                  .filter(a => {
+                    const q = searchQuery.trim().toLowerCase();
+                    return (
+                      a.name.toLowerCase().includes(q) ||
+                      a.city.toLowerCase().includes(q) ||
+                      a.code.toLowerCase().includes(q) ||
+                      a.state.toLowerCase().includes(q)
+                    );
+                  })
                   .map((airport, idx) => (
                     <div 
                       key={idx} 
-                      onClick={() => handleSelectLocationFromModal(airport.name)}
+                      onClick={() => handleSelectLocationFromModal(airport.name, AIRPORT_GEO[airport.code] || null)}
                       className="p-4 rounded-2xl border border-gray-200 hover:border-black hover:bg-green-50/50 cursor-pointer transition flex justify-between items-center group"
                     >
                       <div className="flex items-center space-x-4">
@@ -1657,6 +2222,73 @@ const BookRide = () => {
         </div>
       )}
 
+      {/* 🛡️ DRIVER CONCERN REPORT MODAL — two-way safety */}
+      {showDriverAlertModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in zoom-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl relative">
+            <button
+              onClick={() => setShowDriverAlertModal(false)}
+              className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 text-gray-600 transition"
+            >
+              <X className="h-5 w-5" />
+            </button>
+            <h3 className="text-2xl font-bold mb-1 flex items-center gap-2">
+              <FileWarning className="h-6 w-6 text-purple-600" /> Report Rider Concern
+            </h3>
+            <p className="text-xs text-slate-500 mb-5">
+              Driver protection: report suspicious behaviour or illegal items tied to this ride.
+              An admin will review it and can mark you <strong>EXONERATED</strong> if you are not at fault.
+            </p>
+            <div className="space-y-4 mb-5">
+              <select
+                value={driverAlertReason}
+                onChange={(e) => setDriverAlertReason(e.target.value)}
+                className="w-full bg-gray-100 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-medium"
+              >
+                <option value="">Select concern…</option>
+                <option value="Suspicious / illegal items">Suspicious / illegal items</option>
+                <option value="Rider refused identity check">Rider refused identity check</option>
+                <option value="Behavioural / safety concern">Behavioural / safety concern</option>
+                <option value="Possible contraband / drugs">Possible contraband / drugs</option>
+                <option value="Other">Other</option>
+              </select>
+              <textarea
+                value={driverAlertNotes}
+                onChange={(e) => setDriverAlertNotes(e.target.value)}
+                placeholder="Describe what you noticed (optional details help admins understand the incident)…"
+                rows={4}
+                className="w-full bg-gray-100 px-4 py-4 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-medium resize-none"
+              />
+              {driverAlertResult && (
+                <p className="text-sm font-semibold text-green-700 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+                  {driverAlertResult}
+                </p>
+              )}
+              {driverAlertError && (
+                <p className="text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  ⚠️ {driverAlertError}
+                </p>
+              )}
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={() => setShowDriverAlertModal(false)}
+                className="flex-1 bg-gray-100 text-gray-700 font-bold py-3.5 rounded-xl hover:bg-gray-200 transition"
+              >
+                Close
+              </button>
+              <button
+                onClick={submitDriverAlert}
+                disabled={driverAlertBusy || !!driverAlertResult}
+                className="flex-1 bg-purple-600 text-white font-bold py-3.5 rounded-xl hover:bg-purple-700 transition disabled:opacity-60"
+              >
+                {driverAlertBusy ? 'Submitting…' : 'Submit Report'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* GPS SIGNAL LOST POPUP */}
       {showGPSLostPopup && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[350] flex flex-col items-center justify-center p-4 animate-in fade-in duration-300">
@@ -1664,8 +2296,17 @@ const BookRide = () => {
             <div className="absolute top-0 left-0 right-0 bg-orange-500 h-2 animate-pulse"></div>
             <Globe className="h-20 w-20 text-orange-500 mb-6 mx-auto opacity-50" />
             <h2 className="text-3xl font-bold text-center mb-4">GPS Signal Lost</h2>
-            <p className="text-gray-600 text-center text-lg mb-8">
-              SmartCab AI has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe?
+            <p className="text-gray-600 text-center text-lg mb-4">
+              Smart Security AI Cab has lost connection with the driver's GPS. Security protocols are switching to offline cellular tracking. Do you feel safe? Auto-alert in <span className="font-bold text-orange-600">{alertCountdown}s</span>.
+            </p>
+            <div className="w-full h-2 bg-gray-100 rounded-full mb-4 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-orange-400 to-red-500 transition-all duration-1000 ease-linear" 
+                style={{ width: `${(alertCountdown / 60) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 text-center mb-8">
+              Last known location: {pickup || 'GPS unavailable'} • {new Date().toLocaleTimeString()}
             </p>
             <div className="flex flex-col gap-3">
               <button 
@@ -1675,7 +2316,7 @@ const BookRide = () => {
                 Yes, I am fine
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowGPSLostPopup(false); setShowSOSPopup(true); }} 
+                onClick={() => { setShowGPSLostPopup(false); fireSOSAndOpen(); }} 
                 className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"
               >
                 <Siren className="h-6 w-6 mr-2" /> No, trigger SOS
@@ -1692,8 +2333,17 @@ const BookRide = () => {
             <div className="absolute top-0 left-0 right-0 bg-yellow-400 h-2 animate-pulse"></div>
             <AlertCircle className="h-20 w-20 text-yellow-500 mb-6 mx-auto" />
             <h2 className="text-3xl font-bold text-center mb-4">Route Deviation Detected</h2>
-            <p className="text-gray-600 text-center text-lg mb-8">
-              Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in 60 seconds, we will alert your emergency contacts.
+            <p className="text-gray-600 text-center text-lg mb-4">
+              Our AI detects your car has gone 500m off the GPS route. Are you okay? If you do not respond in <span className="font-bold text-yellow-600">{alertCountdown}s</span>, we will alert your emergency contacts.
+            </p>
+            <div className="w-full h-2 bg-gray-100 rounded-full mb-4 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-yellow-400 to-red-500 transition-all duration-1000 ease-linear" 
+                style={{ width: `${(alertCountdown / 60) * 100}%` }}
+              />
+            </div>
+            <p className="text-xs text-gray-400 text-center mb-8">
+              Driver {assignedDriver?.name || '—'} ({selectedCar}) • {pickup || 'Pickup'} → {dropoff || 'Dropoff'}
             </p>
             <div className="flex flex-col gap-3">
               <button 
@@ -1703,7 +2353,7 @@ const BookRide = () => {
                 Yes, I am fine
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowDeviationPopup(false); setShowSOSPopup(true); }} 
+                onClick={() => { setShowDeviationPopup(false); fireSOSAndOpen(); }} 
                 className="w-full bg-red-600 text-white font-bold text-xl py-4 rounded-xl hover:bg-red-700 shadow-lg flex justify-center items-center"
               >
                 <Siren className="h-6 w-6 mr-2" /> No, trigger SOS
@@ -1943,7 +2593,7 @@ const BookRide = () => {
                     <p className="text-xs text-blue-600 mb-3">Pick how you want to share the live tracking link</p>
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
                       <a
-                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        href={`https://api.whatsapp.com/send?text=${encodeURIComponent(`🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex flex-col items-center justify-center bg-green-500 hover:bg-green-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
@@ -1953,7 +2603,7 @@ const BookRide = () => {
                         WhatsApp
                       </a>
                       <a
-                        href={`sms:?body=${encodeURIComponent(`🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        href={`sms:?body=${encodeURIComponent(`🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
                         className="flex flex-col items-center justify-center bg-blue-500 hover:bg-blue-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
                         title="Share via SMS"
                       >
@@ -1961,7 +2611,7 @@ const BookRide = () => {
                         SMS
                       </a>
                       <a
-                        href={`mailto:?subject=${encodeURIComponent("My SmartCab ride — live tracking")}&body=${encodeURIComponent(`🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
+                        href={`mailto:?subject=${encodeURIComponent("My Smart Security AI Cab ride — live tracking")}&body=${encodeURIComponent(`🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name} (${assignedDriver?.plate})\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`)}`}
                         className="flex flex-col items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
                         title="Share via Email"
                       >
@@ -1969,7 +2619,7 @@ const BookRide = () => {
                         Email
                       </a>
                       <a
-                        href={`https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${encodeURIComponent("🚖 Track my SmartCab ride live")}`}
+                        href={`https://t.me/share/url?url=${encodeURIComponent(shareableLocationLink)}&text=${encodeURIComponent("🚖 Track my Smart Security AI Cab ride live")}`}
                         target="_blank"
                         rel="noopener noreferrer"
                         className="flex flex-col items-center justify-center bg-sky-500 hover:bg-sky-600 text-white rounded-lg py-2 px-1 text-xs font-bold transition"
@@ -1983,8 +2633,8 @@ const BookRide = () => {
                           if (navigator.share) {
                             try {
                               await navigator.share({
-                                title: 'SmartCab Live Tracking',
-                                text: `🚖 SmartCab Live Tracking\n🚗 Driver: ${assignedDriver?.name}\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`,
+                                title: 'Smart Security AI Cab Live Tracking',
+                                text: `🚖 Smart Security AI Cab Live Tracking\n🚗 Driver: ${assignedDriver?.name}\n📍 ${pickup} → ${dropoff}\nTrack live: ${shareableLocationLink}`,
                                 url: shareableLocationLink,
                               });
                             } catch (e) { /* user cancelled */ }
@@ -2106,9 +2756,25 @@ const BookRide = () => {
         <div className="fixed inset-0 bg-red-900/90 backdrop-blur-md z-[450] flex flex-col items-center justify-center p-4 animate-in zoom-in duration-200">
           <Siren className="h-32 w-32 text-white animate-pulse mb-6" />
           <h2 className="text-white text-5xl font-bold mb-4 text-center">EMERGENCY SOS</h2>
-          <p className="text-red-100 text-xl text-center max-w-lg mb-12">
-            Your live location and dashcam feed have been sent to the SmartCab Security Center. Do you need immediate police assistance?
+          <p className="text-red-100 text-xl text-center max-w-lg mb-6">
+            Your live location and dashcam feed are being shared with the Smart Security AI Cab Security Center. Do you need immediate police assistance?
           </p>
+          {sosStatus === 'sent' && (
+            <p className="text-green-300 text-lg text-center font-bold max-w-lg mb-6 bg-green-900/40 border border-green-500/40 rounded-2xl px-4 py-3">
+              ✅ SOS signal received by the Security Center — your live location is being tracked.
+            </p>
+          )}
+          {sosStatus === 'failed' && (
+            <p className="text-yellow-200 text-lg text-center font-bold max-w-lg mb-6 bg-yellow-900/40 border border-yellow-500/40 rounded-2xl px-4 py-3">
+              ⚠️ Could not reach the Security Center right now. Please call the police immediately.
+            </p>
+          )}
+          {sosStatus === 'no-ride' && (
+            <p className="text-gray-200 text-lg text-center font-bold max-w-lg mb-6 bg-white/10 border border-white/30 rounded-2xl px-4 py-3">
+              🧪 This is a test alert — no active ride yet. Book a ride and the SOS will reach the Security Center for real.
+            </p>
+          )}
+          <div className="mb-8"></div>
           <div className="flex flex-col w-full max-w-md gap-4">
             <a 
               href="tel:112" 
@@ -2139,17 +2805,7 @@ const BookRide = () => {
             <div className="mt-20 md:mt-32">
               <h2 className="text-4xl md:text-5xl font-bold mb-16 notranslate">Select your preferred language</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-y-12 gap-x-8">
-                {[
-                  { eng: 'Bangla', native: 'বাংলা', code: 'bn' },
-                  { eng: 'English', native: 'English', code: 'en' },
-                  { eng: 'Gujarati', native: 'ગુજરાતી', code: 'gu' },
-                  { eng: 'Hindi', native: 'हिन्दी', code: 'hi' },
-                  { eng: 'Kannada', native: 'ಕನ್ನಡ', code: 'kn' },
-                  { eng: 'Marathi', native: 'मराठी', code: 'mr' },
-                  { eng: 'Tamil', native: 'தமிழ்', code: 'ta' },
-                  { eng: 'Telugu', native: 'తెలుగు', code: 'te' },
-                  { eng: 'Urdu', native: 'اردو', code: 'ur' }
-                ].map((lang, idx) => (
+                {LANGS.map((lang, idx) => (
                   <button 
                     key={idx} 
                     onClick={() => handleLanguageChange(lang.code)} 
@@ -2171,8 +2827,8 @@ const BookRide = () => {
             className="flex items-center space-x-2 cursor-pointer" 
             onClick={() => { setMainView('ride'); resetRide(); }}
           >
-            <ShieldCheck className="h-8 w-8 text-green-400" />
-            <span className="text-2xl font-bold tracking-tight notranslate">SmartCab</span>
+            <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab logo" className="h-10 w-10 rounded-xl object-cover ring-1 ring-amber-400/40" />
+            <span className="text-2xl font-bold tracking-tight notranslate">Smart Security AI Cab</span>
           </div>
           <div className="flex flex-wrap justify-center gap-2 md:gap-6 font-medium text-sm">
             <button 
@@ -2202,7 +2858,7 @@ const BookRide = () => {
             <button
               onClick={() => setMainView('compat')}
               className={`px-3 py-2 rounded-full transition ${mainView === 'compat' ? 'bg-blue-600 text-white' : 'hover:bg-gray-800'}`}
-              title="Check if your phone supports SmartCab"
+              title="Check if your phone supports Smart Security AI Cab"
             >
               📱 Compatibility
             </button>
@@ -2213,14 +2869,27 @@ const BookRide = () => {
               Dashboard
               {!loggedInUser && <span className="ml-1 text-[10px] bg-red-600 px-1.5 rounded-full text-white">New</span>}
             </button>
+            <button
+              onClick={() => { window.location.href = '/rides'; }}
+              className="px-3 py-2 rounded-full transition hover:bg-gray-800"
+            >
+              My Rides
+            </button>
+            <button
+              onClick={() => { window.location.href = '/safety'; }}
+              className="px-3 py-2 rounded-full transition flex items-center hover:bg-gray-800"
+            >
+              🛡️ Safety Center
+            </button>
           </div>
         </div>
         <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
           <button
             onClick={() => setIsLangModalOpen(true)}
             className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"
+            title="🌐 International languages: Русский · 日本語 · 中文 · Français · Deutsch"
           >
-            <Globe className="h-4 w-4 mr-2" /> EN
+            <Globe className="h-4 w-4 mr-2" /> <span className="uppercase notranslate">{getGoogleLang() || 'EN'}</span>
           </button>
           {loggedInUser ? (
             <>
@@ -2309,7 +2978,7 @@ const BookRide = () => {
       {mainView === 'signup' && (
         <main className="max-w-md mx-auto px-4 py-16 animate-in fade-in duration-500">
           <h1 className="text-4xl font-bold mb-2 text-center">Create Account</h1>
-          <p className="text-center text-gray-600 mb-8 font-medium">Join SmartCab Security today.</p>
+          <p className="text-center text-gray-600 mb-8 font-medium">Join Smart Security AI Cab Security today.</p>
           <div className="space-y-4">
             <div className="bg-gray-100 rounded-xl px-4 py-4">
               <input
@@ -2376,6 +3045,19 @@ const BookRide = () => {
       {/* DASHBOARD VIEW */}
       {mainView === 'dashboard' && (
         <main className="max-w-6xl mx-auto px-4 md:px-12 py-12 animate-in fade-in duration-500 flex flex-col md:flex-row gap-8">
+          {/* Stale-session banner — shown instead of a blank screen */}
+          {(!loggedInUser) && authError && (
+            <div className="w-full md:w-1/4 bg-amber-50 border border-amber-300 rounded-2xl p-5 mb-4 h-max">
+              <h3 className="font-bold text-amber-900 mb-2">⚠️ Session expired</h3>
+              <p className="text-sm text-amber-800 mb-4">{authError} Your data is safe — you can log in again.</p>
+              <button
+                onClick={() => { setAuthError(''); setMainView('login'); }}
+                className="w-full bg-amber-500 text-white font-bold py-2.5 rounded-xl hover:bg-amber-600 transition"
+              >
+                Log in again
+              </button>
+            </div>
+          )}
           {/* Sidebar */}
           <div className="w-full md:w-1/4">
             <div className="flex items-center space-x-4 mb-8">
@@ -2423,7 +3105,7 @@ const BookRide = () => {
               <div>
                 <h2 className="text-3xl font-bold mb-6">Recent Rides</h2>
                 <div className="space-y-4">
-                  {dashboardBookings.length === 0 ? (
+                  {Array.isArray(dashboardBookings) && dashboardBookings.length === 0 ? (
                     <div className="text-center p-8 bg-gray-50 rounded-2xl border border-gray-200">
                       <Car className="h-12 w-12 text-gray-300 mx-auto mb-3" />
                       <p className="text-gray-500 font-bold">No rides found in the database yet. Go book one!</p>
@@ -2757,21 +3439,20 @@ const BookRide = () => {
               {(['request', 'reserve', 'explore'].includes(activeTab) || showPrices || rideConfirmed) && (
                 <>
                   {rideConfirmed ? (
-                    <div className="w-full h-[600px] flex flex-col animate-in fade-in duration-500">
+                    <div className="w-full flex flex-col animate-in fade-in duration-500">
                       <h2 className="text-3xl font-bold mb-4 flex items-center">
                         <ShieldCheck className="text-green-600 mr-2 h-8 w-8"/> Trip Monitoring
                       </h2>
                       
-                      <div className="w-full flex-1 bg-gray-100 rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200 mb-4">
-                        <div className="absolute inset-0 z-0">
-                          <MapContainer 
+                      <div className="w-full h-[520px] bg-white rounded-3xl overflow-hidden shadow-2xl relative border border-gray-200 mb-4">
+                        <MapContainer 
                             center={mapCenter} 
                             zoom={mapZoom} 
                             scrollWheelZoom={false} 
-                            style={{ height: '100%', width: '100%', zIndex: 0 }} 
+                            style={{ height: '100%', width: '100%' }} 
                             zoomControl={false}
                           >
-                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                            <ResilientTileLayer onStatus={setMapStatus} />
                             <MapUpdater center={mapCenter} zoom={mapZoom} />
                             {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
                             {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
@@ -2779,18 +3460,25 @@ const BookRide = () => {
                               <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />
                             )}
                           </MapContainer>
-                        </div>
+                          {mapStatus && (
+                            <div className="absolute bottom-2 left-2 z-[30] bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full pointer-events-none">
+                              🗺️ {mapStatus}
+                            </div>
+                          )}
 
                         {/* SOS BUTTON */}
                         <button 
-                          onClick={() => { triggerBackendSOS(); setShowSOSPopup(true); }}
+                          onClick={() => { setSosStatus(null); fireSOSAndOpen(); }}
                           className="absolute top-6 right-6 bg-red-600 hover:bg-red-700 text-white font-bold px-8 py-5 rounded-full shadow-[0_0_15px_rgba(220,38,38,0.6)] z-20 flex items-center text-2xl animate-pulse transition transform hover:scale-105"
                         >
                           <Siren className="mr-3 h-8 w-8" /> SOS
                         </button>
+                      </div>
 
-                        {/* BOTTOM PANEL */}
-                        <div className="absolute bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md p-8 rounded-t-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border-t border-gray-100 z-10 flex flex-col md:flex-row gap-8 items-center">
+                        {/* BOTTOM PANEL — normal flow below the map so it can
+                            never cover it (the old absolute-bottom panel grew
+                            taller than the map box and hid it). */}
+                        <div className="w-full bg-white/95 backdrop-blur-md p-8 rounded-3xl shadow-[0_-10px_40px_-15px_rgba(0,0,0,0.1)] border border-gray-100 flex flex-col md:flex-row gap-8 items-center mb-4">
                           <div className="w-full md:w-2/3">
                             <div className="flex justify-between items-center mb-2">
                               <h2 className="text-2xl font-bold text-gray-900">
@@ -2818,18 +3506,18 @@ const BookRide = () => {
                           </div>
                           
                           <div className="w-full md:w-1/3 border-t md:border-t-0 md:border-l border-gray-200 pt-6 md:pt-0 md:pl-8">
-                            <div className="flex justify-between items-center mb-4">
-                              <p className="text-base font-bold text-gray-700">Emergency Safety</p>
-                              <div className="flex gap-2">
+                            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center items-start gap-3 mb-4">
+                              <p className="text-base font-bold text-gray-700 shrink-0">Emergency Safety</p>
+                              <div className="flex flex-wrap items-center gap-2">
                                 <button
                                   onClick={() => setShowLiveGuardModal(true)}
-                                  className="text-sm font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg hover:bg-pink-100 flex items-center transition border border-pink-200"
+                                  className="text-sm font-bold text-pink-600 bg-pink-50 px-3 py-1.5 rounded-lg hover:bg-pink-100 flex items-center transition border border-pink-200 whitespace-nowrap"
                                 >
                                   <Video className="h-4 w-4 mr-1" /> Live Guard
                                 </button>
                                 <button
                                   onClick={() => setShowSilentSOSModal(true)}
-                                  className="text-sm font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 flex items-center transition border border-red-200"
+                                  className="text-sm font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-lg hover:bg-red-100 flex items-center transition border border-red-200 whitespace-nowrap"
                                 >
                                   <Siren className="h-4 w-4 mr-1" /> Silent SOS
                                 </button>
@@ -2872,6 +3560,43 @@ const BookRide = () => {
                               ))}
                             </div>
 
+                            {/* 🛡️ DRIVER SAFETY — two-way protection: verify the rider at
+                                pickup and report any concern so the driver is never
+                                blamed for a rider's illegal items. */}
+                            <div className="border-t border-gray-200 pt-4 mt-2 mb-5">
+                              <p className="text-base font-bold text-gray-700 mb-3 flex items-center">
+                                <ShieldCheck className="h-4 w-4 mr-1.5 text-green-600" /> Driver Protection
+                              </p>
+                              <div className="flex items-center justify-between gap-2 mb-3">
+                                <span className="text-xs font-semibold text-slate-600">
+                                  {riderVerified ? '✅ Rider identity verified' : 'Verify rider identity at pickup'}
+                                </span>
+                                <button
+                                  onClick={verifyRiderIdentity}
+                                  disabled={riderVerified || riderVerifyBusy}
+                                  className={`text-xs font-bold px-3 py-1.5 rounded-lg transition border ${
+                                    riderVerified
+                                      ? 'text-green-700 bg-green-50 border-green-200 cursor-default'
+                                      : 'text-blue-600 bg-blue-50 border-blue-200 hover:bg-blue-100'
+                                  }`}
+                                >
+                                  {riderVerifyBusy ? 'Saving…' : riderVerified ? 'Verified ✓' : 'Verify ID'}
+                                </button>
+                              </div>
+                              {riderVerifyMessage && (
+                                <p className="text-xs font-semibold text-slate-500 mb-3">{riderVerifyMessage}</p>
+                              )}
+                              <button
+                                onClick={() => { setShowDriverAlertModal(true); setDriverAlertResult(''); setDriverAlertError(''); }}
+                                className="w-full text-sm font-bold text-purple-700 bg-purple-50 border border-purple-200 rounded-xl px-3 py-2.5 hover:bg-purple-100 flex items-center justify-center gap-2 transition"
+                              >
+                                <FileWarning className="h-4 w-4" /> Report rider concern (suspicious / illegal items)
+                              </button>
+                              <p className="text-[11px] text-slate-400 mt-2">
+                                Your report is tied to this ride. If you were not at fault, an admin will review it and mark you <strong>EXONERATED</strong>.
+                              </p>
+                            </div>
+
                             <div className="flex gap-3">
                               {rideProgress === 100 ? (
                                 <button 
@@ -2900,7 +3625,6 @@ const BookRide = () => {
                           </div>
                         </div>
                       </div>
-                    </div>
 
                   ) : showPrices ? (
                     <div className="animate-in slide-in-from-right-8 duration-300 w-full max-w-md h-full flex flex-col">
@@ -3054,11 +3778,16 @@ const BookRide = () => {
                       center={[20.5937, 78.9629]} 
                       zoom={5} 
                       scrollWheelZoom={true} 
-                      style={{ height: '100%', width: '100%' }}
+                      style={{ height: '100%', width: '100%', minHeight: 300 }}
                     >
-                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <ResilientTileLayer onStatus={setMapStatus} />
                       <MapClickHandler onMapClick={handleMapClick} />
                     </MapContainer>
+                    {mapStatus && (
+                      <div className="absolute bottom-2 left-2 z-[30] bg-black/70 text-white text-[10px] font-bold px-2.5 py-1 rounded-full pointer-events-none">
+                        🗺️ {mapStatus}
+                      </div>
+                    )}
                   </div>
                   <div className="absolute inset-0 bg-gradient-to-t from-black/50 to-transparent z-10 flex items-end p-8 pointer-events-none">
                     <h3 className="text-white text-3xl font-bold w-3/4">Travel safely anywhere in India.</h3>
@@ -3074,7 +3803,7 @@ const BookRide = () => {
 
           {/* EXPLORE SECTION */}
           <section id="explore-section" className="max-w-7xl mx-auto px-4 md:px-12 py-16">
-            <h2 className="text-3xl font-bold mb-8">Explore what you can do with SmartCab</h2>
+            <h2 className="text-3xl font-bold mb-8">Explore what you can do with Smart Security AI Cab</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               <div 
                 className="bg-gray-50 rounded-xl p-6 flex justify-between items-center hover:bg-gray-100 transition group cursor-pointer shadow-sm hover:shadow-md" 
@@ -3165,7 +3894,7 @@ const BookRide = () => {
             <div className="flex flex-col lg:flex-row bg-[#e2f1f8] rounded-2xl overflow-hidden relative">
               <div className="w-full lg:w-1/2 p-8 md:p-12 z-10 flex flex-col justify-center">
                 <h3 className="text-4xl md:text-5xl font-bold mb-8 leading-tight text-gray-900">
-                  Get your ride right<br/>with SmartCab Reserve
+                  Get your ride right<br/>with Smart Security AI Cab Reserve
                 </h3>
                 <p className="font-bold mb-2">Choose date and time</p>
                 <div className="flex flex-col sm:flex-row gap-4 mb-6">
@@ -3257,7 +3986,7 @@ const BookRide = () => {
               <div className="w-full md:w-1/2">
                 <h2 className="text-4xl md:text-5xl font-bold mb-6 leading-tight">Ride with friends seamlessly</h2>
                 <p className="text-lg text-gray-600 mb-6">
-                  Riding with friends just got easier: set up a group ride in the SmartCab app, invite your friends, and arrive at your destination. Friends who ride together save together.
+                  Riding with friends just got easier: set up a group ride in the Smart Security AI Cab app, invite your friends, and arrive at your destination. Friends who ride together save together.
                 </p>
                 <button 
                   onClick={() => setSelectedCard({ 
@@ -3275,7 +4004,7 @@ const BookRide = () => {
           {/* TRAVEL YOUR WAY SECTION */}
           <section className="max-w-7xl mx-auto px-4 md:px-12 py-16 border-t border-gray-200">
             <h2 className="text-3xl font-bold mb-8 text-center md:text-left">
-              Use the SmartCab app to help you travel your way
+              Use the Smart Security AI Cab app to help you travel your way
             </h2>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               
@@ -3289,7 +4018,7 @@ const BookRide = () => {
                 </div>
                 <h3 className="text-xl font-bold mb-3">Ride options</h3>
                 <p className="text-gray-600 mb-6 flex-grow">
-                  There's more than one way to move with SmartCab, no matter where you are or where you're headed next.
+                  There's more than one way to move with Smart Security AI Cab, no matter where you are or where you're headed next.
                 </p>
                 <button 
                   onClick={() => { setActiveTab('request'); window.scrollTo({ top: 0, behavior: 'smooth' }); }} 
@@ -3307,7 +4036,7 @@ const BookRide = () => {
                     className="w-full h-full object-cover hover:scale-105 transition duration-500" 
                   />
                 </div>
-                <h3 className="text-xl font-bold mb-3">700+ airports</h3>
+                <h3 className="text-xl font-bold mb-3">Airports across India</h3>
                 <p className="text-gray-600 mb-6 flex-grow">
                   You can request a ride to and from most major airports. Schedule a ride to the airport for one less thing to worry about.
                 </p>
@@ -3352,7 +4081,7 @@ const BookRide = () => {
               Drive when you want, make what you need
             </h1>
             <p className="text-xl text-gray-600 mb-8">
-              Make money on your schedule. SmartCab's AI-driven security protects our drivers just as much as our riders.
+              Make money on your schedule. Smart Security AI Cab's AI-driven security protects our drivers just as much as our riders.
             </p>
             <button 
               onClick={() => { closeAllForms(); setShowDriverForm(true); }} 
@@ -3360,6 +4089,35 @@ const BookRide = () => {
             >
               Apply to drive →
             </button>
+            {driverAppRef && (
+              <button
+                onClick={async () => {
+                  setDriverSubmitError('');
+                  setDriverStatusLoading(true);
+                  try {
+                    const res = await fetch(`${PYTHON_API}/api/drivers/application/${encodeURIComponent(driverAppRef)}`);
+                    const data = await res.json();
+                    if (res.ok && data.application) {
+                      setDriverAppStatus(data.application.status);
+                      setDriverSubmitError('');
+                      alert(`📋 Application ${driverAppRef}\n\nCurrent status: ${data.application.status}\n\nWe'll notify you once a decision is made.`);
+                    } else {
+                      setDriverSubmitError('Could not find that application. Check the reference and try again.');
+                    }
+                  } catch (err) {
+                    setDriverSubmitError('Could not reach the server. Please try again later.');
+                  } finally {
+                    setDriverStatusLoading(false);
+                  }
+                }}
+                className="mt-4 text-sm font-bold text-black underline underline-offset-4 hover:text-gray-700 transition"
+              >
+                {driverStatusLoading ? 'Checking…' : `Check application status (${driverAppRef})`}
+              </button>
+            )}
+            {driverSubmitError && driverAppRef && (
+              <p className="mt-2 text-sm font-semibold text-red-600">⚠️ {driverSubmitError}</p>
+            )}
           </div>
           <div className="w-full md:w-1/2">
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden shadow-2xl">
@@ -3381,7 +4139,7 @@ const BookRide = () => {
       {mainView === 'business' && (
         <main className="max-w-7xl mx-auto px-4 md:px-12 py-16 flex flex-col md:flex-row gap-12 items-center animate-in fade-in duration-500">
           <div className="w-full md:w-1/2 flex flex-col">
-            <h1 className="text-5xl md:text-7xl font-bold mb-6">SmartCab for Business</h1>
+            <h1 className="text-5xl md:text-7xl font-bold mb-6">Smart Security AI Cab for Business</h1>
             <p className="text-xl text-gray-600 mb-8">
               A premium, secure travel solution for your employees. Corporate billing and a real-time safety dashboard.
             </p>
@@ -3408,7 +4166,7 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* ✨ OUR MISSION — The women's safety story behind SmartCab */}
+      {/* ✨ OUR MISSION — The women's safety story behind Smart Security AI Cab */}
       {mainView === 'about' && (
         <main className="max-w-5xl mx-auto px-4 md:px-12 py-16 animate-in fade-in duration-500">
           {/* --- HERO --- */}
@@ -3425,7 +4183,7 @@ const BookRide = () => {
               without the knot in her stomach, without checking the back seat twice."
             </p>
             <p className="text-base text-gray-500 mt-6 max-w-2xl mx-auto">
-              SmartCab was built by women who have ridden home alone at night with their
+              Smart Security AI Cab was built by women who have ridden home alone at night with their
               keys between their fingers. We're changing that — one ride at a time.
             </p>
           </section>
@@ -3602,7 +4360,7 @@ const BookRide = () => {
                 <div className="flex-1">
                   <h3 className="text-2xl md:text-3xl font-bold mb-3">A note from Aayushi</h3>
                   <p className="text-gray-700 leading-relaxed mb-4">
-                    I started SmartCab after a ride home from college where the driver
+                    I started Smart Security AI Cab after a ride home from college where the driver
                     took a "shortcut" through a road I didn't recognize. I was 19, alone,
                     and I had to make small talk for 12 minutes to stay calm.
                   </p>
@@ -3647,7 +4405,7 @@ const BookRide = () => {
             <div className="inline-flex items-center bg-blue-50 border-2 border-blue-300 text-blue-700 font-bold px-4 py-2 rounded-full text-sm mb-6">
               📱 Compatibility Check
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold mb-4">Will SmartCab work on your phone?</h1>
+            <h1 className="text-4xl md:text-5xl font-bold mb-4">Will Smart Security AI Cab work on your phone?</h1>
             <p className="text-lg text-gray-600 max-w-xl mx-auto">
               Tap the button below — we'll run a real test on your device
               and tell you honestly whether live tracking, GPS, and camera
@@ -3741,7 +4499,7 @@ const BookRide = () => {
                     <div className="bg-green-50 border-2 border-green-500 rounded-2xl p-6 text-center">
                       <div className="text-4xl mb-2">✅</div>
                       <h3 className="text-2xl font-bold text-green-800 mb-2">All systems go!</h3>
-                      <p className="text-green-700">Your phone is fully compatible with SmartCab. Live tracking, GPS, and video will all work great.</p>
+                      <p className="text-green-700">Your phone is fully compatible with Smart Security AI Cab. Live tracking, GPS, and video will all work great.</p>
                       <button onClick={() => setMainView('ride')} className="mt-4 bg-green-600 text-white font-bold py-3 px-6 rounded-xl hover:bg-green-700 transition">
                         Book a ride →
                       </button>
@@ -3787,7 +4545,7 @@ const BookRide = () => {
           <div className="mt-10 bg-gray-50 border border-gray-200 rounded-2xl p-6 text-sm text-gray-600">
             <h3 className="font-bold text-gray-900 mb-2">📱 Tips for the best experience</h3>
             <ul className="space-y-1 list-disc pl-5">
-              <li>Open SmartCab in <strong>Safari</strong> (iPhone) or <strong>Chrome</strong> (Android), not in WhatsApp/Instagram</li>
+              <li>Open Smart Security AI Cab in <strong>Safari</strong> (iPhone) or <strong>Chrome</strong> (Android), not in WhatsApp/Instagram</li>
               <li>Allow <strong>location</strong> and <strong>camera</strong> permissions when prompted</li>
               <li>Keep the <strong>app in the foreground</strong> for live video to work continuously</li>
               <li>Have a <strong>charger handy</strong> for long rides (camera + GPS use battery)</li>
@@ -3797,11 +4555,12 @@ const BookRide = () => {
         </main>
       )}
 
-      {/* DEMO PANEL */}
-      <div className="fixed bottom-6 right-4 z-[300] flex flex-col items-end">
+      {/* SAFETY-ALERT TEST PANEL (bottom-LEFT so it never covers the
+          Emergency Safety buttons on the right) */}
+      <div className="fixed bottom-6 left-4 z-[300] flex flex-col items-start">
         {isDemoPanelOpen ? (
-          <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 w-64 animate-in slide-in-from-bottom-2">
-            <div className="flex items-center justify-between mb-3 border-b border-gray-100 pb-2">
+          <div className="bg-white border border-gray-200 shadow-2xl rounded-2xl p-4 w-72 animate-in slide-in-from-bottom-2">
+            <div className="flex items-center justify-between mb-1 border-b border-gray-100 pb-2">
               <span className="text-xs font-bold text-gray-500 tracking-wider uppercase">Mentor Controls</span>
               <button 
                 onClick={() => setIsDemoPanelOpen(false)} 
@@ -3810,24 +4569,27 @@ const BookRide = () => {
                 <X className="h-4 w-4 text-gray-500" />
               </button>
             </div>
+            <p className="text-[11px] text-gray-400 mb-3">
+              See exactly what the rider sees. No alert is sent until you answer or confirm.
+            </p>
             <div className="space-y-2">
               <button 
-                onClick={() => { triggerBackendSOS(); setShowDeviationPopup(true); }} 
+                onClick={() => { setSosStatus(null); setShowDeviationPopup(true); }} 
                 className="w-full text-left text-sm font-bold bg-yellow-50 hover:bg-yellow-100 text-yellow-700 px-3 py-2 rounded-lg transition border border-yellow-200"
               >
-                🟡 500m Deviation
+                🟡 500m Deviation — real 60s countdown
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowGPSLostPopup(true); }} 
+                onClick={() => { setSosStatus(null); setShowGPSLostPopup(true); }} 
                 className="w-full text-left text-sm font-bold bg-orange-50 hover:bg-orange-100 text-orange-700 px-3 py-2 rounded-lg transition border border-orange-200"
               >
-                📡 GPS Lost
+                📡 GPS Lost — real 60s countdown
               </button>
               <button 
-                onClick={() => { triggerBackendSOS(); setShowSOSPopup(true); }} 
+                onClick={() => { setSosStatus(null); fireSOSAndOpen(); }} 
                 className="w-full text-left text-sm font-bold bg-red-50 hover:bg-red-100 text-red-700 px-3 py-2 rounded-lg transition border border-red-200"
               >
-                🚨 Police / SOS
+                🚨 Police / SOS — sends real SOS to backend
               </button>
             </div>
           </div>
@@ -3835,12 +4597,232 @@ const BookRide = () => {
           <button 
             onClick={() => setIsDemoPanelOpen(true)} 
             className="bg-black text-white p-3 rounded-full shadow-2xl flex items-center justify-center hover:scale-110 transition border-2 border-white/20"
-            title="Open Demo Panel"
+            title="Open the Safety Alert Test Panel"
           >
             <Settings className="h-6 w-6 text-green-400" />
           </button>
         )}
       </div>
+
+      {/* 🚗 DRIVER APPLICATION MODAL — "Apply to drive" */}
+      {showDriverForm && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-[450] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 sticky top-0 bg-white rounded-t-3xl z-10">
+              <div className="flex items-center gap-2">
+                <img src="/assets/security-cab-icon.png" alt="Smart Security AI Cab" className="h-8 w-8 rounded-lg object-cover" />
+                <h3 className="text-lg font-extrabold text-slate-900">Driver Application</h3>
+              </div>
+              <button
+                onClick={closeAllForms}
+                className="p-2 rounded-full hover:bg-gray-100 transition"
+                aria-label="Close"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+
+            {!formSubmitted ? (
+              <div className="px-6 py-5">
+                {/* Step indicator */}
+                <div className="flex items-center gap-2 mb-6">
+                  <div className={`h-2 flex-1 rounded-full ${formStep >= 1 ? 'bg-slate-900' : 'bg-gray-200'}`}></div>
+                  <div className={`h-2 flex-1 rounded-full ${formStep >= 2 ? 'bg-slate-900' : 'bg-gray-200'}`}></div>
+                  <span className="text-xs font-bold text-slate-400 w-16 text-right">{formStep}/2</span>
+                </div>
+
+                {formStep === 1 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-700 tracking-wide uppercase">Your details</h4>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Full name *</label>
+                      <input name="fullName" value={driverForm.fullName} onChange={handleDriverFormChange}
+                        placeholder="e.g. Rohan Patel"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Phone number *</label>
+                      <input name="phone" value={driverForm.phone} onChange={handleDriverFormChange}
+                        placeholder="+91 98765 43210"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Email (optional)</label>
+                      <input name="email" type="email" value={driverForm.email} onChange={handleDriverFormChange}
+                        placeholder="you@example.com"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">City *</label>
+                      <input name="city" value={driverForm.city} onChange={handleDriverFormChange}
+                        placeholder="e.g. Ahmedabad"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                  </div>
+                )}
+
+                {formStep === 2 && (
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-bold text-slate-700 tracking-wide uppercase">Vehicle & driving licence</h4>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Vehicle type *</label>
+                      <select name="vehicleType" value={driverForm.vehicleType} onChange={handleDriverFormChange}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-white">
+                        <option value="SmartMini">SmartMini</option>
+                        <option value="SmartSedan">SmartSedan</option>
+                        <option value="SmartSUV">SmartSUV</option>
+                        <option value="SmartBike">SmartBike</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Driving licence number *</label>
+                      <input name="licenseNumber" value={driverForm.licenseNumber} onChange={handleDriverFormChange}
+                        placeholder="e.g. GJ01-2023-1122334"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none uppercase" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Driving experience (years)</label>
+                      <input name="experienceYears" type="number" min="0" value={driverForm.experienceYears} onChange={handleDriverFormChange}
+                        placeholder="0"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <label className="flex items-center gap-3 bg-slate-50 rounded-xl px-4 py-3 cursor-pointer">
+                      <input name="ownVehicle" type="checkbox" checked={driverForm.ownVehicle} onChange={handleDriverFormChange}
+                        className="h-4 w-4 accent-amber-500" />
+                      <span className="text-sm font-semibold text-slate-700">I own the vehicle I'll drive</span>
+                    </label>
+                    <label className="flex items-start gap-3 bg-amber-50 rounded-xl px-4 py-3 cursor-pointer">
+                      <input name="agreeTerms" type="checkbox" checked={driverForm.agreeTerms} onChange={handleDriverFormChange}
+                        className="h-4 w-4 accent-amber-500 mt-0.5" />
+                      <span className="text-sm text-slate-600">
+                        I agree to the <strong>Driver Terms</strong> and understand my licence & documents will be verified before onboarding.
+                      </span>
+                    </label>
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-700 mb-1">Police verification number (optional)</label>
+                      <input name="policeVerificationNumber" value={driverForm.policeVerificationNumber} onChange={handleDriverFormChange}
+                        placeholder="e.g. PC-2026-778899"
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none" />
+                    </div>
+                    <label className="flex items-start gap-3 border-2 border-red-200 bg-red-50 rounded-xl px-4 py-3 cursor-pointer">
+                      <input name="criminalRecordDeclaration" type="checkbox" checked={driverForm.criminalRecordDeclaration} onChange={handleDriverFormChange}
+                        className="h-4 w-4 accent-red-600 mt-0.5" />
+                      <span className="text-sm text-slate-700">
+                        🛡️ <strong>Safety declaration:</strong> I confirm I have <strong>no criminal record</strong> and I will
+                        upload my <strong>police-clearance certificate</strong> next. Drivers with unresolved records are not selected.
+                      </span>
+                    </label>
+                  </div>
+                )}
+
+                {driverSubmitError && (
+                  <p className="mt-4 text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                    ⚠️ {driverSubmitError}
+                  </p>
+                )}
+
+                <div className="flex gap-3 mt-6">
+                  {formStep === 2 && (
+                    <button onClick={() => setFormStep(1)} className="flex-1 bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition">
+                      Back
+                    </button>
+                  )}
+                  <button
+                    onClick={handleDriverFormNext}
+                    disabled={driverSubmitLoading}
+                    className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                  >
+                    {driverSubmitLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : null}
+                    {driverSubmitLoading ? 'Submitting…' : formStep === 1 ? 'Continue →' : 'Submit application'}
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="px-6 py-8 text-center">
+                <img src="/assets/security-cab-icon.png" alt="" className="h-16 w-16 rounded-2xl mx-auto mb-4 object-cover" />
+                <div className="inline-flex items-center gap-1.5 bg-green-100 text-green-700 text-xs font-extrabold px-3 py-1 rounded-full mb-3">
+                  <CheckCircle2 className="h-4 w-4" /> APPLICATION SUBMITTED
+                </div>
+                <h3 className="text-2xl font-extrabold text-slate-900 mb-1">Thanks, {driverApplicationResult?.fullName || 'Driver'}! 🎉</h3>
+                <p className="text-slate-500 text-sm mb-4">
+                  Your application reference: <strong className="font-mono text-slate-800">{driverApplicationResult?.reference}</strong>
+                </p>
+                <div className="bg-slate-50 rounded-2xl p-4 text-left text-sm text-slate-600 space-y-2 mb-5">
+                  <div className="font-bold text-slate-700 mb-1">What happens next</div>
+                  {driverApplicationResult?.nextSteps?.map((step, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <CheckCircle2 className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                      <span>{step}</span>
+                    </div>
+                  ))}
+                </div>
+                {/* 🛡️ STEP 2 — upload verification documents (licence / vehicle / police) */}
+                <div className="bg-slate-50 rounded-2xl p-4 text-left mb-5">
+                  <div className="flex items-center gap-2 mb-1">
+                    <ShieldCheck className="h-4 w-4 text-amber-600" />
+                    <h4 className="text-sm font-extrabold text-slate-800">Step 2 · Upload verification documents</h4>
+                  </div>
+                  <p className="text-xs text-slate-500 mb-3">
+                    JPG / PNG / PDF, max 12 MB. 🔍 Each photo is automatically checked (real photo, clear resolution, correct shape, no duplicate upload)
+                    before our owner reviews it.
+                  </p>
+                  <div className="space-y-2.5">
+                    {[
+                      { key: 'licence', label: '📄 Driving licence photo', field: 'licencePhoto' },
+                      { key: 'vehicle', label: '🚗 Vehicle photo / RC', field: 'vehiclePhoto' },
+                      { key: 'police_certificate', label: '🛡️ Police clearance certificate', field: 'policeCertificate' },
+                    ].map((d) => (
+                      <div key={d.key} className="flex items-center gap-2">
+                        <label className="flex-1 text-xs font-semibold text-slate-600">{d.label}</label>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,application/pdf"
+                          onChange={(e) => setDriverDocs((prev) => ({ ...prev, [d.key]: e.target.files?.[0] || null }))}
+                          className="text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-white file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-slate-700 file:shadow-sm hover:file:bg-slate-100"
+                        />
+                        <button
+                          onClick={() => uploadDriverDocument(d.key)}
+                          disabled={driverDocsBusy === d.key || !driverDocs[d.key]}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-bold hover:bg-amber-600 transition disabled:opacity-50"
+                        >
+                          {driverDocsStatus[d.key] === 'uploaded' ? '✓ Uploaded' : driverDocsBusy === d.key ? '…' : 'Upload'}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  {driverDocsMessage && (
+                    <p className={`mt-3 text-xs font-semibold rounded-xl px-3 py-2 border ${
+                      driverDocsMessage.startsWith('✅') ? 'text-green-700 bg-green-50 border-green-200' :
+                      driverDocsMessage.startsWith('⚠️') ? 'text-amber-700 bg-amber-50 border-amber-200' :
+                      'text-red-700 bg-red-50 border-red-200'
+                    }`}>
+                      {driverDocsMessage}
+                    </p>
+                  )}
+                </div>
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <button onClick={closeAllForms} className="flex-1 bg-slate-900 text-white font-bold py-3 rounded-xl hover:bg-slate-800 transition">
+                    Done
+                  </button>
+                  <button
+                    onClick={checkDriverApplicationStatus}
+                    disabled={driverStatusLoading}
+                    className="flex-1 bg-slate-100 text-slate-700 font-bold py-3 rounded-xl hover:bg-slate-200 transition disabled:opacity-60 inline-flex items-center justify-center gap-2"
+                  >
+                    {driverStatusLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                    {driverStatusLoading ? 'Checking…' : 'Check status'}
+                  </button>
+                </div>
+                {driverAppStatus && (
+                  <p className="mt-4 text-sm font-bold text-slate-700 bg-slate-100 rounded-xl px-4 py-3">
+                    Status: <span className="text-green-700">{driverAppStatus}</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

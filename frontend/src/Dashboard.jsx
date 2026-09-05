@@ -84,7 +84,7 @@ function Dashboard() {
 
   return (
     <div style={{ padding: '20px', fontFamily: 'Arial', maxWidth: '800px', margin: '0 auto' }}>
-      <h1 style={{ textAlign: 'center' }}>🚕 Smart Cab Security Platform</h1>
+      <h1 style={{ textAlign: 'center' }}>🚕 Smart Security AI Cab Security Platform</h1>
       
       {/* --- THE BOOKING FORM --- */}
       <div style={{ backgroundColor: '#eef', padding: '20px', borderRadius: '10px', marginBottom: '30px' }}>

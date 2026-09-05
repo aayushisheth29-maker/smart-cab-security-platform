@@ -1,10 +1,17 @@
 # Render Blueprint — SmartCab backend (FastAPI)
-# This file is used when you deploy the backend-python-ai/ folder directly.
-# The repo-root render.yaml is the canonical Blueprint (recommended).
+# Deploy: Render Dashboard → New → Blueprint → select this repo.
+# The service runs from backend-python-ai/ and the first 15-min boot
+# automatically seeds demo drivers / Aayushi's sample rides.
+#
+# After deploying:
+#   1. Copy the generated SMARTCAB_ADMIN_KEY (shown once in Render).
+#   2. Set the frontend's VITE_API_URL to https://<your-service>.onrender.com
+#      in Vercel, and add the Vercel URL to SMARTCAB_CORS_ORIGINS below.
 services:
   - type: web
     name: smartcab-backend
     runtime: python
+    rootDir: backend-python-ai
     buildCommand: pip install -r requirements.txt
     startCommand: rm -rf __pycache__ && uvicorn main:app --host 0.0.0.0 --port $PORT
     healthCheckPath: /api/health

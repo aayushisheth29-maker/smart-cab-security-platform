@@ -1,0 +1,10 @@
+{
+  "name": "smart-security-ai-cab-owner-portal",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Repo-root shim so Vercel can build the frontend for the private Owner Portal project (smart-cab-owner-portal) without a Root Directory setting. The rider app continues to build from frontend/.",
+  "scripts": {
+    "install": "npm --prefix frontend install",
+    "build": "npm --prefix frontend run build"
+  }
+}

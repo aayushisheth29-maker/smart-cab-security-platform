@@ -1,8 +1,8 @@
 """
-SmartCab Security Platform - Live Python Backend
+Smart Security AI Cab Security Platform - Live Python Backend
 ================================================
 
-Single-file FastAPI service that powers the entire SmartCab rider + track flow.
+Single-file FastAPI service that powers the entire Smart Security AI Cab rider + track flow.
 
 Features
 --------
@@ -36,7 +36,7 @@ GET  /api/ai/check-route                  -> fake AI safety check
 POST /api/video/upload-evidence           -> upload encrypted video evidence
 """
 
-from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, Union
@@ -48,9 +48,227 @@ import uuid
 import json
 import logging
 import time
+import math
+import hashlib
+import hmac
+import base64
+import secrets
+import threading
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("smartcab")
+
+
+# ---------------------------------------------------------------------------
+# 🔐 SECURITY & CONFIGURATION — everything sensitive comes from the
+# environment. Never hard-code secrets. In production set:
+#   SMARTCAB_SECRET_KEY      -> random 32+ char string signing auth tokens
+#   SMARTCAB_ADMIN_KEY       -> key required by /api/admin/* endpoints
+#   SMARTCAB_EVIDENCE_KEY    -> key required to upload video evidence
+#   SMARTCAB_CORS_ORIGINS    -> comma-separated allowed origins (frontend URL)
+# ---------------------------------------------------------------------------
+SMARTCAB_SECRET_KEY = os.environ.get("SMARTCAB_SECRET_KEY", "dev-only-secret-change-me")
+SMARTCAB_ADMIN_KEY = os.environ.get("SMARTCAB_ADMIN_KEY", "smartcab-admin-dev-key")
+SMARTCAB_EVIDENCE_KEY = os.environ.get("SMARTCAB_EVIDENCE_KEY", "sk_test_smartcab_vault_9982")
+SMARTCAB_DEBUG = os.environ.get("SMARTCAB_DEBUG", "").lower() in ("1", "true", "yes")
+
+if SMARTCAB_SECRET_KEY == "dev-only-secret-change-me":
+    log.warning("🔐 SMARTCAB_SECRET_KEY is using the DEV default. Set it in production.")
+if SMARTCAB_ADMIN_KEY == "smartcab-admin-dev-key":
+    log.warning("🔐 SMARTCAB_ADMIN_KEY is using the DEV default. Set it in production.")
+
+PBKDF2_ITERATIONS = 210_000
+
+
+def hash_password(password: str) -> str:
+    """Hash a password with PBKDF2-HMAC-SHA256 (stdlib, no extra deps).
+    Stored format: pbkdf2_sha256$<iterations>$<salt-hex>$<hash-hex>"""
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), PBKDF2_ITERATIONS)
+    return f"pbkdf2_sha256${PBKDF2_ITERATIONS}${salt}${dk.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    """Constant-time verification of a PBKDF2 hash."""
+    try:
+        algo, iterations, salt, expected = stored.split("$")
+        if algo != "pbkdf2_sha256":
+            return False
+        dk = hashlib.pbkdf2_hmac("sha256", password.encode("utf-8"), bytes.fromhex(salt), int(iterations))
+        return secrets.compare_digest(dk.hex(), expected)
+    except Exception:
+        return False
+
+
+def _b64url(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode("ascii")
+
+
+def _b64url_decode(text: str) -> bytes:
+    padding = "=" * (-len(text) % 4)
+    return base64.urlsafe_b64decode(text + padding)
+
+
+def create_access_token(user: Dict[str, Any], expires_hours: int = 24) -> str:
+    """Issue a signed (HMAC-SHA256) token — the JWT-style auth token the
+    frontend sends as `Authorization: Bearer <token>`."""
+    payload = {
+        "sub": str(user.get("id", "")),
+        "email": user.get("email", ""),
+        "name": user.get("name", ""),
+        "iat": int(time.time()),
+        "exp": int(time.time()) + expires_hours * 3600,
+    }
+    body = _b64url(json.dumps(payload, separators=(",", ":")).encode("utf-8"))
+    signature = _b64url(hmac.new(SMARTCAB_SECRET_KEY.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest())
+    return f"{body}.{signature}"
+
+
+def decode_access_token(token: str) -> Optional[Dict[str, Any]]:
+    """Verify a token's signature + expiry. Returns the payload or None."""
+    try:
+        body, received_sig = token.split(".", 1)
+        expected_sig = _b64url(hmac.new(SMARTCAB_SECRET_KEY.encode("utf-8"), body.encode("ascii"), hashlib.sha256).digest())
+        if not secrets.compare_digest(received_sig, expected_sig):
+            return None
+        payload = json.loads(_b64url_decode(body))
+        if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+        return payload
+    except Exception:
+        return None
+
+
+def get_auth_user(request: Request) -> Optional[Dict[str, Any]]:
+    """Resolve the logged-in user from the Authorization header (if any)."""
+    header = request.headers.get("authorization", "")
+    if not header.lower().startswith("bearer "):
+        return None
+    payload = decode_access_token(header[7:].strip())
+    if not payload:
+        return None
+    try:
+        uid = int(payload.get("sub", 0))
+    except Exception:
+        return None
+    return next((u for u in USERS if u.get("id") == uid), None)
+
+
+def require_own_user(request: Request, user_id: int) -> None:
+    """FastAPI dependency: user endpoints are only reachable by the owner."""
+    user = get_auth_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Authentication required — please log in.")
+    if int(user.get("id", -1)) != int(user_id):
+        raise HTTPException(status_code=403, detail="You can only access your own account.")
+
+
+def require_admin(request: Request) -> None:
+    """FastAPI dependency: admin endpoints require the X-Admin-Key header."""
+    provided = request.headers.get("x-admin-key", "")
+    if not provided or not _admin_key_matches(provided):
+        raise HTTPException(status_code=401, detail="Invalid or missing admin key.")
+
+
+# ---------------------------------------------------------------------------
+# 🔑 OWNER ADMIN KEY — rotatable by the owner, no redeploy needed.
+# The key set via SMARTCAB_ADMIN_KEY in the environment is the BOOTSTRAP
+# default. As soon as the owner changes it from the Owner Portal, a salted
+# PBKDF2 hash is stored in the data dir (admin_credentials.json) and the
+# environment value is no longer accepted. The owner can also reset back to
+# the environment value while they still know the current key.
+# ---------------------------------------------------------------------------
+_admin_credentials: Dict[str, Any] = {}
+_ADMIN_KEY_ITERATIONS = 120_000
+
+
+def _admin_creds_file() -> str:
+    # Lazy: PERSIST_DIR is resolved later in the module.
+    return os.path.join(PERSIST_DIR, "admin_credentials.json") if PERSIST_DIR else "admin_credentials.json"
+
+
+def _load_admin_credentials() -> None:
+    global _admin_credentials
+    try:
+        path = _admin_creds_file()
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                data = json.load(f)
+            if isinstance(data, dict) and data.get("hash") and data.get("salt"):
+                _admin_credentials = data
+                log.info("🔑 Owner admin key credentials loaded from disk (rotated key active).")
+    except Exception as e:
+        log.warning("⚠️ Could not load admin credentials: %s", e)
+
+
+def _admin_key_matches(provided: str) -> bool:
+    creds = _admin_credentials or {}
+    if creds.get("hash") and creds.get("salt"):
+        try:
+            salt = bytes.fromhex(creds["salt"])
+            iterations = int(creds.get("iterations", _ADMIN_KEY_ITERATIONS))
+            dk = hashlib.pbkdf2_hmac("sha256", provided.encode("utf-8"), salt, iterations)
+            return secrets.compare_digest(dk.hex(), creds["hash"])
+        except Exception:
+            return False
+    default = os.environ.get("SMARTCAB_ADMIN_KEY", "smartcab-admin-dev-key")
+    return bool(provided) and secrets.compare_digest(provided, default)
+
+
+def _save_admin_credentials(new_key: str) -> None:
+    global _admin_credentials
+    salt = secrets.token_hex(16)
+    dk = hashlib.pbkdf2_hmac(
+        "sha256", new_key.encode("utf-8"), bytes.fromhex(salt), _ADMIN_KEY_ITERATIONS
+    )
+    creds = {
+        "version": 1,
+        "salt": salt,
+        "iterations": _ADMIN_KEY_ITERATIONS,
+        "hash": dk.hex(),
+        "updatedAt": _now_iso(),
+    }
+    path = _admin_creds_file()
+    tmp = f"{path}.tmp"
+    with open(tmp, "w") as f:
+        json.dump(creds, f)
+    os.replace(tmp, path)
+    _admin_credentials = creds
+
+
+def _drop_admin_credentials() -> None:
+    global _admin_credentials
+    _admin_credentials = {}
+    try:
+        path = _admin_creds_file()
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# 🐢 RATE LIMITING — simple in-memory sliding window per key (IP+route).
+# Protects auth + emergency endpoints from brute force / abuse.
+# ---------------------------------------------------------------------------
+_RATE_BUCKETS: Dict[str, List[float]] = {}
+_RATE_LOCK = threading.Lock()
+
+
+def rate_limited(key: str, limit: int = 10, window_seconds: int = 60) -> bool:
+    now = time.time()
+    with _RATE_LOCK:
+        bucket = [t for t in _RATE_BUCKETS.get(key, []) if now - t < window_seconds]
+        if len(bucket) >= limit:
+            _RATE_BUCKETS[key] = bucket
+            return True
+        bucket.append(now)
+        _RATE_BUCKETS[key] = bucket
+        return False
+
+
+def client_key(request: Request) -> str:
+    return request.client.host if request.client else "unknown"
 
 # ---------------------------------------------------------------------------
 # Optional Supabase Postgres connection
@@ -439,6 +657,196 @@ _load_share_links_from_disk()
 _init_video_chunk_id_counter()
 
 
+# ---------------------------------------------------------------------------
+# 💾 CORE-DATA PERSISTENCE — users, trips and emergencies are written to
+# JSON files inside PERSIST_DIR after every change and rehydrated at boot.
+# This is the always-on fallback (same as share links) so a Render free-tier
+# restart never wipes a signed-up account, ride history or alert.
+# ---------------------------------------------------------------------------
+def _json_path(name: str) -> Optional[str]:
+    return os.path.join(PERSIST_DIR, name) if PERSIST_DIR else None
+
+
+USERS_FILE = _json_path("users.json")
+TRIPS_FILE = _json_path("trips.json")
+EMERGENCIES_FILE = _json_path("emergencies.json")
+DRIVER_APPLICATIONS_FILE = _json_path("driver_applications.json")
+DRIVER_APPLICATIONS: List[Dict[str, Any]] = []
+_DRIVER_APP_COUNTER = {"seq": 0}
+DRIVER_ALERTS_FILE = _json_path("driver_alerts.json")
+DRIVER_ALERTS: List[Dict[str, Any]] = []
+# Rider → company support/help requests (report a driver, questions, lost items).
+SUPPORT_REQUESTS_FILE = _json_path("support_requests.json")
+SUPPORT_REQUESTS: List[Dict[str, Any]] = []
+# Vault for driver-uploaded verification documents (licence / vehicle / police).
+DRIVER_DOCS_DIR = os.environ.get("DRIVER_DOCS_DIR") or (
+    os.path.join(PERSIST_DIR, "driver_docs") if PERSIST_DIR else os.path.abspath("driver_docs")
+)
+os.makedirs(DRIVER_DOCS_DIR, exist_ok=True)
+MAX_DOC_BYTES = 12 * 1024 * 1024  # 12 MB per document
+ALLOWED_DOC_TYPES = {"image/jpeg", "image/png", "image/webp", "application/pdf"}
+
+# 🔍 Automatic document screening (Pillow, server-side).
+# This is a HONEST quick check — valid image, minimum resolution, sensible
+# aspect ratio, duplicate-photo detection. It does NOT claim to read text or
+# identify the document type; the owner always makes the final judgement.
+try:
+    from PIL import Image as _PILImage  # type: ignore
+    HAVE_PIL = True
+except Exception:  # pragma: no cover - Pillow should be installed
+    HAVE_PIL = False
+
+# Minimum clarity: at least this many pixels on the long side.
+DOC_MIN_LONG = 480
+# Ratio per document type that looks plausible for a real photo of that item.
+_DOC_RATIO_RANGE = {
+    "licence": (0.95, 3.4),           # ID card / licence = wide card or landscape photo
+    "vehicle": (0.55, 3.0),           # car photos: landscape or portrait
+    "police_certificate": (0.5, 2.2), # A4-style certificate
+}
+
+
+def _verify_doc_bytes(doc_type: str, data: bytes, content_type: str) -> Dict[str, Any]:
+    """Returns {status: OK|REVIEW|REJECTED, issues: [...], width, height, ratio}."""
+    issues: List[str] = []
+    width = height = ratio = None
+    if content_type == "application/pdf":
+        if not data.startswith(b"%PDF-"):
+            issues.append("File is not a valid PDF.")
+            return {"status": "REJECTED", "issues": issues, "width": None, "height": None, "ratio": None}
+        return {"status": "OK", "issues": [], "width": None, "height": None, "ratio": None}
+
+    if not HAVE_PIL:
+        issues.append("Automatic image scan unavailable — owner must review manually.")
+        return {"status": "REVIEW", "issues": issues, "width": None, "height": None, "ratio": None}
+
+    try:
+        from io import BytesIO
+        with _PILImage.open(BytesIO(data)) as img:
+            width, height = img.size
+            img.verify()
+    except Exception:
+        issues.append("File is not a readable photo (wrong file or corrupted upload).")
+        return {"status": "REJECTED", "issues": issues, "width": None, "height": None, "ratio": None}
+
+    long_side = max(width or 0, height or 0)
+    if long_side < DOC_MIN_LONG or (width or 0) < 200 or (height or 0) < 150:
+        issues.append(
+            f"Photo is too small ({width or 0}x{height or 0} px). Upload a clear photo — min {DOC_MIN_LONG} px on the long side."
+        )
+        return {"status": "REJECTED", "issues": issues, "width": width, "height": height, "ratio": None}
+
+    ratio = round(width / height, 3) if height else None
+    lo, hi = _DOC_RATIO_RANGE.get(doc_type, (0.5, 3.4))
+    if ratio is not None and not (lo <= ratio <= hi):
+        issues.append(
+            f"Unusual photo shape ({width}x{height} px, ratio {ratio}). "
+            f"Expected {doc_type.replace('_', ' ')} photo; please double-check it shows the right document."
+        )
+        return {"status": "REVIEW", "issues": issues, "width": width, "height": height, "ratio": ratio}
+
+    return {"status": "OK", "issues": [], "width": width, "height": height, "ratio": ratio}
+
+
+def _load_list_from_disk(path: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else None
+    except Exception as e:
+        log.warning("⚠️ Could not load %s: %s", path, e)
+        return None
+
+
+def _save_list_to_disk(path: Optional[str], items: List[Dict[str, Any]]) -> None:
+    if not path:
+        return
+    try:
+        tmp_path = f"{path}.tmp"
+        with open(tmp_path, "w") as f:
+            json.dump(items, f, default=str)
+        os.replace(tmp_path, path)
+    except Exception as e:
+        log.warning("⚠️ Could not persist %s: %s", path, e)
+
+
+def _restore_core_data() -> None:
+    """Rehydrate USERS / TRIPS / EMERGENCIES / DRIVER_APPLICATIONS from disk,
+    then bump each id counter past the highest stored id so ids never collide."""
+    loaded_users = _load_list_from_disk(USERS_FILE)
+    if loaded_users:
+        USERS.clear()
+        USERS.extend(loaded_users)
+        log.info("💾 Restored %d user(s) from disk", len(USERS))
+        _next_id["user"] = max([int(u.get("id", 0)) for u in USERS] or [0]) + 1
+
+    loaded_trips = _load_list_from_disk(TRIPS_FILE)
+    if loaded_trips:
+        TRIPS.clear()
+        TRIPS.extend(loaded_trips)
+        log.info("💾 Restored %d trip(s) from disk", len(TRIPS))
+        _next_id["trip"] = max([int(t.get("id", 0)) for t in TRIPS] or [0]) + 1
+
+    loaded_emergencies = _load_list_from_disk(EMERGENCIES_FILE)
+    if loaded_emergencies:
+        EMERGENCIES.clear()
+        EMERGENCIES.extend(loaded_emergencies)
+        log.info("💾 Restored %d emergency alert(s) from disk", len(EMERGENCIES))
+        _next_id["emergency"] = max([int(e.get("id", 0)) for e in EMERGENCIES] or [0]) + 1
+
+    loaded_apps = _load_list_from_disk(DRIVER_APPLICATIONS_FILE)
+    if loaded_apps:
+        DRIVER_APPLICATIONS.clear()
+        DRIVER_APPLICATIONS.extend(loaded_apps)
+        log.info("💾 Restored %d driver application(s) from disk", len(DRIVER_APPLICATIONS))
+        _DRIVER_APP_COUNTER["seq"] = max(
+            [int((a.get("reference") or "").split("-")[-1] or 0) for a in DRIVER_APPLICATIONS] or [0]
+        )
+
+    loaded_alerts = _load_list_from_disk(DRIVER_ALERTS_FILE)
+    if loaded_alerts:
+        DRIVER_ALERTS.clear()
+        DRIVER_ALERTS.extend(loaded_alerts)
+        log.info("💾 Restored %d driver protection alert(s) from disk", len(DRIVER_ALERTS))
+
+    loaded_support = _load_list_from_disk(SUPPORT_REQUESTS_FILE)
+    if loaded_support:
+        SUPPORT_REQUESTS.clear()
+        SUPPORT_REQUESTS.extend(loaded_support)
+        log.info("💾 Restored %d support request(s) from disk", len(SUPPORT_REQUESTS))
+
+
+def _persist_core_data(which: str = "all") -> None:
+    if which in ("all", "users"):
+        _save_list_to_disk(USERS_FILE, USERS)
+    if which in ("all", "trips"):
+        _save_list_to_disk(TRIPS_FILE, TRIPS)
+    if which in ("all", "emergencies"):
+        _save_list_to_disk(EMERGENCIES_FILE, EMERGENCIES)
+    if which in ("all", "applications"):
+        _save_list_to_disk(DRIVER_APPLICATIONS_FILE, DRIVER_APPLICATIONS)
+    if which in ("all", "driver_alerts"):
+        _save_list_to_disk(DRIVER_ALERTS_FILE, DRIVER_ALERTS)
+    if which in ("all", "support_requests"):
+        _save_list_to_disk(SUPPORT_REQUESTS_FILE, SUPPORT_REQUESTS)
+
+
+def _next_driver_application_reference() -> str:
+    try:
+        from zoneinfo import ZoneInfo
+        year = datetime.now(ZoneInfo("Asia/Kolkata")).year
+    except Exception:
+        year = datetime.now(timezone.utc).year
+    _DRIVER_APP_COUNTER["seq"] += 1
+    return f"DRV-{year}-{_DRIVER_APP_COUNTER['seq']:06d}"
+
+
+_restore_core_data()
+_load_admin_credentials()
+
+
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
@@ -510,6 +918,89 @@ def _persist_share_link(link: Dict[str, Any]) -> None:
         log.warning("⚠️ Could not persist share link to Postgres: %s", e)
 
 
+# ---------------------------------------------------------------------------
+# 🏷️ RIDE IDs — every ride gets a human-friendly code like SC-2026-000184.
+# The sequence is persisted to disk so codes never repeat after a restart.
+# ---------------------------------------------------------------------------
+RIDE_CODE_FILE = os.path.join(PERSIST_DIR, "ride_counter.json") if PERSIST_DIR else None
+_RIDE_CODE_STATE = {"seq": 183}  # first generated code = SC-<year>-000184
+
+
+def _load_ride_counter() -> None:
+    if not RIDE_CODE_FILE or not os.path.exists(RIDE_CODE_FILE):
+        return
+    try:
+        with open(RIDE_CODE_FILE, "r") as f:
+            data = json.load(f)
+        if isinstance(data.get("seq"), int):
+            _RIDE_CODE_STATE["seq"] = max(_RIDE_CODE_STATE["seq"], data["seq"])
+            log.info("🏷️ Ride ID counter resumed at %d", _RIDE_CODE_STATE["seq"])
+    except Exception as e:
+        log.warning("⚠️ Could not load ride counter: %s", e)
+
+
+def _next_ride_code() -> str:
+    try:
+        from zoneinfo import ZoneInfo
+        year = datetime.now(ZoneInfo("Asia/Kolkata")).year
+    except Exception:
+        year = datetime.now(timezone.utc).year
+    _RIDE_CODE_STATE["seq"] += 1
+    seq = _RIDE_CODE_STATE["seq"]
+    if RIDE_CODE_FILE:
+        try:
+            with open(RIDE_CODE_FILE, "w") as f:
+                json.dump(_RIDE_CODE_STATE, f)
+        except Exception:
+            pass
+    return f"SC-{year}-{seq:06d}"
+
+
+# Ride lifecycle. Every trip moves through these states:
+# REQUESTED -> DRIVER_ASSIGNED -> DRIVER_ACCEPTED -> DRIVER_ARRIVING
+#           -> RIDE_STARTED -> IN_PROGRESS -> COMPLETED
+# (DRIVER_ASSIGNED is the state a fresh booking lands in — a driver is
+#  matched immediately by the demo backend.)
+RIDE_LIFECYCLE = [
+    "REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "DRIVER_ARRIVING",
+    "RIDE_STARTED", "IN_PROGRESS", "COMPLETED",
+]
+ACTIVE_RIDE_STATUSES = {"REQUESTED", "DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "DRIVER_ARRIVING", "RIDE_STARTED", "IN_PROGRESS", "DANGER"}
+
+ALLOWED_TRANSITIONS: Dict[str, set] = {
+    "REQUESTED": {"DRIVER_ASSIGNED", "CANCELLED"},
+    "DRIVER_ASSIGNED": {"DRIVER_ACCEPTED", "CANCELLED"},
+    "DRIVER_ACCEPTED": {"DRIVER_ARRIVING", "CANCELLED"},
+    "DRIVER_ARRIVING": {"RIDE_STARTED", "CANCELLED"},
+    "RIDE_STARTED": {"IN_PROGRESS", "DANGER"},
+    "IN_PROGRESS": {"COMPLETED", "DANGER"},
+    "COMPLETED": set(),
+    "DANGER": {"COMPLETED", "CANCELLED", "IN_PROGRESS"},
+    "CANCELLED": set(),
+    # Legacy statuses from the old UI keep working
+    "PENDING": {"DRIVER_ASSIGNED", "DRIVER_ACCEPTED", "CANCELLED", "DANGER"},
+    "ON_TRIP": {"IN_PROGRESS", "COMPLETED", "DANGER"},
+}
+
+
+def _assign_driver_to_trip(trip: Dict[str, Any]) -> None:
+    """Attach a verified driver to the trip (demo: random from DRIVERS)."""
+    if trip.get("driver") or not DRIVERS:
+        return
+    d = random.choice(DRIVERS)
+    trip["driver"] = {
+        "id": d.get("id"),
+        "name": d.get("name"),
+        "rating": d.get("rating"),
+        "plate": d.get("plate"),
+        "carModel": d.get("carModel"),
+        "phone": d.get("phone"),
+        "dl": d.get("dl"),
+    }
+    trip["etaMinutes"] = random.choice([3, 4, 5, 6, 7, 8])
+    trip["driverAssignedAt"] = _now_iso()
+
+
 def seed_samples(force: bool = False) -> None:
     """Populate drivers / users / trips if empty (or when force=True)."""
     global _next_id
@@ -529,41 +1020,65 @@ def seed_samples(force: bool = False) -> None:
 
     if force or not USERS:
         USERS.clear()
+        # Demo account. The password is stored as a PBKDF2 hash, never
+        # plaintext. Demo credentials: aayushi@example.com / smartcab123
         USERS.append({
             "id": 1,
             "name": "Aayushi S.",
             "email": "aayushi@example.com",
             "phone": "+91 98765 43210",
+            "passwordHash": hash_password("smartcab123"),
+            "savedAddresses": [
+                {"label": "Home", "address": "Chandlodia, Ahmedabad", "lat": 23.1033, "lng": 72.5930},
+                {"label": "Work", "address": "Kalupur Railway Station, Ahmedabad", "lat": 23.0283, "lng": 72.5924},
+            ],
+            "emergencyContacts": [
+                {"name": "Mom", "phone": "+91 98765 11111"},
+                {"name": "Rohan (brother)", "phone": "+91 98765 22222"},
+            ],
         })
         _next_id["user"] = 2
 
     if force or not TRIPS:
         TRIPS.clear()
         sample_trips = [
-            {"riderName": "Aayushi S.", "pickupLocation": "Kalupur Railway Station",  "dropoffLocation": "Ahmedabad International Airport", "distanceKm": 9.2,  "fare": 165, "status": "COMPLETED"},
-            {"riderName": "Aayushi S.", "pickupLocation": "Saraspur",                  "dropoffLocation": "Gota",                             "distanceKm": 12.4, "fare": 220, "status": "COMPLETED"},
-            {"riderName": "Aayushi S.", "pickupLocation": "Chandlodia",                "dropoffLocation": "Delhi Airport",                    "distanceKm": 18.7, "fare": 290, "status": "COMPLETED"},
+            {"riderName": "Aayushi S.", "pickupLocation": "Kalupur Railway Station",  "dropoffLocation": "Ahmedabad International Airport", "distanceKm": 9.2,  "fare": 165, "status": "COMPLETED", "selectedCar": "SmartMini"},
+            {"riderName": "Aayushi S.", "pickupLocation": "Saraspur",                  "dropoffLocation": "Gota",                             "distanceKm": 12.4, "fare": 220, "status": "COMPLETED", "selectedCar": "SmartSedan"},
+            {"riderName": "Aayushi S.", "pickupLocation": "Chandlodia",                "dropoffLocation": "Delhi Airport",                    "distanceKm": 18.7, "fare": 290, "status": "COMPLETED", "selectedCar": "SmartSUV"},
         ]
         for t in sample_trips:
             t["id"] = _next_id["trip"]
             t["createdAt"] = _now_iso()
+            t["rideCode"] = _next_ride_code()
+            t["userId"] = 1
+            _assign_driver_to_trip(t)
             TRIPS.append(t)
             _next_id["trip"] += 1
 
 
 # Seed once at boot so /api/drivers etc always return something
+_load_ride_counter()
 seed_samples(force=False)
 
 
 # ---------------------------------------------------------------------------
 # FastAPI app + CORS
 # ---------------------------------------------------------------------------
-app = FastAPI(title="SmartCab AI Security Service", version="2.0.0")
+app = FastAPI(title="Smart Security AI Cab Security Service", version="3.1.0")
 
+# CORS is controlled by SMARTCAB_CORS_ORIGINS (comma-separated). It defaults
+# to "*" for local dev / sandbox previews, but production MUST set it to the
+# real frontend origin. Bearer tokens are used for auth (no cookies), so
+# allow_credentials stays False — this is both safer and lets "*" work.
+CORS_ORIGINS = [
+    o.strip() for o in os.environ.get("SMARTCAB_CORS_ORIGINS", "*").split(",") if o.strip()
+]
+if CORS_ORIGINS == ["*"]:
+    log.warning("🔐 CORS is wide open (*). Set SMARTCAB_CORS_ORIGINS to your Vercel URL in production.")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -686,6 +1201,105 @@ class EmergencyCreate(BaseModel):
     reason: Optional[str] = "Manual SOS"
     lat: Optional[float] = None
     lng: Optional[float] = None
+    # New: full alert context so the Safety Center can render the complete
+    # emergency state (ride ID, driver, vehicle, contacts).
+    rideCode: Optional[str] = None
+    driverName: Optional[str] = ""
+    carPlate: Optional[str] = ""
+    pickup: Optional[str] = ""
+    dropoff: Optional[str] = ""
+    contacts: Optional[List[Dict[str, str]]] = None
+    silent: Optional[bool] = False
+
+
+class ShareRideRequest(BaseModel):
+    linkId: Optional[str] = None
+    bookingId: Optional[Union[str, int]] = None
+    rideCode: Optional[str] = None
+    riderName: Optional[str] = ""
+    driverName: Optional[str] = ""
+    carPlate: Optional[str] = ""
+    carModel: Optional[str] = ""
+    pickup: Optional[str] = ""
+    dropoff: Optional[str] = ""
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+    contacts: Optional[List[Dict[str, str]]] = None
+    notifyContacts: Optional[bool] = True
+
+
+class NotifyContactsRequest(BaseModel):
+    linkId: str
+    rideCode: Optional[str] = None
+    riderName: Optional[str] = ""
+    driverName: Optional[str] = ""
+    carPlate: Optional[str] = ""
+    dropoff: Optional[str] = ""
+    contacts: List[Dict[str, str]]
+
+
+def _preview_sms_message(req: Dict[str, Any]) -> str:
+    """Build the exact SMS a trusted contact would receive. Rendered in the
+    app as a preview when no SMS provider is configured."""
+    return (
+        f"🚕 A Smart Security AI Cab ride has started.\n"
+        f"{req.get('riderName') or 'Your loved one'}'s ride\n"
+        f"Driver: {req.get('driverName') or 'Verified driver'}\n"
+        f"Vehicle: {req.get('carPlate') or 'Smart Security AI Cab'}\n"
+        f"Destination: {req.get('dropoff') or '—'}\n"
+        f"Track: {req.get('trackUrl') or ''}\n"
+        f"Ride ID: {req.get('rideCode') or '—'}"
+    )
+
+
+def _send_notifications(req: Dict[str, Any]) -> Dict[str, Any]:
+    """Notify emergency contacts. If Twilio env vars are configured, send a
+    real SMS through the Twilio REST API; otherwise return a message preview
+    so the app never pretends SMS was sent when it wasn't."""
+    twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
+    twilio_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
+    twilio_from = os.environ.get("TWILIO_FROM_NUMBER", "")
+    message = _preview_sms_message(req)
+    contacts = req.get("contacts") or []
+
+    if twilio_sid and twilio_token and twilio_from:
+        import urllib.parse
+        import urllib.request
+        sent = []
+        for c in contacts:
+            phone = (c.get("phone") or "").strip()
+            if not phone:
+                continue
+            try:
+                data = urllib.parse.urlencode({
+                    "To": phone,
+                    "From": twilio_from,
+                    "Body": message,
+                }).encode("ascii")
+                auth = base64.b64encode(f"{twilio_sid}:{twilio_token}".encode()).decode("ascii")
+                url = f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json"
+                req_ = urllib.request.Request(url, data=data, headers={
+                    "Authorization": f"Basic {auth}",
+                    "Content-Type": "application/x-www-form-urlencoded",
+                })
+                with urllib.request.urlopen(req_, timeout=10) as resp:
+                    resp.read()
+                sent.append({"name": c.get("name", ""), "phone": phone, "delivered": True})
+            except Exception as e:
+                log.warning("⚠️ Twilio send to %s failed: %s", phone, e)
+                sent.append({"name": c.get("name", ""), "phone": phone, "delivered": False, "error": str(e)[:120]})
+        return {"transport": "twilio", "contacts": sent, "message": message}
+
+    # No SMS provider configured — return the preview honestly.
+    return {
+        "transport": "preview",
+        "contacts": [
+            {"name": c.get("name", ""), "phone": c.get("phone", ""), "delivered": False, "preview": True}
+            for c in contacts
+        ],
+        "message": message,
+        "note": "SMS provider (Twilio) is not configured, so no messages were sent. Add TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER to enable real SMS.",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -694,7 +1308,7 @@ class EmergencyCreate(BaseModel):
 @app.get("/")
 def home():
     return {
-        "message": "SmartCab AI Security Service is Running.",
+        "message": "Smart Security AI Cab Security Service is Running.",
         "version": "2.2.0",
         "database": "connected" if db_enabled else "in-memory",
         "endpoints": [
@@ -712,6 +1326,9 @@ def home():
 @app.get("/api/health")
 def health():
     return {
+        "version": "3.2.0",
+        "keyResetFlag": os.environ.get("SMARTCAB_ADMIN_KEY_RESET", "").lower() in ("1", "true", "yes"),
+        "keyHashActive": bool(_admin_credentials.get("hash")),
         "status": "ok",
         "database": "connected" if db_enabled else "in-memory",
         "share_links_count": len(SHARE_LINKS),
@@ -724,9 +1341,10 @@ def health():
 
 @app.get("/api/debug/share_links")
 def debug_share_links():
-    """Debug endpoint: lists every on-disk JSON file + the in-memory
-    SHARE_LINKS dict. Used to verify the file persistence is working.
-    Safe to expose — no secrets, just link metadata."""
+    """Debug endpoint (dev only): lists on-disk + in-memory share links.
+    Disabled unless SMARTCAB_DEBUG=true."""
+    if not SMARTCAB_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
     files = []
     for path in _all_persist_files():
         rec = {"path": path, "exists": os.path.exists(path), "size": 0, "keys": []}
@@ -749,9 +1367,9 @@ def debug_share_links():
 
 @app.post("/api/debug/test_save")
 def debug_test_save():
-    """Force-write a test file to ALL candidate paths. Returns which
-    paths were actually writable. Useful to diagnose persistence issues
-    without having to book a real ride."""
+    """Debug endpoint (dev only). Disabled unless SMARTCAB_DEBUG=true."""
+    if not SMARTCAB_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
     results = []
     payload = json.dumps({"test": "hello from smartcab", "ts": _now_iso()})
     for cand in PERSIST_CANDIDATES:
@@ -782,10 +1400,9 @@ def debug_test_save():
 
 @app.post("/api/debug/create_test_link")
 def debug_create_test_link():
-    """Create a real test share link with realistic Ahmedabad data so
-    the rider can test the live-tracking flow without doing the full
-    booking + Live Guard + Share Live Location dance. Returns the
-    linkId so the caller can open /track/<linkId> in another tab."""
+    """Debug endpoint (dev only). Disabled unless SMARTCAB_DEBUG=true."""
+    if not SMARTCAB_DEBUG:
+        raise HTTPException(status_code=404, detail="Not found")
     link_id = f"RIDE_TEST_{uuid.uuid4().hex[:10]}"
     link = {
         "linkId": link_id,
@@ -816,8 +1433,9 @@ def debug_create_test_link():
 # ---------------------------------------------------------------------------
 # Admin
 # ---------------------------------------------------------------------------
-@app.api_route("/api/admin/seed", methods=["GET", "POST"])
+@app.api_route("/api/admin/seed", methods=["GET", "POST"], dependencies=[Depends(require_admin)])
 def admin_seed():
+    """Reseed demo data. Requires X-Admin-Key."""
     seed_samples(force=True)
     return {
         "status": "ok",
@@ -852,6 +1470,240 @@ def get_driver(driver_id: int):
 
 
 # ---------------------------------------------------------------------------
+# 🚗 DRIVER APPLICATION — "Apply to drive" flow
+# ---------------------------------------------------------------------------
+class DriverApplicationCreate(BaseModel):
+    fullName: str
+    phone: str
+    email: Optional[str] = ""
+    city: str
+    vehicleType: str  # SmartMini / SmartSedan / SmartSUV / SmartBike
+    licenseNumber: str
+    experienceYears: Optional[float] = 0
+    ownVehicle: Optional[bool] = False
+    agreeTerms: Optional[bool] = False
+    # 🛡️ Safety screening — the driver must declare their record; supporting
+    # documents (licence/vehicle/police certificate) are uploaded afterwards.
+    criminalRecordDeclaration: Optional[bool] = False
+    policeVerificationNumber: Optional[str] = ""
+
+
+@app.post("/api/drivers/apply")
+def apply_driver(payload: DriverApplicationCreate, request: Request):
+    """Accept a driver application. Creates a reference like DRV-2026-000001,
+    stores it (persisted to disk) and returns the application + next steps.
+    An admin later reviews it in /admin and can approve it into the fleet."""
+    if rate_limited(f"driver-apply:{client_key(request)}", limit=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many applications. Please wait a minute.")
+
+    full_name = (payload.fullName or "").strip()
+    phone = (payload.phone or "").strip()
+    city = (payload.city or "").strip()
+    license_number = (payload.licenseNumber or "").strip().upper()
+    if not full_name or not phone or not city:
+        raise HTTPException(status_code=400, detail="Full name, phone number and city are required.")
+    if len(phone) < 7:
+        raise HTTPException(status_code=400, detail="Please enter a valid phone number.")
+    if len(license_number) < 5:
+        raise HTTPException(status_code=400, detail="Please enter a valid driving licence number.")
+    vehicle_type = payload.vehicleType or "SmartMini"
+    if vehicle_type not in ("SmartBike", "SmartMini", "SmartSedan", "SmartSUV"):
+        vehicle_type = "SmartMini"
+    if not payload.agreeTerms:
+        raise HTTPException(status_code=400, detail="Please accept the Driver Terms to continue.")
+    if not payload.criminalRecordDeclaration:
+        raise HTTPException(status_code=400, detail="Please confirm your criminal-record declaration to continue.")
+
+    application = {
+        "id": max([int(a.get("id", 0)) for a in DRIVER_APPLICATIONS] or [0]) + 1,
+        "reference": _next_driver_application_reference(),
+        "fullName": full_name,
+        "phone": phone,
+        "email": (payload.email or "").strip(),
+        "city": city,
+        "vehicleType": vehicle_type,
+        "licenseNumber": license_number,
+        "experienceYears": float(payload.experienceYears or 0),
+        "ownVehicle": bool(payload.ownVehicle),
+        "criminalRecordDeclaration": bool(payload.criminalRecordDeclaration),
+        "policeVerificationNumber": (payload.policeVerificationNumber or "").strip(),
+        "documents": [],       # filled by /api/drivers/apply/{id}/documents
+        "backgroundCheck": {   # set by an admin after reviewing documents
+            "status": "PENDING",
+            "note": "",
+            "checkedAt": None,
+        },
+        "status": "PENDING",
+        "createdAt": _now_iso(),
+    }
+    DRIVER_APPLICATIONS.append(application)
+    _persist_core_data("applications")
+    log.info("🚗 Driver application %s from %s (%s)", application["reference"], full_name, city)
+    return {
+        "status": "ok",
+        "application": application,
+        "nextSteps": [
+            "Our team reviews your application (usually within 24–48 hours).",
+            "Upload your driving licence, vehicle and police-clearance documents (next screen).",
+            "We verify your documents and background record.",
+            "Once cleared & approved, you'll receive your onboarding link and can start earning.",
+        ],
+    }
+
+
+@app.get("/api/drivers/application/{reference}")
+def get_driver_application(reference: str):
+    """Public status lookup by reference (e.g. DRV-2026-000004)."""
+    app = next((a for a in DRIVER_APPLICATIONS if (a.get("reference") or "").upper() == reference.upper()), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found.")
+    # Never return the driving licence back to the public lookup.
+    safe = {k: v for k, v in app.items() if k != "licenseNumber"}
+    return {"status": "ok", "application": safe}
+
+
+def _find_driver_application(app_id: int) -> Dict[str, Any]:
+    app = next((a for a in DRIVER_APPLICATIONS if a.get("id") == app_id), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="application not found")
+    return app
+
+
+# 🛡️ DRIVER VETTING DOCUMENTS — licence photo / vehicle photo / police certificate
+def _save_driver_doc(app_id: int, doc_type: str, file: UploadFile) -> Dict[str, Any]:
+    data = file.file.read(MAX_DOC_BYTES + 1)
+    if not data or len(data) < 50:
+        raise HTTPException(status_code=400, detail=f"{doc_type}: file is empty.")
+    if len(data) > MAX_DOC_BYTES:
+        raise HTTPException(status_code=400, detail=f"{doc_type}: file too large (max 12 MB).")
+    content_type = (file.content_type or "").lower()
+    if content_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(status_code=400, detail=f"{doc_type}: only JPG, PNG, WebP or PDF allowed.")
+    # Basename + UUID so a malicious filename can never escape the vault.
+    ext = ".pdf" if content_type == "application/pdf" else ".jpg"
+    safe_name = f"app{app_id}_{doc_type}_{int(time.time())}_{uuid.uuid4().hex[:8]}{ext}"
+    abs_dir = os.path.join(DRIVER_DOCS_DIR, f"app_{app_id}")
+    os.makedirs(abs_dir, exist_ok=True)
+    path = os.path.join(abs_dir, safe_name)
+
+    # 🔍 AUTO-CHECK the upload BEFORE storing: readable image, resolution,
+    # aspect ratio + duplicate-photo detection (same file used twice).
+    check = _verify_doc_bytes(doc_type, data, content_type)
+    try:
+        sha = hashlib.sha256(data).hexdigest()
+    except Exception:
+        sha = ""
+    label = {"licence": "Driving licence", "vehicle": "Vehicle photo",
+             "police_certificate": "Police clearance"}.get(doc_type, doc_type)
+    if sha:
+        for other in app_docs(app_id):
+            if other.get("type") == doc_type:
+                continue
+            if other.get("sha256") == sha and check.get("status") != "REJECTED":
+                check["status"] = "REJECTED"
+                check["issues"].append(
+                    f"This is the same photo as the {other.get('label', 'other')} upload. "
+                    f"Please upload a separate, real photo of your {label.lower()}."
+                )
+                break
+
+    with open(path, "wb") as f:
+        f.write(data)
+    rec = {
+        "id": len(app_docs(app_id)) + 1,
+        "type": doc_type,          # licence / vehicle / police_certificate
+        "label": label,
+        "filename": safe_name,
+        "path": path,
+        "size": len(data),
+        "contentType": content_type,
+        "uploadedAt": _now_iso(),
+        "sha256": sha,
+        "check": check,
+    }
+    log.info(
+        "🔍 Doc %s for app #%s → %s%s",
+        doc_type, app_id, check.get("status"),
+        f" ({', '.join(check.get('issues', []))})" if check.get("issues") else "",
+    )
+    return rec
+
+
+def app_docs(app_id: int) -> List[Dict[str, Any]]:
+    return _find_driver_application(app_id).get("documents", [])
+
+
+@app.post("/api/drivers/apply/{app_id}/documents")
+async def upload_driver_documents(
+    app_id: int,
+    licencePhoto: UploadFile = File(None),
+    vehiclePhoto: UploadFile = File(None),
+    policeCertificate: UploadFile = File(None),
+    request: Request = None,
+):
+    """Driver uploads verification documents after applying. Files are stored
+    in a private vault (never served publicly) and reviewed by an admin."""
+    app = _find_driver_application(app_id)
+    if app.get("status") in ("APPROVED", "REJECTED"):
+        raise HTTPException(status_code=400, detail="Application already reviewed.")
+
+    uploaded = []
+    for doc_type, file in (("licence", licencePhoto), ("vehicle", vehiclePhoto),
+                           ("police_certificate", policeCertificate)):
+        if file is None or not file.filename:
+            continue
+        rec = _save_driver_doc(app_id, doc_type, file)
+        # Replace any previous doc of the same type.
+        app["documents"] = [d for d in app.get("documents", []) if d.get("type") != doc_type]
+        app["documents"].append(rec)
+        uploaded.append({k: v for k, v in rec.items() if k != "path"})
+
+    if not uploaded:
+        raise HTTPException(status_code=400, detail="Select at least one document to upload.")
+    _persist_core_data("applications")
+    log.info("🛡️ Driver %s uploaded %d document(s)", app["reference"], len(uploaded))
+    return {"status": "ok", "uploaded": uploaded, "documents": app["documents"]}
+
+
+@app.get("/api/admin/driver-applications/{app_id}/documents/{doc_id}", dependencies=[Depends(require_admin)])
+def download_driver_document(app_id: int, doc_id: int):
+    """Admin-only document view (licence / vehicle / police certificate)."""
+    app = _find_driver_application(app_id)
+    doc = next((d for d in app.get("documents", []) if d.get("id") == doc_id), None)
+    if not doc or not os.path.exists(doc.get("path", "")):
+        raise HTTPException(status_code=404, detail="document not found")
+    from fastapi.responses import FileResponse
+    media = doc.get("contentType") or "application/octet-stream"
+    return FileResponse(doc["path"], media_type=media, filename=doc.get("filename", "document"))
+
+
+class BackgroundCheckUpdate(BaseModel):
+    status: str  # CLEARED | FLAGGED
+    note: Optional[str] = ""
+
+
+@app.post("/api/admin/driver-applications/{app_id}/background-check", dependencies=[Depends(require_admin)])
+def admin_update_background_check(app_id: int, payload: BackgroundCheckUpdate):
+    """Admin reviews the police-clearance certificate & record and marks the
+    background check CLEARED (safe to approve) or FLAGGED (reject)."""
+    app = _find_driver_application(app_id)
+    status = (payload.status or "").upper()
+    if status not in ("CLEARED", "FLAGGED"):
+        raise HTTPException(status_code=400, detail="status must be CLEARED or FLAGGED")
+    app["backgroundCheck"] = {
+        "status": status,
+        "note": (payload.note or "").strip(),
+        "checkedAt": _now_iso(),
+    }
+    if status == "FLAGGED":
+        app["status"] = "REJECTED"
+        app["rejectedAt"] = _now_iso()
+        log.warning("🚫 Driver %s FLAGGED in background check — application rejected", app["reference"])
+    _persist_core_data("applications")
+    return {"status": "ok", "application": app}
+
+
+# ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
 @app.get("/api/users")
@@ -860,21 +1712,25 @@ def list_users():
 
 
 # ---------------------------------------------------------------------------
-# 🔐 AUTH — simple in-memory signup + login. The frontend stores the
-# returned user object in localStorage so the rider stays logged in
-# across page reloads. Passwords are stored in plain text in this
-# demo only — a real product would hash with bcrypt.
+# 🔐 AUTH — passwords hashed with PBKDF2, session via signed Bearer token.
+# Login/signup responses include { ...user, token } — the frontend keeps the
+# token in localStorage and sends `Authorization: Bearer <token>` on every
+# protected API call. Rate-limited to slow brute-force attacks.
 # ---------------------------------------------------------------------------
 @app.post("/api/auth/signup")
-def auth_signup(payload: Dict[str, Any]):
+def auth_signup(payload: Dict[str, Any], request: Request):
+    if rate_limited(f"signup:{client_key(request)}", limit=5, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many signup attempts. Please wait a minute.")
     name = (payload.get("name") or "").strip()
     email = (payload.get("email") or "").strip().lower()
     phone = (payload.get("phone") or "").strip()
     password = payload.get("password") or ""
     if not name or not email or not phone or not password:
         raise HTTPException(status_code=400, detail="All fields are required.")
-    if len(password) < 6:
-        raise HTTPException(status_code=400, detail="Password must be at least 6 characters.")
+    if len(password) < 8:
+        raise HTTPException(status_code=400, detail="Password must be at least 8 characters.")
+    if len(email) > 254 or "@" not in email:
+        raise HTTPException(status_code=400, detail="Please enter a valid email address.")
     if any(u.get("email", "").lower() == email for u in USERS):
         raise HTTPException(status_code=400, detail="An account with that email already exists.")
     new_user = {
@@ -882,37 +1738,76 @@ def auth_signup(payload: Dict[str, Any]):
         "name": name,
         "email": email,
         "phone": phone,
-        "password": password,
+        "passwordHash": hash_password(password),
         "savedAddresses": [],
         "emergencyContacts": [],
         "createdAt": _now_iso(),
     }
     USERS.append(new_user)
     _next_id["user"] += 1
+    _persist_core_data("users")
     log.info("✅ New user signed up: %s (%s)", name, email)
-    # Don't return the password in the response
-    safe_user = {k: v for k, v in new_user.items() if k != "password"}
+    # Never return password fields; return a signed token for the session.
+    safe_user = {k: v for k, v in new_user.items() if k not in ("password", "passwordHash")}
+    safe_user["token"] = create_access_token(new_user)
+    safe_user["tokenType"] = "Bearer"
     return safe_user
 
 
 @app.post("/api/auth/login")
-def auth_login(payload: Dict[str, Any]):
+def auth_login(payload: Dict[str, Any], request: Request):
+    if rate_limited(f"login:{client_key(request)}", limit=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many login attempts. Please wait a minute.")
     email = (payload.get("email") or "").strip().lower()
     password = payload.get("password") or ""
     if not email or not password:
         raise HTTPException(status_code=400, detail="Email and password are required.")
     for u in USERS:
-        if u.get("email", "").lower() == email and u.get("password") == password:
+        if u.get("email", "").lower() != email:
+            continue
+        # Legacy migration: old accounts stored passwords in plain text.
+        # On their next login, hash it and drop the plaintext copy.
+        stored = u.get("passwordHash")
+        if not stored and u.get("password"):
+            ok = secrets.compare_digest(str(u.get("password", "")), password)
+            if ok:
+                u["passwordHash"] = hash_password(password)
+                u.pop("password", None)
+                _persist_core_data("users")
+                log.info("🔐 Migrated legacy plaintext password to PBKDF2 for user %d", u["id"])
+            return_auth = ok
+        else:
+            return_auth = verify_password(password, stored)
+        if return_auth:
             log.info("✅ User logged in: %s", email)
-            safe_user = {k: v for k, v in u.items() if k != "password"}
+            safe_user = {k: v for k, v in u.items() if k not in ("password", "passwordHash")}
+            safe_user["token"] = create_access_token(u)
+            safe_user["tokenType"] = "Bearer"
             return safe_user
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
     raise HTTPException(status_code=401, detail="Invalid email or password.")
 
 
-@app.get("/api/users/{user_id}/trips")
+@app.get("/api/auth/me")
+def auth_me(request: Request):
+    """Validate the current token and return the user (used on app load)."""
+    user = get_auth_user(request)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated.")
+    return {k: v for k, v in user.items() if k not in ("password", "passwordHash")}
+
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    """Stateless tokens cannot be revoked in-memory; clients discard them.
+    This endpoint exists so the frontend flow is explicit and future-proof."""
+    return {"status": "ok", "message": "Logged out. Discard your token on the client."}
+
+
+@app.get("/api/users/{user_id}/trips", dependencies=[Depends(require_own_user)])
 def get_user_trips(user_id: int):
     """Return all trips for a specific user — used by the dashboard
-    Ride History tab so logged-in riders only see their own rides."""
+    Ride History tab and the My Rides page so riders only see their own rides."""
     user_trips = [t for t in TRIPS if t.get("userId") == user_id or t.get("riderId") == user_id]
     # If no userId match, fall back to trips where the rider name matches
     # the user's name (for the demo's pre-seeded data without userId)
@@ -956,30 +1851,31 @@ def _find_user(user_id: int) -> Dict[str, Any]:
     return user
 
 
-@app.get("/api/users/{user_id}/profile")
+@app.get("/api/users/{user_id}/profile", dependencies=[Depends(require_own_user)])
 def get_profile(user_id: int):
     """Fetch a user's profile (without password)."""
     user = _find_user(user_id)
-    return {k: v for k, v in user.items() if k != "password"}
+    return {k: v for k, v in user.items() if k not in ("password", "passwordHash")}
 
 
-@app.put("/api/users/{user_id}/profile")
+@app.put("/api/users/{user_id}/profile", dependencies=[Depends(require_own_user)])
 def update_profile(user_id: int, payload: ProfileUpdate):
     """Update a user's profile fields (name, phone, language, marketing opt-in)."""
     user = _find_user(user_id)
     for field, value in payload.model_dump(exclude_unset=True).items():
         user[field] = value
     log.info("👤 Profile updated for user %d: %s", user_id, list(payload.model_dump(exclude_unset=True).keys()))
-    return {k: v for k, v in user.items() if k != "password"}
+    _persist_core_data("users")
+    return {k: v for k, v in user.items() if k not in ("password", "passwordHash")}
 
 
-@app.get("/api/users/{user_id}/addresses")
+@app.get("/api/users/{user_id}/addresses", dependencies=[Depends(require_own_user)])
 def list_addresses(user_id: int):
     """List a user's saved addresses (Home, Work, etc.)."""
     return _find_user(user_id).get("savedAddresses", [])
 
 
-@app.post("/api/users/{user_id}/addresses")
+@app.post("/api/users/{user_id}/addresses", dependencies=[Depends(require_own_user)])
 def add_address(user_id: int, payload: SavedAddress):
     """Add a new saved address. If the label already exists (e.g. "Home"),
     the old one is replaced so the user always sees one "Home" not two."""
@@ -988,44 +1884,48 @@ def add_address(user_id: int, payload: SavedAddress):
     # Replace if the label already exists
     addresses[:] = [a for a in addresses if a.get("label") != payload.label]
     addresses.append(payload.model_dump())
+    _persist_core_data("users")
     log.info("📍 Address added for user %d: %s", user_id, payload.label)
     return addresses
 
 
-@app.delete("/api/users/{user_id}/addresses/{label}")
+@app.delete("/api/users/{user_id}/addresses/{label}", dependencies=[Depends(require_own_user)])
 def delete_address(user_id: int, label: str):
     """Delete a saved address by its label (e.g. "Home")."""
     user = _find_user(user_id)
     user["savedAddresses"] = [
         a for a in user.get("savedAddresses", []) if a.get("label") != label
     ]
+    _persist_core_data("users")
     log.info("📍 Address deleted for user %d: %s", user_id, label)
     return user["savedAddresses"]
 
 
-@app.get("/api/users/{user_id}/emergency-contacts")
+@app.get("/api/users/{user_id}/emergency-contacts", dependencies=[Depends(require_own_user)])
 def list_emergency_contacts(user_id: int):
     """List a user's saved emergency contacts (for the dashboard)."""
     return _find_user(user_id).get("emergencyContacts", [])
 
 
-@app.post("/api/users/{user_id}/emergency-contacts")
+@app.post("/api/users/{user_id}/emergency-contacts", dependencies=[Depends(require_own_user)])
 def add_emergency_contact(user_id: int, payload: EmergencyContact):
     """Add an emergency contact to the user's profile."""
     user = _find_user(user_id)
     contacts = user.setdefault("emergencyContacts", [])
     contacts.append(payload.model_dump())
+    _persist_core_data("users")
     log.info("🚨 Emergency contact added for user %d: %s", user_id, payload.name)
     return contacts
 
 
-@app.delete("/api/users/{user_id}/emergency-contacts/{phone}")
+@app.delete("/api/users/{user_id}/emergency-contacts/{phone}", dependencies=[Depends(require_own_user)])
 def delete_emergency_contact(user_id: int, phone: str):
     """Delete an emergency contact by phone number."""
     user = _find_user(user_id)
     user["emergencyContacts"] = [
         c for c in user.get("emergencyContacts", []) if c.get("phone") != phone
     ]
+    _persist_core_data("users")
     log.info("🚨 Emergency contact deleted for user %d: %s", user_id, phone)
     return user["emergencyContacts"]
 
@@ -1104,7 +2004,7 @@ def _calc_surge(when: datetime) -> tuple[float, str]:
 
 
 def _estimate_fare(distance_km: float, car_type: str, when: datetime) -> Dict[str, Any]:
-    """Single source of truth for SmartCab pricing. Returns a full breakdown
+    """Single source of truth for Smart Security AI Cab pricing. Returns a full breakdown
     so the frontend can show a transparent receipt."""
     cfg = PRICING_TABLE.get(car_type, PRICING_TABLE["SmartMini"])
     surge, reason = _calc_surge(when)
@@ -1184,7 +2084,7 @@ def get_trip(trip_id: int):
 
 
 @app.post("/api/trips")
-def create_trip(payload: TripCreate):
+def create_trip(payload: TripCreate, request: Request):
     """
     Creates a new trip record. If the frontend didn't pass a `fare` (because
     it relied on the backend's /api/pricing/estimate), we recompute the fare
@@ -1194,6 +2094,24 @@ def create_trip(payload: TripCreate):
     trip = payload.model_dump()
     trip["id"] = _next_id["trip"]
     trip["createdAt"] = _now_iso()
+
+    # Attach the logged-in user when a valid token is supplied (guest
+    # bookings are still allowed for the demo flow).
+    auth_user = get_auth_user(request)
+    if auth_user and not trip.get("userId"):
+        trip["userId"] = auth_user["id"]
+        trip["riderName"] = trip.get("riderName") or auth_user.get("name", "")
+
+    # 🏷️ Every ride gets a human-friendly Ride ID and a driver match.
+    trip["rideCode"] = _next_ride_code()
+    trip["statusHistory"] = [{"status": trip.get("status", "REQUESTED"), "at": _now_iso()}]
+    _assign_driver_to_trip(trip)
+
+    # Normalize the legacy "PENDING" status to the new lifecycle. A booked
+    # ride is immediately matched with a driver, so it lands in DRIVER_ASSIGNED.
+    raw_status = trip.get("status", "REQUESTED")
+    if raw_status in (None, "", "PENDING"):
+        trip["status"] = "DRIVER_ASSIGNED"
 
     # Re-compute the fare server-side if the frontend didn't provide one.
     # This prevents the rider app from accidentally storing a hardcoded
@@ -1221,11 +2139,53 @@ def create_trip(payload: TripCreate):
 
     TRIPS.append(trip)
     _next_id["trip"] += 1
+    _persist_core_data("trips")
     log.info(
-        "🚕 Trip #%d created: %s → %s, %.2f km, ₹%.2f (×%.1f surge)",
-        trip["id"], trip.get("pickupLocation", "?"), trip.get("dropoffLocation", "?"),
+        "🚕 Trip %s (#%d) created: %s → %s, %.2f km, ₹%.2f (×%.1f surge), driver %s",
+        trip["rideCode"], trip["id"], trip.get("pickupLocation", "?"), trip.get("dropoffLocation", "?"),
         trip.get("distanceKm", 0), trip["fare"], trip["surgeMultiplier"],
+        (trip.get("driver") or {}).get("name", "—"),
     )
+    return trip
+
+
+class TripStatusUpdate(BaseModel):
+    status: str
+
+
+@app.post("/api/trips/{trip_id}/status")
+def update_trip_status(trip_id: int, payload: TripStatusUpdate, request: Request):
+    """Advance a ride through the lifecycle with validated transitions."""
+    trip = next((t for t in TRIPS if t.get("id") == trip_id), None)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+
+    # Anyone may update when no user is attached (demo/guest ride);
+    # otherwise the ride owner must be authenticated. Admin calls pass
+    # request=None and are already authorized by require_admin.
+    if trip.get("userId") and request is not None:
+        user = get_auth_user(request)
+        if not user or int(user.get("id", -1)) != int(trip["userId"]):
+            raise HTTPException(status_code=403, detail="Only the ride owner may update this ride.")
+
+    new_status = (payload.status or "").strip().upper()
+    current = trip.get("status", "REQUESTED")
+    if new_status not in ALLOWED_TRANSITIONS:
+        raise HTTPException(status_code=400, detail=f"Unknown status: {new_status}")
+    if current == new_status:
+        return trip
+    if new_status not in ALLOWED_TRANSITIONS.get(current, set()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid transition {current} → {new_status}. Allowed: {sorted(ALLOWED_TRANSITIONS.get(current, set()))}",
+        )
+
+    trip["status"] = new_status
+    trip.setdefault("statusHistory", []).append({"status": new_status, "at": _now_iso()})
+    _persist_core_data("trips")
+    if new_status == "COMPLETED":
+        trip["completedAt"] = _now_iso()
+    log.info("🚕 Trip %s: %s → %s", trip.get("rideCode"), current, new_status)
     return trip
 
 
@@ -1238,12 +2198,42 @@ def create_booking_alias(payload: TripCreate):
 
 
 @app.put("/api/trips/{trip_id}/sos")
-def trigger_sos(trip_id: int):
+def trigger_sos(trip_id: int, request: Request):
+    """SOS workflow: flags the trip DANGER, records the alert, date/time and
+    the ride's saved emergency contacts so the Safety Center can show the
+    full alert state (ride ID, driver, vehicle, location, notification list)."""
     for t in TRIPS:
         if t.get("id") == trip_id:
             t["status"] = "DANGER"
             t["sosAt"] = _now_iso()
-            return t
+            t.setdefault("statusHistory", []).append({"status": "DANGER", "at": t["sosAt"]})
+            contacts = t.get("emergencyContacts") or []
+            user = get_auth_user(request)
+            if user:
+                t["userId"] = t.get("userId") or user["id"]
+                if not contacts:
+                    contacts = user.get("emergencyContacts", [])
+            rec = {
+                "id": _next_id["emergency"],
+                "bookingId": str(t.get("id", "")),
+                "tripId": t.get("id"),
+                "rideCode": t.get("rideCode") or f"SC-{t.get('id')}",
+                "riderName": t.get("riderName", ""),
+                "driverName": (t.get("driver") or {}).get("name", ""),
+                "carPlate": (t.get("driver") or {}).get("plate", ""),
+                "pickup": t.get("pickupLocation", ""),
+                "dropoff": t.get("dropoffLocation", ""),
+                "reason": "Manual SOS",
+                "status": "ACTIVE",
+                "contacts": contacts,
+                "createdAt": t["sosAt"],
+            }
+            EMERGENCIES.append(rec)
+            _next_id["emergency"] += 1
+            _persist_core_data("all")
+            log.warning("🚨 SOS for %s — emergency log %d created", t.get("rideCode"), rec["id"])
+            t["emergencyId"] = rec["id"]
+            return {"trip": t, "emergency": rec}
     raise HTTPException(status_code=404, detail="trip not found")
 
 
@@ -1267,7 +2257,7 @@ def create_share_link(payload: ShareLinkCreate):
         "driverName": payload.driverName or "Verified Driver",
         "driverLicense": payload.driverLicense or "",
         "carPlate": payload.carPlate or "",
-        "carModel": payload.carModel or "SmartCab",
+        "carModel": payload.carModel or "Smart Security AI Cab",
         "pickup": payload.pickup or "Pickup",
         "dropoff": payload.dropoff or "Dropoff",
         "currentLocation": payload.currentLocation or {"lat": 23.0225, "lng": 72.5714},
@@ -1375,7 +2365,7 @@ def ping_link(link_id: str, payload: PingUpdate):
             "driverName": "Verified Driver",
             "driverLicense": "",
             "carPlate": "",
-            "carModel": "SmartCab",
+            "carModel": "Smart Security AI Cab",
             "pickup": "Pickup",
             "dropoff": "Dropoff",
             "currentLocation": {"lat": 23.0225, "lng": 72.5714},
@@ -1469,43 +2459,270 @@ def list_evidence():
 # Emergency
 # ---------------------------------------------------------------------------
 @app.post("/api/emergency")
-def log_emergency(payload: EmergencyCreate):
+def log_emergency(payload: EmergencyCreate, request: Request):
+    """Full emergency workflow: record the alert with ride/driver context,
+    then return the checklist the Safety Center renders (alert created,
+    location recorded, contacts notified)."""
+    if rate_limited(f"emergency:{client_key(request)}", limit=10, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many emergency requests. Please wait a moment.")
+
     rec = payload.model_dump()
     rec["id"] = _next_id["emergency"]
     rec["createdAt"] = _now_iso()
+    rec["status"] = "ACTIVE"
+
+    # Attach the logged-in user + their saved contacts when available.
+    user = get_auth_user(request)
+    if user:
+        rec.setdefault("riderName", user.get("name", ""))
+        if not rec.get("contacts"):
+            rec["contacts"] = user.get("emergencyContacts", [])
+
+    # Link to the trip if we can find it.
+    trip = None
+    try:
+        trip = next((t for t in TRIPS if str(t.get("id")) == str(payload.bookingId)), None)
+    except Exception:
+        trip = None
+    if trip:
+        rec.setdefault("rideCode", trip.get("rideCode"))
+        rec.setdefault("driverName", (trip.get("driver") or {}).get("name", ""))
+        rec.setdefault("carPlate", (trip.get("driver") or {}).get("plate", ""))
+        rec.setdefault("pickup", trip.get("pickupLocation", ""))
+        rec.setdefault("dropoff", trip.get("dropoffLocation", ""))
+        rec.setdefault("lat", (trip.get("driver") or {}).get("lat") if not rec.get("lat") else rec.get("lat"))
+        trip["status"] = "DANGER"
+        trip["sosAt"] = rec["createdAt"]
+
     EMERGENCIES.append(rec)
     _next_id["emergency"] += 1
-    log.warning("🚨 Emergency alert: %s", rec)
+    _persist_core_data("emergencies")
+    log.warning("🚨 Emergency alert #%s created for %s", rec["id"], rec.get("rideCode") or rec.get("bookingId") or "?")
+
+    contacts = rec.get("contacts") or []
+    rec["checklist"] = {
+        "alertCreated": True,
+        "locationRecorded": rec.get("lat") is not None and rec.get("lng") is not None,
+        "contactsNotified": len(contacts) > 0,
+        "contacts": contacts,
+    }
+    rec["quickDial"] = [
+        {"label": "Police (India)", "number": "112"},
+        {"label": "Women Helpline", "number": "181"},
+        {"label": "State Emergency", "number": "108"},
+    ]
+    rec["notice"] = (
+        "This prototype records the alert and notifies your saved contacts "
+        "in-app. It does NOT automatically call emergency services — in a "
+        "real emergency, dial 112."
+    )
     return rec
 
 
+@app.post("/api/safety/share-ride")
+def share_ride(payload: ShareRideRequest, request: Request):
+    """Create a live tracking link for a ride + optionally build the
+    notification message for emergency contacts. Returns the track URL."""
+    link = {
+        "linkId": payload.linkId or f"RIDE_{uuid.uuid4().hex[:10]}",
+        "bookingId": payload.bookingId,
+        "rideCode": payload.rideCode,
+        "riderName": payload.riderName or "Rider",
+        "driverName": payload.driverName or "Verified Driver",
+        "driverLicense": "",
+        "carPlate": payload.carPlate or "",
+        "carModel": payload.carModel or "Smart Security AI Cab",
+        "pickup": payload.pickup or "Pickup",
+        "dropoff": payload.dropoff or "Dropoff",
+        "currentLocation": {"lat": payload.lat or 23.0225, "lng": payload.lng or 72.5714},
+        "status": "ON_ROUTE",
+        "createdAt": _now_iso(),
+        "updatedAt": _now_iso(),
+        "lastPingAt": _now_iso(),
+        "pingCount": 0,
+        "emergencyContacts": payload.contacts or [],
+        "expiresAt": (datetime.now(timezone.utc).replace(microsecond=0) + __import__('datetime').timedelta(hours=24)).isoformat(),
+    }
+    SHARE_LINKS[link["linkId"]] = link
+    _persist_share_link(link)
+
+    response = {"linkId": link["linkId"], "trackUrl": f"/track/{link['linkId']}", "link": link}
+    if payload.notifyContacts and payload.contacts:
+        notify = _send_notifications({
+            "riderName": link["riderName"],
+            "driverName": link["driverName"],
+            "carPlate": link["carPlate"],
+            "dropoff": link["dropoff"],
+            "rideCode": link["rideCode"],
+            "trackUrl": response["trackUrl"],
+            "contacts": payload.contacts,
+        })
+        response["notification"] = notify
+    return response
+
+
+@app.post("/api/safety/notify-contacts")
+def notify_contacts(payload: NotifyContactsRequest, request: Request):
+    """Send (or preview) the ride-sharing SMS to the rider's trusted contacts."""
+    if rate_limited(f"notify:{client_key(request)}", limit=15, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many notification requests. Please wait.")
+    if not payload.contacts:
+        raise HTTPException(status_code=400, detail="No contacts provided.")
+    result = _send_notifications({
+        "riderName": payload.riderName,
+        "driverName": payload.driverName,
+        "carPlate": payload.carPlate,
+        "dropoff": payload.dropoff,
+        "rideCode": payload.rideCode,
+        "trackUrl": f"/track/{payload.linkId}",
+        "contacts": payload.contacts,
+    })
+    result["linkId"] = payload.linkId
+    return result
+
+
 # ---------------------------------------------------------------------------
-# 🤖 DECOY AI MODULE (for the group-project demo only)
+# 🛣️ REAL ROUTE-DEVIATION DETECTION (rule-based, honest by design)
 # ---------------------------------------------------------------------------
-# This endpoint is intentionally a STUB. The real AI/ML engine is being
-# developed in a separate private repo and will be integrated later as a
-# paid upgrade. The response below is hard-coded + random so the demo
-# looks smart without exposing any of the actual models / data pipelines.
-#
-# Group-project graders will see this endpoint exists and works. They will
-# NOT see the proprietary scoring, training data, or model architecture.
+# This is a geometric check, NOT fake random AI:
+#   1. The ride has an expected path (straight line pickup -> dropoff).
+#   2. Every GPS ping is compared to that line.
+#   3. If the vehicle is farther than the threshold (default 500 m), the
+#      check returns a DEVIATION warning with the actual distance.
+# The response explicitly says it is a rule-based check so nobody mistakes
+# it for "AI concluded the rider is in danger". Later, historical GPS
+# points can feed real ML models on top of this signal.
 # ---------------------------------------------------------------------------
+EARTH_RADIUS_M = 6371000.0
+ROUTE_DEVIATION_THRESHOLD_M = 500  # configurable per request
+ROUTE_CHECKS: List[Dict[str, Any]] = []
+
+
+def haversine_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
+    """Great-circle distance between two coordinates, in meters."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    dlat = math.radians(lat2 - lat1)
+    dlng = math.radians(lng2 - lng1)
+    a = math.sin(dlat / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlng / 2) ** 2
+    return 2 * EARTH_RADIUS_M * math.asin(math.sqrt(a))
+
+
+def distance_to_route_m(
+    lat: float, lng: float,
+    start_lat: float, start_lng: float,
+    end_lat: float, end_lng: float,
+) -> float:
+    """Shortest distance from a GPS point to the straight pickup→dropoff line.
+    Uses a local equirectangular projection (accurate for city-scale routes)."""
+    # If start == end, just return the distance to the point.
+    if abs(start_lat - end_lat) < 1e-9 and abs(start_lng - end_lng) < 1e-9:
+        return haversine_m(lat, lng, start_lat, start_lng)
+    lat_ref = math.radians((start_lat + end_lat) / 2)
+    m_per_deg_lat = 111320.0
+    m_per_deg_lng = 111320.0 * math.cos(lat_ref)
+    ax = (lng - start_lng) * m_per_deg_lng
+    ay = (lat - start_lat) * m_per_deg_lat
+    bx = (end_lng - start_lng) * m_per_deg_lng
+    by = (end_lat - start_lat) * m_per_deg_lat
+    b_len_sq = bx * bx + by * by
+    t = max(0.0, min(1.0, (ax * bx + ay * by) / b_len_sq))
+    proj_x, proj_y = t * bx, t * by
+    return math.hypot(ax - proj_x, ay - proj_y)
+
+
+class RouteCheckRequest(BaseModel):
+    pickupLat: Optional[float] = None
+    pickupLng: Optional[float] = None
+    dropoffLat: Optional[float] = None
+    dropoffLng: Optional[float] = None
+    currentLat: Optional[float] = None
+    currentLng: Optional[float] = None
+    rideCode: Optional[str] = None
+    thresholdMeters: Optional[float] = None
+
+
+@app.post("/api/ai/route-safety/check")
+def route_safety_check(payload: RouteCheckRequest):
+    """Compare the vehicle's current GPS position against the expected route."""
+    if payload.currentLat is None or payload.currentLng is None:
+        raise HTTPException(status_code=400, detail="currentLat/currentLng are required.")
+    threshold = payload.thresholdMeters or ROUTE_DEVIATION_THRESHOLD_M
+
+    incomplete_route = payload.pickupLat is None or payload.pickupLng is None or payload.dropoffLat is None or payload.dropoffLng is None
+    if incomplete_route:
+        result = {
+            "status": "INFO",
+            "verdict": "No route loaded — only position recorded.",
+            "distanceFromRouteMeters": None,
+            "thresholdMeters": threshold,
+            "currentLocation": {"lat": payload.currentLat, "lng": payload.currentLng},
+            "method": "rule-based geometric check",
+            "honestNote": "This is a rule-based route check (GPS vs expected route), not an ML model. It flags unusual movement; it never claims someone is in danger.",
+        }
+        ROUTE_CHECKS.append({"rideCode": payload.rideCode, **result, "at": _now_iso()})
+        return result
+
+    distance = distance_to_route_m(
+        payload.currentLat, payload.currentLng,
+        payload.pickupLat, payload.pickupLng,
+        payload.dropoffLat, payload.dropoffLng,
+    )
+    if distance > threshold * 2:
+        status, verdict = "DEVIATION", "Significant route deviation"
+    elif distance > threshold:
+        status, verdict = "WARNING", "Route deviation detected"
+    else:
+        status, verdict = "SAFE", "Vehicle is on the expected route"
+
+    result = {
+        "status": status,
+        "verdict": verdict,
+        "distanceFromRouteMeters": round(distance, 1),
+        "thresholdMeters": threshold,
+        "message": (
+            f"The vehicle has moved approximately {round(distance)} m away from the expected route."
+            if distance > threshold
+            else f"Vehicle is within {round(distance)} m of the expected route."
+        ),
+        "currentLocation": {"lat": payload.currentLat, "lng": payload.currentLng},
+        "expectedRoute": {
+            "pickup": {"lat": payload.pickupLat, "lng": payload.pickupLng},
+            "dropoff": {"lat": payload.dropoffLat, "lng": payload.dropoffLng},
+        },
+        "method": "rule-based geometric check (GPS vs pickup→dropoff line)",
+        "recommendation": "Contact the rider to confirm their safety." if distance > threshold else "No action needed.",
+        "honestNote": "Rule-based flag only — it does not claim the rider is in danger. In a real emergency, dial 112.",
+    }
+    ROUTE_CHECKS.append({"rideCode": payload.rideCode, **result, "at": _now_iso()})
+    log.info("🛣️ Route check for %s: %s (%.1f m off route)", payload.rideCode, status, distance)
+    return result
+
+
+# Backward-compatible alias kept for old frontend code. It no longer returns
+# random risk scores — with route coordinates it runs the same real check;
+# without them it tells the truth: it cannot judge safety yet.
 @app.get("/api/ai/check-route")
-def check_route(driver_id: str, current_lat: float, current_lng: float):
-    """
-    DEMO-ONLY stub. Returns a fake "safe" verdict + random risk score.
-    Real AI integration is being built in a separate private repository.
-    """
-    # Mark this response as demo-only so the frontend can hide it from
-    # any future production toggles.
-    fake_risk_score = random.uniform(0.01, 0.08)
+def check_route(
+    driver_id: str = "",
+    current_lat: float = 0,
+    current_lng: float = 0,
+    pickup_lat: Optional[float] = None,
+    pickup_lng: Optional[float] = None,
+    dropoff_lat: Optional[float] = None,
+    dropoff_lng: Optional[float] = None,
+):
+    if pickup_lat is not None and pickup_lng is not None and dropoff_lat is not None and dropoff_lng is not None:
+        return route_safety_check(RouteCheckRequest(
+            pickupLat=pickup_lat, pickupLng=pickup_lng,
+            dropoffLat=dropoff_lat, dropoffLng=dropoff_lng,
+            currentLat=current_lat, currentLng=current_lng,
+        ))
     return {
-        "status": "SAFE",
-        "message": f"Driver {driver_id} trajectory looks normal at {current_lat}, {current_lng}.",
-        "risk_score": round(fake_risk_score, 4),
-        "active_modules": ["GPS Geo-Fencing", "Decoy Telemetry"],
-        "_demo_only": True,  # <-- signal to frontend + future engineers
-        "_note": "Real AI engine is being developed separately and will be integrated as a paid upgrade tier.",
+        "status": "INFO",
+        "message": f"Driver {driver_id} position recorded at {current_lat}, {current_lng}.",
+        "risk_score": None,
+        "active_modules": ["GPS tracking", "Rule-based route check"],
+        "honestNote": "No pickup/dropoff coordinates were supplied, so a route-deviation verdict cannot be computed. Add pickup/dropoff coords to /api/ai/route-safety/check for a real result.",
     }
 
 
@@ -1655,7 +2872,8 @@ async def upload_video_evidence(
     driver_id: str = Form(...),
     api_key: str = Form(...),
 ):
-    if api_key != "sk_test_smartcab_vault_9982":
+    # Key comes from the environment (SMARTCAB_EVIDENCE_KEY) — never hard-coded.
+    if not api_key or not secrets.compare_digest(api_key, SMARTCAB_EVIDENCE_KEY):
         return {"error": "Invalid Authentication Key"}
 
     raw_name = os.path.basename(file.filename or "evidence.webm") or "evidence.webm"
@@ -1668,4 +2886,669 @@ async def upload_video_evidence(
         "message": "Encrypted Video Evidence Saved Securely.",
         "file_path": file_location,
         "cloud_sync": "Pending (AWS S3)",
+    }
+
+
+# ---------------------------------------------------------------------------
+# 🛡️ ADMIN / SAFETY DASHBOARD API (product interface, X-Admin-Key protected)
+# ---------------------------------------------------------------------------
+def _admin_stats() -> Dict[str, Any]:
+    active = [t for t in TRIPS if t.get("status") in ACTIVE_RIDE_STATUSES]
+    active_emergencies = [e for e in EMERGENCIES if e.get("status") == "ACTIVE"]
+    completed = [t for t in TRIPS if t.get("status") == "COMPLETED"]
+    online_share_links = [
+        l for l in SHARE_LINKS.values()
+        if l.get("status") not in ("EXPIRED", "CANCELLED") and not l.get("isFallback")
+    ]
+    return {
+        "activeRides": len(active),
+        "emergencyAlerts": len(active_emergencies),
+        "driversOnline": len(DRIVERS),
+        "routeDeviations": len([c for c in ROUTE_CHECKS if c.get("status") == "DEVIATION"]),
+        "completedRides": len(completed),
+        "totalRides": len(TRIPS),
+        "activeShareLinks": len(online_share_links),
+        "totalUsers": len(USERS),
+        "ts": _now_iso(),
+    }
+
+
+@app.get("/api/admin/stats", dependencies=[Depends(require_admin)])
+def admin_stats():
+    return _admin_stats()
+
+
+@app.get("/api/admin/emergencies", dependencies=[Depends(require_admin)])
+def admin_emergencies():
+    return sorted(EMERGENCIES, key=lambda e: e.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/emergencies/{emergency_id}/respond", dependencies=[Depends(require_admin)])
+def admin_respond_emergency(emergency_id: int):
+    em = next((e for e in EMERGENCIES if e.get("id") == emergency_id), None)
+    if not em:
+        raise HTTPException(status_code=404, detail="emergency not found")
+    em["status"] = "RESPONDED"
+    em["respondedAt"] = _now_iso()
+    _persist_core_data("emergencies")
+    log.warning("🛡️ Admin responded to emergency #%s (%s)", emergency_id, em.get("rideCode") or em.get("bookingId"))
+    return em
+
+
+@app.get("/api/admin/rides", dependencies=[Depends(require_admin)])
+def admin_rides(status: Optional[str] = None):
+    rides = TRIPS
+    if status:
+        rides = [t for t in rides if (t.get("status") or "").upper() == status.upper()]
+    return sorted(rides, key=lambda t: t.get("createdAt", ""), reverse=True)
+
+
+@app.get("/api/admin/route-checks", dependencies=[Depends(require_admin)])
+def admin_route_checks():
+    return sorted(ROUTE_CHECKS, key=lambda c: c.get("at", ""), reverse=True)
+
+
+@app.post("/api/admin/rides/{trip_id}/status", dependencies=[Depends(require_admin)])
+def admin_update_ride_status(trip_id: int, payload: TripStatusUpdate):
+    return update_trip_status(trip_id, payload, request=None)
+
+
+@app.get("/api/admin/share-links", dependencies=[Depends(require_admin)])
+def admin_share_links():
+    return sorted(SHARE_LINKS.values(), key=lambda l: l.get("createdAt", ""), reverse=True)
+
+
+# ---------------------------------------------------------------------------
+# 🚗 ADMIN — DRIVER APPLICATIONS review/approval
+# ---------------------------------------------------------------------------
+@app.get("/api/admin/driver-applications", dependencies=[Depends(require_admin)])
+def admin_driver_applications(status: Optional[str] = None):
+    apps = DRIVER_APPLICATIONS
+    if status:
+        apps = [a for a in apps if (a.get("status") or "").upper() == status.upper()]
+    return sorted(apps, key=lambda a: a.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/driver-applications/{app_id}/approve", dependencies=[Depends(require_admin)])
+def admin_approve_driver_application(app_id: int):
+    """Approve a driver application and add the driver to the live fleet
+    so they can be matched to real rides."""
+    app = next((a for a in DRIVER_APPLICATIONS if a.get("id") == app_id), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="application not found")
+    if app.get("status") == "APPROVED":
+        return {"status": "ok", "message": "Already approved.", "application": app}
+    # 🛡️ Safety gate: no bad driver gets selected. Before approving, the
+    # background check must be marked CLEARED and key docs uploaded.
+    bg = app.get("backgroundCheck") or {}
+    if bg.get("status") != "CLEARED":
+        raise HTTPException(
+            status_code=400,
+            detail="Background check must be CLEARED before approval. Review the police-clearance certificate in the admin dashboard first.",
+        )
+    doc_types = {d.get("type") for d in app.get("documents", [])}
+    if "licence" not in doc_types or "vehicle" not in doc_types:
+        raise HTTPException(
+            status_code=400,
+            detail="Driver must upload driving licence + vehicle photos before approval.",
+        )
+    # 🔍 Auto-screening gate: a document that failed the automatic check
+    # (wrong/corrupt file, too small, duplicated photo) cannot be approved
+    # until the driver re-uploads a real, clear photo.
+    rejected = [
+        d for d in app.get("documents", [])
+        if (d.get("check") or {}).get("status") == "REJECTED"
+    ]
+    if rejected:
+        names = ", ".join(d.get("label", d.get("type")) for d in rejected)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Automatic document check FAILED for: {names}. Ask the driver to re-upload a clear photo of the real document.",
+        )
+
+    app["status"] = "APPROVED"
+    app["approvedAt"] = _now_iso()
+    # Add to the live fleet (so /api/drivers/random can match them).
+    if not any((d.get("id") == f"app-{app_id}") or (d.get("applicationId") == app_id) for d in DRIVERS):
+        plate = f"APP {str(app_id).zfill(4)}"  # placeholder plate till documents complete
+        DRIVERS.append({
+            "id": _next_id["driver"],
+            "applicationId": app_id,
+            "name": app["fullName"],
+            "rating": 5.0,
+            "dl": app["licenseNumber"],
+            "plate": plate,
+            "carModel": app["vehicleType"],
+            "phone": app["phone"],
+        })
+        _next_id["driver"] += 1
+    _persist_core_data("all")
+    log.warning("🚗 Driver application %s APPROVED — %s is now in the fleet", app["reference"], app["fullName"])
+    return {"status": "ok", "application": app, "fleetCount": len(DRIVERS)}
+
+
+@app.post("/api/admin/driver-applications/{app_id}/reject", dependencies=[Depends(require_admin)])
+def admin_reject_driver_application(app_id: int):
+    app = next((a for a in DRIVER_APPLICATIONS if a.get("id") == app_id), None)
+    if not app:
+        raise HTTPException(status_code=404, detail="application not found")
+    app["status"] = "REJECTED"
+    app["rejectedAt"] = _now_iso()
+    _persist_core_data("applications")
+    log.warning("🚗 Driver application %s REJECTED", app["reference"])
+    return {"status": "ok", "application": app}
+
+
+# ---------------------------------------------------------------------------
+# DRIVER & RIDER TWO-WAY SAFETY
+#   • Rider side   : SOS + route checks (existing) — no bad driver gets selected
+#                     thanks to the vetting gate above.
+#   • Driver side  : driver can verify a rider's identity and report a rider
+#                     concern (e.g. suspected contraband). Incidents are logged
+#                     and an admin can EXONERATE the driver, protecting them
+#                     from being blamed for what a rider does.
+# ---------------------------------------------------------------------------
+class RiderVerifyUpdate(BaseModel):
+    verified: bool
+    method: Optional[str] = "ID shown at pickup"
+
+
+@app.post("/api/trips/{trip_id}/rider-verify")
+def rider_verify(trip_id: int, payload: RiderVerifyUpdate):
+    """Driver records that the rider's identity was verified at pickup.
+    This is the driver's proof — the rider who books is the rider who rides."""
+    trip = next((t for t in TRIPS if t.get("id") == trip_id), None)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+    trip["riderVerified"] = bool(payload.verified)
+    trip["riderVerifiedAt"] = _now_iso()
+    trip["riderVerificationMethod"] = payload.method
+    _persist_core_data("trips")
+    log.info("🪪 Trip %s: rider verification %s", trip.get("rideCode"), payload.verified)
+    return {"status": "ok", "trip": trip}
+
+
+class DriverAlertCreate(BaseModel):
+    reason: str
+    notes: Optional[str] = ""
+    riderName: Optional[str] = ""
+
+
+@app.post("/api/trips/{trip_id}/driver-alert")
+def create_driver_alert(trip_id: int, payload: DriverAlertCreate, request: Request):
+    """Driver reports a rider concern (suspicious activity / suspected illegal
+    items / misbehaviour). Recorded with ride context so the driver has an
+    incident log — and admins can exonerate them if the rider was at fault."""
+    if rate_limited(f"driver-alert:{client_key(request)}", limit=6, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many reports. Please wait a moment.")
+    trip = next((t for t in TRIPS if t.get("id") == trip_id), None)
+    if not trip:
+        raise HTTPException(status_code=404, detail="trip not found")
+    reason = (payload.reason or "").strip()
+    if not reason or len(reason) < 3:
+        raise HTTPException(status_code=400, detail="Please describe the concern.")
+    alert = {
+        "id": max([int(a.get("id", 0)) for a in DRIVER_ALERTS] or [0]) + 1,
+        "tripId": trip.get("id"),
+        "rideCode": trip.get("rideCode") or f"SC-{trip.get('id')}",
+        "driverName": (trip.get("driver") or {}).get("name", ""),
+        "driverPlate": (trip.get("driver") or {}).get("plate", ""),
+        "riderName": payload.riderName or trip.get("riderName", ""),
+        "pickup": trip.get("pickupLocation", ""),
+        "dropoff": trip.get("dropoffLocation", ""),
+        "reason": reason,
+        "notes": (payload.notes or "").strip(),
+        "evidence": [],          # optional photo/video uploads
+        "status": "OPEN",
+        "createdAt": _now_iso(),
+    }
+    DRIVER_ALERTS.append(alert)
+    _persist_core_data("driver_alerts")
+    log.warning("🛡️ Driver alert #%d on %s: %s", alert["id"], trip.get("rideCode"), reason)
+    return {"status": "ok", "alert": alert,
+            "guide": "Your report is logged with this ride's details. If the rider was at fault, an admin can mark this EXONERATED so you are never blamed for their actions."}
+
+
+@app.post("/api/trips/{trip_id}/driver-alerts/{alert_id}/evidence")
+async def upload_driver_alert_evidence(trip_id: int, alert_id: int, file: UploadFile = File(...)):
+    """Optional photo evidence attached to a driver report."""
+    alert = next((a for a in DRIVER_ALERTS if a.get("id") == alert_id and a.get("tripId") == trip_id), None)
+    if not alert:
+        raise HTTPException(status_code=404, detail="alert not found")
+    data = file.file.read(MAX_DOC_BYTES + 1)
+    if not data or len(data) < 50:
+        raise HTTPException(status_code=400, detail="file is empty.")
+    if len(data) > MAX_DOC_BYTES:
+        raise HTTPException(status_code=400, detail="file too large (max 12 MB).")
+    abs_dir = os.path.join(EVIDENCE_VAULT_DIR, f"driver_alert_{alert_id}")
+    os.makedirs(abs_dir, exist_ok=True)
+    safe_name = f"evidence_{int(time.time())}_{uuid.uuid4().hex[:8]}.jpg"
+    path = os.path.join(abs_dir, safe_name)
+    with open(path, "wb") as f:
+        f.write(data)
+    rec = {"id": len(alert.get("evidence", [])) + 1, "filename": safe_name,
+           "path": path, "size": len(data), "uploadedAt": _now_iso()}
+    alert["evidence"].append(rec)
+    _persist_core_data("driver_alerts")
+    return {"status": "ok", "evidence": {k: v for k, v in rec.items() if k != "path"}}
+
+
+class DriverAlertResolve(BaseModel):
+    outcome: str  # EXONERATED | RESOLVED
+    note: Optional[str] = ""
+
+
+@app.get("/api/admin/driver-alerts", dependencies=[Depends(require_admin)])
+def admin_driver_alerts():
+    return sorted(DRIVER_ALERTS, key=lambda a: a.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/driver-alerts/{alert_id}/resolve", dependencies=[Depends(require_admin)])
+def admin_resolve_driver_alert(alert_id: int, payload: DriverAlertResolve):
+    """EXONERATED = driver proven not at fault (protection record).
+    RESOLVED  = incident acknowledged & closed."""
+    alert = next((a for a in DRIVER_ALERTS if a.get("id") == alert_id), None)
+    if not alert:
+        raise HTTPException(status_code=404, detail="alert not found")
+    outcome = (payload.outcome or "").upper()
+    if outcome not in ("EXONERATED", "RESOLVED"):
+        raise HTTPException(status_code=400, detail="outcome must be EXONERATED or RESOLVED")
+    alert["status"] = "RESOLVED"
+    alert["outcome"] = outcome
+    alert["driverExonerated"] = outcome == "EXONERATED"
+    alert["resolutionNote"] = (payload.note or "").strip()
+    alert["resolvedAt"] = _now_iso()
+    _persist_core_data("driver_alerts")
+    log.warning("🛡️ Driver alert #%d resolved as %s", alert_id, outcome)
+    return {"status": "ok", "alert": alert}
+
+
+# ============================================================================
+# 🤖 AI ASSISTANT + 💬 SUPPORT / HELP REQUESTS
+# The rider-facing help widget: report a driver, ask questions, email support.
+# The assistant is a multilingual scripted knowledge assistant so it works
+# offline/without any external AI API key — all answers are local and safe.
+# ============================================================================
+
+_ASSISTANT_LANGS = ("en", "ru", "ja", "zh", "fr", "de")
+
+# Keywords per intent — matched case-insensitively against the rider's message.
+_ASSISTANT_KEYWORDS = {
+    "greeting": {
+        "en": ["hi", "hello", "hey", "namaste", "good morning", "good evening"],
+        "ru": ["привет", "здравствуйте", "добрый день", "добрый вечер", "хай"],
+        "ja": ["こんにちは", "こんばんは", "やあ", "もしもし"],
+        "zh": ["你好", "您好", "嗨", "早上好", "晚上好"],
+        "fr": ["bonjour", "salut", "bonsoir", "coucou"],
+        "de": ["hallo", "hi", "guten tag", "guten abend", "servus"],
+    },
+    "book": {
+        "en": ["book", "ride now", "get a cab", "book a", "reserve", "schedule"],
+        "ru": ["заказать", "поездка", "вызвать", "резерв", "записать"],
+        "ja": ["予約", "配車", "乗車", "タクシーを", "ライド"],
+        "zh": ["预约", "叫车", "打车", "预订", "乘车"],
+        "fr": ["réserver", "commander", "course", "taxi", "réserver une"],
+        "de": ["buchen", "buche", "fahren", "taxi", "fahr mich", "reservieren"],
+    },
+    "fare": {
+        "en": ["price", "fare", "cost", "charge", "how much"],
+        "ru": ["цена", "стоимость", "сколько стоит", "тариф"],
+        "ja": ["料金", "値段", "いくら", "価格"],
+        "zh": ["价格", "多少钱", "费用", "车费"],
+        "fr": ["prix", "tarif", "combien ça coûte", "coût"],
+        "de": ["preis", "kosten", "wie viel", "tarif"],
+    },
+    "sos": {
+        "en": ["sos", "emergency", "danger", "unsafe", "help me now", "ambulance", "police", "call 112"],
+        "ru": ["sos", "экстренно", "опасность", "помогите", "чрезвычай", "скорая", "полиция"],
+        "ja": ["sos", "緊急", "危ない", "助けて", "危険", "警察", "救急"],
+        "zh": ["紧急", "sos", "危险", "救命", "不安全", "警察", "急救"],
+        "fr": ["sos", "urgence", "danger", "aide", "aidez-moi", "police", "ambulance"],
+        "de": ["sos", "notfall", "gefahr", "hilfe", "gefährlich", "polizei", "krankenwagen"],
+    },
+    "cancel": {
+        "en": ["cancel", "refund", "cancel my ride"],
+        "ru": ["отменить", "отмена", "возврат", "отменить поездку"],
+        "ja": ["キャンセル", "取消", "返金", "キャンセルしたい"],
+        "zh": ["取消", "退款", "取消订单"],
+        "fr": ["annuler", "remboursement", "annulation"],
+        "de": ["stornieren", "stornierung", "erstattung", "abbrechen"],
+    },
+    "report_driver": {
+        "en": ["report driver", "complaint about driver", "bad driver", "driver was rude", "overcharged"],
+        "ru": ["пожаловаться на водителя", "жалоба на водителя", "плохой водитель", "водитель"],
+        "ja": ["運転手を", "ドライバーを", "苦情", "通報"],
+        "zh": ["投诉司机", "举报司机", "司机不好", "司机态度"],
+        "fr": ["signaler le chauffeur", "plainte contre le chauffeur", "chauffeur impoli", "chauffeur"],
+        "de": ["fahrer melden", "beschwerde über fahrer", "fahrer unhöflich", "fahrer"],
+    },
+    "lost_item": {
+        "en": ["lost item", "forgot my", "left my", "lost my phone"],
+        "ru": ["забыл", "потерял", "оставил вещь", "потерянная вещь"],
+        "ja": ["忘れ物", "なくした", "置き忘れ"],
+        "zh": ["遗失", "忘东西", "丢了", "落在车上"],
+        "fr": ["objet perdu", "oublié", "perdu", "j'ai laissé"],
+        "de": ["verloren", "vergessen", "gegenstand vergessen", "handy vergessen"],
+    },
+    "driver_app": {
+        "en": ["become a driver", "apply to drive", "driver application", "start driving", "job as driver"],
+        "ru": ["стать водителем", "подать заявку", "работа водителем", "водителем"],
+        "ja": ["ドライバーに", "配車アプリ", "運転手になる", "応募"],
+        "zh": ["成为司机", "司机申请", "报名开车", "当司机"],
+        "fr": ["devenir chauffeur", "candidature chauffeur", "conduire pour", "travailler chauffeur"],
+        "de": ["fahrer werden", "fahrer bewerbung", "als fahrer", "fahren für"],
+    },
+    "safety": {
+        "en": ["safe", "safety", "track", "live location", "route deviation", "gps"],
+        "ru": ["безопасность", "безопасно", "отслеживание", "маршрут", "gps"],
+        "ja": ["安全", "安心", "位置情報", "ルート", "追跡"],
+        "zh": ["安全", "追踪", "路线", "定位", "导航"],
+        "fr": ["sécurité", "sûr", "suivi", "itinéraire", "gps"],
+        "de": ["sicherheit", "sicher", "verfolgung", "route", "standort"],
+    },
+    "language": {
+        "en": ["language", "translate", "russian", "japanese", "chinese", "french", "german"],
+        "ru": ["язык", "перевод", "русский"],
+        "ja": ["言語", "翻訳", "日本語"],
+        "zh": ["语言", "翻译", "中文"],
+        "fr": ["langue", "traduire", "français"],
+        "de": ["sprache", "übersetzen", "deutsch"],
+    },
+    "contact": {
+        "en": ["contact", "email", "support", "human", "agent", "call company", "talk to"],
+        "ru": ["контакт", "почта", "поддержка", "человек", "оператор"],
+        "ja": ["連絡", "メール", "サポート", "担当者", "相談"],
+        "zh": ["联系", "邮箱", "客服", "人工", "邮件"],
+        "fr": ["contact", "email", "support", "agent", "joindre"],
+        "de": ["kontakt", "email", "support", "mitarbeiter", "erreichen"],
+    },
+    "thanks": {
+        "en": ["thanks", "thank you", "great", "awesome", "perfect"],
+        "ru": ["спасибо", "благодарю", "отлично", "супер"],
+        "ja": ["ありがとう", "助かった", "最高"],
+        "zh": ["谢谢", "感谢", "太好了", "很棒"],
+        "fr": ["merci", "génial", "parfait", "super"],
+        "de": ["danke", "super", "perfekt", "toll"],
+    },
+}
+
+_ASSISTANT_REPLIES = {
+    "greeting": {
+        "en": "Hello! 👋 I am the Smart Security AI Cab assistant. I can help you book a ride, check fares, use SOS safely, report a driver, or reach support. What do you need?",
+        "ru": "Здравствуйте! 👋 Я помощник Smart Security AI Cab. Помогу заказать поездку, узнать стоимость, разобраться с SOS, пожаловаться на водителя или связаться с поддержкой. Что вам нужно?",
+        "ja": "こんにちは！👋 Smart Security AI Cabのアシスタントです。配車、料金、SOSの使い方、ドライバーの通報、サポートへの連絡をお手伝いします。何が必要ですか？",
+        "zh": "您好！👋 我是Smart Security AI Cab助手。我可以帮您叫车、查询费用、了解SOS、投诉司机或联系客服。请问需要什么帮助？",
+        "fr": "Bonjour ! 👋 Je suis l'assistant Smart Security AI Cab. Je peux vous aider à réserver une course, vérifier un tarif, utiliser le SOS, signaler un chauffeur ou contacter le support. Que vous faut-il ?",
+        "de": "Hallo! 👋 Ich bin der Assistent von Smart Security AI Cab. Ich helfe beim Buchen, bei Preisen, SOS, Fahrer-Meldungen oder Support-Kontakt. Was brauchst du?",
+    },
+    "book": {
+        "en": "To book: open the Ride tab, set your pickup and dropoff, tap Search, choose SmartBike/SmartMini/SmartSedan/SmartSUV and confirm. Drivers are safety-verified before they are matched. 🚕",
+        "ru": "Чтобы заказать: откройте вкладку «Поездка», укажите откуда и куда, нажмите «Найти», выберите SmartBike/SmartMini/SmartSedan/SmartSUV и подтвердите. Водители проверены службой безопасности. 🚕",
+        "ja": "ご予約方法：「Ride」タブを開き、乗車地と目的地を入力して「検索」を押し、SmartBike/SmartMini/SmartSedan/SmartSUVを選んで確定します。ドライバーは事前に安全審査済みです。🚕",
+        "zh": "预约方法：打开“乘车”标签，输入上车和下车地点，点击“搜索”，选择SmartBike/SmartMini/SmartSedan/SmartSUV并确认。司机都经过安全审核。🚕",
+        "fr": "Pour réserver : ouvrez l'onglet Course, choisissez départ et arrivée, touchez Rechercher, choisissez SmartBike/SmartMini/SmartSedan/SmartSUV et confirmez. Les chauffeurs sont vérifiés avant d'être assignés. 🚕",
+        "de": "So buchst du: Öffne den Ride-Tab, wähle Abhol- und Zielort, tippe auf Suchen, wähle SmartBike/SmartMini/SmartSedan/SmartSUV und bestätige. Fahrer sind vor der Zuordnung geprüft. 🚕",
+    },
+    "fare": {
+        "en": "Fares are shown on the ride cards before you book (base fare + per-km + surge multiplier). The price you see is the price you pay — no hidden charges. 💰",
+        "ru": "Стоимость видна на карточках поездок до бронирования (базовая цена + за км + коэффициент пиковой нагрузки). Цена на экране — цена, которую вы платите, без скрытых платежей. 💰",
+        "ja": "料金は予約前に乗車カードに表示されます（基本料金＋距離料金＋サーチャージ）。表示された金額がお支払い額で、追加料金はありません。💰",
+        "zh": "费用会在下单前显示在车型卡片上（起步价＋每公里＋高峰系数）。所见即所付，没有隐藏费用。💰",
+        "fr": "Les tarifs sont affichés sur les cartes de course avant réservation (prix de base + km + coefficient de pointe). Le prix affiché est le prix payé — sans frais cachés. 💰",
+        "de": "Preise stehen vor der Buchung auf den Ride-Karten (Grundpreis + pro km + Stoßzeiten-Faktor). Der angezeigte Preis ist der Preis, den du zahlst — keine versteckten Kosten. 💰",
+    },
+    "sos": {
+        "en": "The SOS button is on the trip monitor while you ride. It alerts the on-duty security team in the app; it is not a phone call to police/ambulance. In a real emergency always call your local emergency number (112 in India) first. 🚨",
+        "ru": "Кнопка SOS находится на экране мониторинга поездки. Она отправляет сигнал дежурной службе безопасности в приложении; это не звонок в полицию/скорую. При реальной опасности сначала звоните в местную службу спасения (112 в Индии). 🚨",
+        "ja": "SOSボタンは乗車中のモニター画面にあります。アプリ内の当直警備チームへ通知しますが、警察・救急への電話ではありません。本当の緊急時はまず現地の緊急番号（インドは112）にお電話ください。🚨",
+        "zh": "SOS按钮在行程监控页面。它会向应用内的值守安全团队发送警报，但不是拨打警察/急救电话。遇到真正紧急情况，请先拨打当地紧急号码（印度为112）。🚨",
+        "fr": "Le bouton SOS est sur l'écran de suivi pendant la course. Il alerte l'équipe de sécurité de garde dans l'app ; ce n'est pas un appel à la police/ambulance. En vraie urgence, appelez d'abord votre numéro local (112 en Inde). 🚨",
+        "de": "Der SOS-Button ist im Fahrt-Monitor. Er alarmiert die Sicherheitscrew in der App, ist aber kein Anruf bei Polizei/Rettungsdienst. Bei echter Gefahr ruf zuerst die örtliche Notrufnummer an (in Indien 112). 🚨",
+    },
+    "cancel": {
+        "en": "You can cancel from the trip screen (Cancel Ride) before the ride starts. Cancellation is free before the driver arrives; refunds for prepaid trips are processed after review. Contact support at support@smartsecurityaicab.com with your Ride ID for help.",
+        "ru": "Отменить можно на экране поездки (кнопка «Отменить») до её начала. До прибытия водителя отмена бесплатна; возврат предоплаченных поездок обрабатывается после проверки. Напишите в support@smartsecurityaicab.com с номером поездки.",
+        "ja": "乗車開始前なら、トリップ画面の「キャンセル」から変更できます。ドライバー到着前は無料です。事前決済の返金は確認後に処理されます。Ride IDを添えてsupport@smartsecurityaicab.comへご連絡ください。",
+        "zh": "行程开始前可在行程页面点击“取消行程”。司机到达前取消免费；预付订单退款将在审核后处理。请附上行程编号联系support@smartsecurityaicab.com。",
+        "fr": "Vous pouvez annuler depuis l'écran de course (Annuler) avant le départ. L'annulation est gratuite avant l'arrivée du chauffeur ; les remboursements sont traités après vérification. Écrivez à support@smartsecurityaicab.com avec votre ID de course.",
+        "de": "Du kannst vor Fahrtbeginn im Fahrt-Bildschirm abbrechen. Vor Ankunft des Fahrers ist das kostenlos; Erstattungen werden nach Prüfung bearbeitet. Schreib mit deiner Ride-ID an support@smartsecurityaicab.com.",
+    },
+    "report_driver": {
+        "en": "I am sorry to hear that. Tap Help → Report a driver, choose a category, add details and send — the report goes straight to our team with the ride details. You can also email support@smartsecurityaicab.com. Every report is reviewed. 🛡️",
+        "ru": "Мне жаль это слышать. Нажмите «Помощь» → «Пожаловаться на водителя», выберите категорию, опишите ситуацию и отправьте — жалоба сразу попадёт к нашей команде вместе с данными поездки. Также можно написать на support@smartsecurityaicab.com. Каждая жалоба проверяется. 🛡️",
+        "ja": "申し訳ありません。「ヘルプ」→「ドライバーを通報」からカテゴリを選び、詳細を入力して送信してください。乗車情報と一緒に担当チームへ届きます。support@smartsecurityaicab.comへのメールも可能です。すべて確認されます。🛡️",
+        "zh": "很抱歉给您带来不便。请点击“帮助”→“投诉司机”，选择类别并填写详情提交，报告会连同行程信息直接发送给团队。也可以发送邮件至support@smartsecurityaicab.com。每份报告都会得到处理。🛡️",
+        "fr": "Je suis désolé. Touchez Aide → Signaler un chauffeur, choisissez une catégorie, décrivez et envoyez — le signalement arrive à notre équipe avec les détails de la course. Vous pouvez aussi écrire à support@smartsecurityaicab.com. Chaque signalement est examiné. 🛡️",
+        "de": "Das tut mir leid. Tippe auf Hilfe → Fahrer melden, wähle eine Kategorie, beschreibe den Vorfall und sende ab — die Meldung geht mit den Fahrtdetails an unser Team. Auch per E-Mail an support@smartsecurityaicab.com. Jede Meldung wird geprüft. 🛡️",
+    },
+    "lost_item": {
+        "en": "Tap Help → Report, choose “Lost item”, describe what you left and where. If your ride ID is known, add it — our team can contact the driver for you without sharing your number. 📦",
+        "ru": "Нажмите «Помощь» → «Отчёт», выберите «Забытая вещь», опишите, что и где вы оставили. Если знаете номер поездки, укажите его — команда свяжется с водителем, не раскрывая ваш номер. 📦",
+        "ja": "「ヘルプ」→「報告」で「忘れ物」を選び、置き忘れた物と場所を入力してください。Ride IDが分かれば記入すると、チームがあなたの番号を伝えずにドライバーへ連絡します。📦",
+        "zh": "请点击“帮助”→“报告”，选择“遗失物品”，描述遗忘的物品和地点。若知道行程编号请填写，团队会代您联系司机而不透露您的号码。📦",
+        "fr": "Touchez Aide → Signalement, choisissez « Objet perdu », décrivez ce que vous avez laissé et où. Indiquez l'ID de course si vous l'avez — notre équipe contacte le chauffeur sans partager votre numéro. 📦",
+        "de": "Tippe auf Hilfe → Melden, wähle „Gegenstand vergessen“, beschreibe was und wo. Mit deiner Ride-ID kann unser Team den Fahrer kontaktieren, ohne deine Nummer weiterzugeben. 📦",
+    },
+    "driver_app": {
+        "en": "Great! Tap Drive → Apply to drive. You'll declare your criminal record, add your police verification number (optional), upload licence/vehicle/police documents, and after our background check is CLEARED you join the verified fleet. 🚗",
+        "ru": "Отлично! Нажмите «Водить» → «Подать заявку». Укажите декларацию об отсутствии судимости, номер полицейской проверки (необязательно), загрузите документы (права, авто, справку), и после проверки службой безопасности вы попадёте в проверенный парк. 🚗",
+        "ja": "素晴らしい！「Drive」→「Apply to drive」からお申し込みください。犯罪歴の申告、警察確認番号（任意）、免許証・車両・警察証明書をアップロードし、背景審査がCLEAREDになると認証済みドライバーとして登録されます。🚗",
+        "zh": "很好！点击“开车”→“申请成为司机”。需申报犯罪记录、填写警方核验号（可选）、上传驾照/车辆/警方证明，背景审查通过（CLEARED）后即可加入认证车队。🚗",
+        "fr": "Excellent ! Touchez Conduire → Devenir chauffeur. Déclarez votre casier judiciaire, ajoutez votre numéro de vérification policière (optionnel), téléversez permis/véhicule/certificat policier ; après vérification CLEARED, vous rejoignez la flotte vérifiée. 🚗",
+        "de": "Super! Tippe auf Drive → Als Fahrer bewerben. Erkläre dein Führungszeugnis, gib die Polizei-Prüfnummer an (optional), lade Führerschein/Fahrzeug/Polizeizeugnis hoch — nach CLEARED-Background-Check gehörst du zum geprüften Fuhrpark. 🚗",
+    },
+    "safety": {
+        "en": "Every ride has verified drivers, live trip monitoring, route-deviation alerts, SOS, Live Guard sharing and the Driver Protection panel. The AI flags unusual behaviour — it never claims danger on its own. 🛡️",
+        "ru": "В каждой поездке: проверенные водители, мониторинг в реальном времени, предупреждения об отклонении от маршрута, SOS, Live Guard и панель защиты водителя. ИИ лишь помечает необычное поведение и сам не заявляет об опасности. 🛡️",
+        "ja": "すべての乗車で、審査済みドライバー、リアルタイム監視、ルート逸脱アラート、SOS、Live Guard共有、ドライバー保護パネルが利用できます。AIは異常な挙動を「フラグ」するだけで、勝手に危険と断定しません。🛡️",
+        "zh": "每次行程都有认证司机、实时行程监控、路线偏离提醒、SOS、Live Guard分享和司机保护面板。AI仅标记异常行为，不会自行判定危险。🛡️",
+        "fr": "Chaque course : chauffeurs vérifiés, suivi en temps réel, alertes de déviation, SOS, partage Live Guard et panneau de protection du chauffeur. L'IA signale les comportements inhabituels sans jamais affirmer un danger. 🛡️",
+        "de": "Jede Fahrt: geprüfte Fahrer, Live-Monitoring, Routenabweichungs-Warnungen, SOS, Live-Guard-Teilen und Fahrer-Schutz. Die KI markiert nur ungewöhnliches Verhalten, sie behauptet nie von sich aus Gefahr. 🛡️",
+    },
+    "language": {
+        "en": "Tap the 🌐 globe in the menu (or the language list in Help) to switch to Русский, 日本語, 中文, Français, Deutsch, हिन्दी, ગુજરાતી and more. The whole site translates instantly.",
+        "ru": "Нажмите на глобус 🌐 в меню (или список языков в «Помощи»), чтобы переключиться на русский, 日本語, 中文, Français, Deutsch, हिन्दी, ગુજરાતી и другие. Весь сайт переводится мгновенно.",
+        "ja": "メニューの🌐地球アイコン（またはヘルプの言語一覧）をタップすると、日本語、Русский, 中文, Français, Deutsch, हिन्दी, ગુજરાતીなどに切り替えられます。サイト全体がすぐに翻訳されます。",
+        "zh": "点击菜单中的🌐地球图标（或帮助中的语言列表），即可切换为中文、日本語、Русский、Français、Deutsch、हिन्दी、ગુજરાતી等。全站即时翻译。",
+        "fr": "Touchez le globe 🌐 du menu (ou la liste des langues dans Aide) pour passer en français, Русский, 日本語, 中文, Deutsch, हिन्दी, ગુજરાતી… Le site entier se traduit instantanément.",
+        "de": "Tippe auf das 🌐-Globus im Menü (oder die Sprachliste in Hilfe), um auf Deutsch, Русский, 日本語, 中文, Français, हिन्दी, ગુજરાતी umzuschalten. Die ganze Seite wird sofort übersetzt.",
+    },
+    "contact": {
+        "en": "You can reach us at support@smartsecurityaicab.com — or tap Help in the app to send a report/request in a few taps. Our team reviews every message (usually within 24–48 hours). 🤝",
+        "ru": "Напишите нам на support@smartsecurityaicab.com или нажмите «Помощь» в приложении — заявка отправится в несколько касаний. Наша команда проверяет каждое сообщение (обычно в течение 24–48 часов). 🤝",
+        "ja": "support@smartsecurityaicab.comへご連絡いただくか、アプリの「ヘルプ」から数タップで報告・お問い合わせを送信できます。すべてのメッセージを確認しています（通常24〜48時間以内）。🤝",
+        "zh": "可通过support@smartsecurityaicab.com联系我们，或点击应用内的“帮助”几步完成报告/咨询。每一条信息我们都会处理（通常在24–48小时内）。🤝",
+        "fr": "Écrivez à support@smartsecurityaicab.com ou touchez Aide dans l'app pour envoyer un signalement en quelques touches. Notre équipe examine chaque message (généralement sous 24–48 h). 🤝",
+        "de": "Erreichst uns unter support@smartsecurityaicab.com — oder tippe im App auf Hilfe und sende eine Meldung in wenigen Schritten. Jede Nachricht wird geprüft (meist innerhalb von 24–48 Stunden). 🤝",
+    },
+    "thanks": {
+        "en": "You're welcome! 😊 Anything else I can help you with — booking, safety, report, or support?",
+        "ru": "Пожалуйста! 😊 Могу ещё чем-то помочь — бронирование, безопасность, жалоба или поддержка?",
+        "ja": "どういたしまして！😊 他に予約、安全、通報、サポートなどでお手伝いできることはありますか？",
+        "zh": "不客气！😊 还有什么可以帮您吗——预订、安全、投诉或支持？",
+        "fr": "Avec plaisir ! 😊 Puis-je vous aider sur autre chose — réservation, sécurité, signalement ou support ?",
+        "de": "Gern geschehen! 😊 Kann ich noch etwas für dich tun — Buchen, Sicherheit, Meldung oder Support?",
+    },
+}
+
+_ASSISTANT_FALLBACK = {
+    "en": "I can help with booking rides, fares, SOS, safety, reporting a driver, lost items, becoming a driver, languages and contacting support. Try one of the quick questions below, or tap Help → Report to reach our team directly. 😊",
+    "ru": "Я помогаю с заказом поездок, стоимостью, SOS, безопасностью, жалобами на водителя, забытыми вещами, работой водителем, языками и связью с поддержкой. Попробуйте быстрый вопрос ниже или «Помощь» → «Отчёт», чтобы напрямую связаться с командой. 😊",
+    "ja": "配車、料金、SOS、安全、ドライバー通報、忘れ物、ドライバー応募、言語、サポート連絡をお手伝いできます。下のクイック質問を試すか、「ヘルプ」→「報告」から直接ご連絡ください。😊",
+    "zh": "我可以帮助：叫车、费用、SOS、安全、投诉司机、遗失物品、成为司机、语言和联系客服。请尝试下方快捷问题，或点击“帮助”→“报告”直接联系团队。😊",
+    "fr": "Je peux aider pour : réserver, tarifs, SOS, sécurité, signaler un chauffeur, objets perdus, devenir chauffeur, langues et contacter le support. Essayez une question rapide ci-dessous ou Aide → Signalement. 😊",
+    "de": "Ich helfe bei: Buchen, Preisen, SOS, Sicherheit, Fahrer-Meldung, verlorenen Sachen, Fahrer werden, Sprachen und Support. Probier eine Schnellfrage unten oder Hilfe → Melden. 😊",
+}
+
+_ASSISTANT_SUGGESTIONS = {
+    "en": ["How do I book a ride?", "Is SOS real?", "I want to report a driver", "Become a driver", "Contact support"],
+    "ru": ["Как заказать поездку?", "SOS работает?", "Хочу пожаловаться на водителя", "Стать водителем", "Связаться с поддержкой"],
+    "ja": ["予約方法を教えて", "SOSは本当に機能する？", "ドライバーを通報したい", "ドライバーになる", "サポートに連絡する"],
+    "zh": ["如何预约行程？", "SOS是真的吗？", "我想投诉司机", "成为司机", "联系客服"],
+    "fr": ["Comment réserver une course ?", "Le SOS est-il réel ?", "Je veux signaler un chauffeur", "Devenir chauffeur", "Contacter le support"],
+    "de": ["Wie buche ich eine Fahrt?", "Ist SOS echt?", "Ich will einen Fahrer melden", "Fahrer werden", "Support kontaktieren"],
+}
+
+
+def _normalize_assistant_lang(language: Optional[str]) -> str:
+    code = (language or "en").lower().replace("_", "-")
+    if code in ("zh-cn", "zh-sg", "zh-hans", "zh-tw", "zh-hant"):
+        return "zh"
+    if code.startswith("zh"):
+        return "zh"
+    if code in _ASSISTANT_LANGS:
+        return code
+    return "en"
+
+
+def _assistant_l10n(kb: Dict[str, Any], lang: str, intent: str):
+    bucket = kb.get(intent, {})
+    if isinstance(bucket, dict):
+        return bucket.get(lang) or bucket.get("en") or ""
+    return bucket
+
+
+class AssistantQuery(BaseModel):
+    message: str
+    language: Optional[str] = "en"
+
+
+@app.post("/api/assistant")
+def ai_assistant(payload: AssistantQuery, request: Request):
+    """Rider-facing AI help assistant. Fully local & scripted (no external
+    AI/API key): answers common questions in 6 languages and routes safety
+    issues to the support/report flow. Never claims things the app can't do."""
+    if rate_limited(f"assistant:{client_key(request)}", limit=20, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many questions. One moment, please.")
+    text = (payload.message or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Please type a question.")
+    lang = _normalize_assistant_lang(payload.language)
+    lower = text.lower()
+    best_intent, best_score = "fallback", 0
+    for intent, keywords in _ASSISTANT_KEYWORDS.items():
+        words = keywords.get(lang, []) + keywords.get("en", [])
+        score = sum(1 for kw in words if kw and kw.lower() in lower)
+        # Boost when a non-English keyword matched — the user typed that language.
+        if score and any(kw and kw.lower() in lower for kw in keywords.get(lang, [])):
+            score += 1
+        if score > best_score:
+            best_intent, best_score = intent, score
+    if best_intent == "fallback":
+        reply = _ASSISTANT_FALLBACK[lang]
+    else:
+        reply = _assistant_l10n(_ASSISTANT_REPLIES, lang, best_intent)
+    return {
+        "intent": best_intent,
+        "reply": reply,
+        "language": lang,
+        "suggestions": _ASSISTANT_SUGGESTIONS[lang],
+    }
+
+
+class SupportRequestCreate(BaseModel):
+    name: Optional[str] = ""
+    email: Optional[str] = ""
+    category: str  # report_driver | lost_item | question | other
+    rideCode: Optional[str] = ""
+    message: str
+    language: Optional[str] = "en"
+
+
+class SupportRequestResolve(BaseModel):
+    note: Optional[str] = ""
+
+
+@app.post("/api/support/requests")
+def create_support_request(payload: SupportRequestCreate, request: Request):
+    """Rider help/report form → stored and reviewed by the company team.
+    Categories include reporting a driver; every request keeps ride context."""
+    if rate_limited(f"support:{client_key(request)}", limit=6, window_seconds=60):
+        raise HTTPException(status_code=429, detail="Too many requests. Please wait a moment.")
+    message = (payload.message or "").strip()
+    if len(message) < 5:
+        raise HTTPException(status_code=400, detail="Please add a short description so we can help you.")
+    category = (payload.category or "").strip()
+    req = {
+        "id": max([int(r.get("id", 0)) for r in SUPPORT_REQUESTS] or [0]) + 1,
+        "reference": f"SRV-{datetime.now(timezone.utc).year}-{max([int(r.get('id', 0)) for r in SUPPORT_REQUESTS] or [0]) + 1:06d}",
+        "name": (payload.name or "").strip(),
+        "email": (payload.email or "").strip(),
+        "category": category or "other",
+        "rideCode": (payload.rideCode or "").strip(),
+        "message": message,
+        "language": _normalize_assistant_lang(payload.language),
+        "status": "OPEN",
+        "createdAt": _now_iso(),
+    }
+    SUPPORT_REQUESTS.append(req)
+    _persist_core_data("support_requests")
+    log.info("💬 Support request %s (%s) from %s", req["reference"], category, req["name"] or req["email"] or "guest")
+    return {
+        "status": "ok",
+        "request": req,
+        "note": "Our team reviews every request (usually within 24–48 hours).",
+    }
+
+
+@app.get("/api/admin/support-requests", dependencies=[Depends(require_admin)])
+def admin_support_requests():
+    return sorted(SUPPORT_REQUESTS, key=lambda r: r.get("createdAt", ""), reverse=True)
+
+
+@app.post("/api/admin/support-requests/{req_id}/resolve", dependencies=[Depends(require_admin)])
+def admin_resolve_support_request(req_id: int, payload: SupportRequestResolve):
+    req = next((r for r in SUPPORT_REQUESTS if r.get("id") == req_id), None)
+    if not req:
+        raise HTTPException(status_code=404, detail="request not found")
+    req["status"] = "RESOLVED"
+    req["resolutionNote"] = (payload.note or "").strip()
+    req["resolvedAt"] = _now_iso()
+    _persist_core_data("support_requests")
+    log.info("💬 Support request %s resolved", req["reference"])
+    return {"status": "ok", "request": req}
+
+
+# ============================================================================
+# 🔑 OWNER SECURITY — change the admin access key WITHOUT touching Render
+# (persisted hashed credential). Requires the current key (X-Admin-Key).
+# ============================================================================
+
+class AdminKeyRotate(BaseModel):
+    newKey: str
+
+
+@app.post("/api/admin/rotate-key", dependencies=[Depends(require_admin)])
+def owner_rotate_admin_key(payload: AdminKeyRotate, request: Request):
+    """Owner changes the admin access key. The request must be signed with
+    the CURRENT key (X-Admin-Key). New key is hashed (PBKDF2) and persisted;
+    it survives restarts and does not need any Render environment change."""
+    if rate_limited(f"rotate-key:{client_key(request)}", limit=3, window_seconds=300):
+        raise HTTPException(status_code=429, detail="Too many key changes. Please wait a few minutes.")
+    new_key = (payload.newKey or "").strip()
+    if len(new_key) < 10:
+        raise HTTPException(status_code=400, detail="New key must be at least 10 characters long.")
+    if len(new_key) > 128:
+        raise HTTPException(status_code=400, detail="New key is too long (max 128 characters).")
+    if _admin_key_matches(new_key):
+        raise HTTPException(status_code=400, detail="New key is the same as the current key.")
+    _save_admin_credentials(new_key)
+    log.warning("🔑 Owner admin key changed — previous key is no longer valid.")
+    return {
+        "status": "ok",
+        "message": "Admin access key changed. Use the new key from now on — the old key no longer works.",
+        "updatedAt": _now_iso(),
+    }
+
+
+@app.post("/api/admin/reset-key-to-default", dependencies=[Depends(require_admin)])
+def owner_reset_admin_key():
+    """Owner resets back to the value of SMARTCAB_ADMIN_KEY in the Render
+    environment (used when recovering after a rotation)."""
+    if _admin_credentials:
+        _drop_admin_credentials()
+    log.warning("🔑 Owner admin key reset to the SMARTCAB_ADMIN_KEY environment value.")
+    return {
+        "status": "ok",
+        "message": "Admin key reset to the SMARTCAB_ADMIN_KEY environment value.",
     }

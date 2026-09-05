@@ -1,0 +1,4 @@
+# Test-only dependencies (not needed to run the app)
+pytest
+httpx
+Pillow>=10
