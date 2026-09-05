@@ -720,3 +720,39 @@ def test_agent_tips_tool_returns_local_tips():
     import main as main_mod
     out = main_mod.agent_get_safety_tips(topic="night")
     assert "Live Guard" in out
+
+
+# ---------------------------------------------------------------------------
+# 📱 Live cabin video — Content-Type must match what the phone encoded.
+# Hardcoding video/webm used to leave the family tracker black on phones
+# (iOS records/needs video/mp4; the tracker also only accepted webm).
+# ---------------------------------------------------------------------------
+def test_video_chunk_media_type_preserved_end_to_end():
+    link_id = "RIDE_TEST_MP4_WEBM"
+    # iPhone-style MP4 chunk
+    fake_mp4 = b"\x00\x00\x00\x18ftypmp42" + b"x" * 300
+    res = client.post(
+        f"/api/video/stream/{link_id}/chunk",
+        files={"file": ("chunk_1.mp4", fake_mp4, "video/mp4")},
+        data={"lat": "23.0", "lng": "72.5", "durationMs": "5000"},
+    )
+    assert res.status_code == 200, res.text
+    got = client.get(f"/api/video/stream/{link_id}/latest")
+    assert got.status_code == 200
+    assert got.headers["content-type"].startswith("video/mp4"), got.headers["content-type"]
+    assert got.headers.get("X-Chunk-Id")
+    assert got.content == fake_mp4
+    # Android/desktop-style WebM chunk keeps its type
+    fake_webm = b"\x1a\x45\xdf\xa3webm" + b"y" * 300
+    res = client.post(
+        f"/api/video/stream/{link_id}/chunk",
+        files={"file": ("chunk_2.webm", fake_webm, "video/webm")},
+        data={},
+    )
+    assert res.status_code == 200
+    got = client.get(f"/api/video/stream/{link_id}/latest")
+    assert got.headers["content-type"].startswith("video/webm"), got.headers["content-type"]
+    # Scrub endpoint reports the same per-chunk type
+    chunk_id = got.headers["X-Chunk-Id"]
+    got2 = client.get(f"/api/video/stream/{link_id}/chunk/{chunk_id}")
+    assert got2.headers["content-type"].startswith("video/webm")

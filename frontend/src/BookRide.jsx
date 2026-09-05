@@ -13,6 +13,27 @@ import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-lea
 import L from 'leaflet';
 
 import { API_BASE, authHeaders } from './api';
+
+// 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
+// Order matters: H.264/MP4 first because it plays on iOS Safari, Android
+// and desktop alike (WebM does NOT play on iOS — that was breaking the
+// family live-cam view on phones). Falls back to WebM on older browsers.
+const pickRecorderMime = () => {
+  if (!window.MediaRecorder || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+  const candidates = [
+    'video/mp4;codecs=avc1.42E01E',
+    'video/mp4',
+    'video/webm;codecs=vp9,opus',
+    'video/webm;codecs=vp8,opus',
+    'video/webm;codecs=vp9',
+    'video/webm;codecs=vp8',
+    'video/webm',
+  ];
+  for (const t of candidates) {
+    try { if (MediaRecorder.isTypeSupported(t)) return t; } catch (e) { /* keep going */ }
+  }
+  return '';
+};
 import { LANGS, getGoogleLang, setSiteLanguage } from './i18n';
 
 // --- CUSTOM MAP ICONS ---
@@ -743,6 +764,9 @@ const BookRide = () => {
   // separate recorder for each clip instead, so every upload is playable
   // by a receiver who joins the live feed at any point.
   const liveStreamActiveRef = useRef(false);
+  // Mime type actually used by the live clip recorder (webm OR mp4 —
+  // picked per device so iPhone can record and Android/iPhone can play).
+  const liveStreamMimeRef = useRef('');
   const liveStreamTimerRef = useRef(null);
 
   const locationSuggestions = [
@@ -936,7 +960,8 @@ const BookRide = () => {
     }
 
     const stream = videoRef.current.srcObject;
-    const recorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+    const evMime = pickRecorderMime();
+    const recorder = new MediaRecorder(stream, evMime ? { mimeType: evMime } : undefined);
     
     const chunks = [];
     
@@ -947,7 +972,7 @@ const BookRide = () => {
     };
 
     recorder.onstop = () => {
-      const blob = new Blob(chunks, { type: 'video/webm' });
+      const blob = new Blob(chunks, { type: recorder.mimeType || 'video/webm' });
       const url = URL.createObjectURL(blob);
       setRecordedVideoURL(url);
       setVideoChunks(chunks);
@@ -993,10 +1018,12 @@ const BookRide = () => {
     setStreamLinkId(linkKey);
 
     const stream = videoRef.current.srcObject;
-    if (!window.MediaRecorder || !MediaRecorder.isTypeSupported('video/webm')) {
+    const liveMime = pickRecorderMime();
+    if (!window.MediaRecorder || !liveMime) {
       alert("❌ Your browser doesn't support live video recording.");
       return;
     }
+    liveStreamMimeRef.current = liveMime;
 
     // Do NOT use recorder.start(5000). Browser timeslices are fragments of
     // one WebM stream, and Chrome commonly omits the EBML header from all
@@ -1006,7 +1033,8 @@ const BookRide = () => {
     const uploadClip = async (blob) => {
       if (!blob || blob.size <= 100) return;
       const fd = new FormData();
-      fd.append('file', blob, `chunk_${Date.now()}.webm`);
+      const ext = (blob.type || '').includes('mp4') ? 'mp4' : 'webm';
+      fd.append('file', blob, `chunk_${Date.now()}.${ext}`);
       if (pickupCoords) { fd.append('lat', String(pickupCoords[0])); }
       if (pickupCoords) { fd.append('lng', String(pickupCoords[1])); }
       try {
@@ -1023,7 +1051,7 @@ const BookRide = () => {
       if (!liveStreamActiveRef.current) return;
       let clipRecorder;
       try {
-        clipRecorder = new MediaRecorder(stream, { mimeType: 'video/webm' });
+        clipRecorder = new MediaRecorder(stream, liveStreamMimeRef.current ? { mimeType: liveStreamMimeRef.current } : undefined);
       } catch (err) {
         console.warn("Unable to create live video clip:", err);
         liveStreamActiveRef.current = false;
@@ -1036,8 +1064,8 @@ const BookRide = () => {
       };
       clipRecorder.onstop = () => {
         // onstop fires only after the final dataavailable event, so this
-        // Blob contains the WebM header and all frames for this clip.
-        void uploadClip(new Blob(clipParts, { type: 'video/webm' }));
+        // Blob contains the container header and all frames for this clip.
+        void uploadClip(new Blob(clipParts, { type: clipRecorder.mimeType || liveStreamMimeRef.current || 'video/webm' }));
         if (liveStreamActiveRef.current) recordOneCompleteClip();
       };
       streamRecorderRef.current = clipRecorder;
