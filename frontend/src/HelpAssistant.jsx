@@ -43,14 +43,14 @@ export function AssistantChat({ initialHeight = 'h-[380px]' }) {
     setMessages((m) => [...m, { role: 'user', text: q }]);
     setBusy(true);
     try {
-      const res = await fetch(`${API_BASE}/api/assistant`, {
+      const res = await fetch(`${API_BASE}/api/agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: q, language: lang }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.detail || 'assistant error');
-      setMessages((m) => [...m, { role: 'ai', text: data.reply }]);
+      setMessages((m) => [...m, { role: 'ai', text: data.reply, engine: data.engine }]);
       if (Array.isArray(data.suggestions) && data.suggestions.length) setChips(data.suggestions);
     } catch (e) {
       setError(T('assistant_error', lang));
@@ -71,6 +71,9 @@ export function AssistantChat({ initialHeight = 'h-[380px]' }) {
                   : 'bg-slate-100 text-slate-800 rounded-bl-md'
               }`}
             >
+              {m.engine === 'ai' && (
+                <span className="block text-[9px] font-bold text-emerald-600 uppercase tracking-wider mb-0.5">🤖 AI Agent</span>
+              )}
               {m.text}
             </div>
           </div>

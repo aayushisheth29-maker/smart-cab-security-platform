@@ -199,6 +199,19 @@ live cabin video streaming (`/api/video/stream/*`), auth, pricing, evidence and 
 - Share links and live video chunks are persisted to disk, so they survive service restarts (Render free-tier sleeps).
 - The frontend points at this backend via one config file: [`frontend/src/api.js`](frontend/src/api.js).
 
+### 🤖 AI Safety Agent (LangChain + Gemini) ✅ ACTIVE
+The rider app's Help chat is a **real LangChain ReAct agent** (`POST /api/agent`): a Gemini LLM
+runs a ReAct loop (LangGraph) and decides which of 5 tools to call — `get_ride_status`,
+`share_live_location`, `trigger_sos`, `report_driver`, `get_safety_tips`. It may only report
+what those tools return (no invented ride data). If the rider says "I'm scared, call for
+help", the agent fires a real SOS itself (ride → DANGER, emergency logged, contacts attached).
+
+- Set `GEMINI_API_KEY` in the Render environment (free tier: [aistudio.google.com](https://aistudio.google.com/apikey)) to activate the LLM.
+- Without the key, or if a call fails, the endpoint **automatically falls back** to the scripted
+  multilingual assistant (`/api/assistant` logic) — the app never breaks. The chat shows a
+  🤖 AI Agent badge on replies that came from the LLM.
+- Agent tools + fallback are covered by automated tests in [`backend-python-ai/tests/test_api.py`](backend-python-ai/tests/test_api.py).
+
 ### Backend (Java — Spring Boot) ⚠️ RETIRED
 See: [Java Backend](backend-java-core/)
 

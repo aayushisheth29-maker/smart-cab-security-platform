@@ -8,7 +8,7 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from main import app, USERS, TRIPS, DRIVERS, EMERGENCIES, ROUTE_CHECKS
+from main import app, USERS, TRIPS, DRIVERS, EMERGENCIES, ROUTE_CHECKS, SHARE_LINKS, SUPPORT_REQUESTS
 
 client = TestClient(app)
 
@@ -24,7 +24,12 @@ def fresh_state():
     TRIPS.clear()
     EMERGENCIES.clear()
     ROUTE_CHECKS.clear()
+    SHARE_LINKS.clear()
+    SUPPORT_REQUESTS.clear()
     from main import seed_samples, _RATE_BUCKETS, _drop_admin_credentials
+    import main
+    main._safety_agent = None  # rebuild the (optional) LLM agent per test
+    main._safety_agent_error = None
     _RATE_BUCKETS.clear()
     _drop_admin_credentials()  # always start each test with the env dev key
     seed_samples(force=True)
@@ -616,3 +621,102 @@ def test_owner_can_change_admin_key_without_redeploy():
     assert r.status_code == 200, r.text
     assert client.get("/api/admin/stats", headers={"X-Admin-Key": ADMIN_KEY}).status_code == 200
     assert client.get("/api/admin/stats", headers={"X-Admin-Key": new_key}).status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# 🤖 AI Safety Agent (LangChain ReAct) — tools + graceful fallback.
+# These tests run WITHOUT an LLM API key: the endpoint must transparently
+# fall back to the scripted assistant, and every tool must work against the
+# real data stores.
+# ---------------------------------------------------------------------------
+def _book_trip_for_agent():
+    res = client.post("/api/bookings", json={
+        "riderName": "Agent Test Rider",
+        "pickupLocation": "Gota, Ahmedabad",
+        "dropoffLocation": "Chandlodia, Ahmedabad",
+        "distanceKm": 3.2,
+        "fare": 64.0,
+        "status": "IN_PROGRESS",
+    })
+    assert res.status_code == 200, res.text
+    return res.json()
+
+
+def test_agent_endpoint_falls_back_without_api_key(monkeypatch):
+    import main as main_mod
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    main_mod._safety_agent = None
+    main_mod._safety_agent_error = None
+    res = client.post("/api/agent", json={"message": "Is SOS real?", "language": "en"})
+    assert res.status_code == 200, res.text
+    data = res.json()
+    assert data["engine"] == "fallback"
+    assert data["fallbackReason"]
+    assert data["reply"]  # scripted assistant still answers
+    assert data["suggestions"]
+
+
+def test_agent_tool_get_ride_status_unknown_code():
+    import main as main_mod
+    out = main_mod.agent_get_ride_status(ride_code="SC-NOPE")
+    assert "no active ride" in out.lower() or "not found" in out.lower()
+
+
+def test_agent_tool_share_creates_link_for_family():
+    import main as main_mod
+    trip = _book_trip_for_agent()
+    code = trip["rideCode"]
+    out = main_mod.agent_share_live_location(ride_code=code)
+    assert f"/track/" in out
+    link = main_mod._trip_share_link(trip)
+    assert link is not None and link["bookingId"] == str(trip["id"])
+    assert any(l.get("bookingId") == str(trip["id"]) for l in main_mod.SHARE_LINKS.values())
+    # Second call reuses the same link (idempotent)
+    out2 = main_mod.agent_share_live_location(ride_code=code)
+    assert out == out2
+
+
+def test_agent_tool_sos_marks_trip_danger_and_logs_emergency():
+    import main as main_mod
+    trip = _book_trip_for_agent()
+    code = trip["rideCode"]
+    # Rider adds emergency contacts in Live Guard (stored on the live trip object)
+    main_mod._find_trip_by_code(code)["emergencyContacts"] = [{"name": "Mom", "phone": "+91 98765 00001"}]
+    out = main_mod.agent_trigger_sos(ride_code=code, reason="rider felt unsafe (test)")
+    assert "sos fired" in out.lower()
+    updated = main_mod._find_trip_by_code(code)
+    assert updated["status"] == "DANGER"
+    assert updated.get("sosAt")
+    rec = next((e for e in main_mod.EMERGENCIES if e.get("rideCode") == code), None)
+    assert rec is not None
+    assert rec["reason"] == "rider felt unsafe (test)"
+    assert rec["contacts"], "saved emergency contacts must be attached to the alert"
+
+
+def test_agent_tool_report_driver_files_support_request():
+    import main as main_mod
+    trip = _book_trip_for_agent()
+    before = len(main_mod.SUPPORT_REQUESTS)
+    out = main_mod.agent_report_driver(ride_code=trip["rideCode"], reason="driver was rude")
+    assert "SRV-" in out
+    assert len(main_mod.SUPPORT_REQUESTS) == before + 1
+    req = main_mod.SUPPORT_REQUESTS[-1]
+    assert req["category"] == "report_driver"
+    assert req["rideCode"] == trip["rideCode"]
+    assert req["status"] == "OPEN"
+
+
+def test_agent_endpoint_resolves_active_ride_for_context():
+    import main as main_mod
+    trip = _book_trip_for_agent()
+    res = client.post("/api/agent", json={
+        "message": "Where is my driver?", "language": "en", "rideCode": trip["rideCode"],
+    })
+    assert res.status_code == 200, res.text
+    assert res.json()["activeRideCode"] == trip["rideCode"]
+
+
+def test_agent_tips_tool_returns_local_tips():
+    import main as main_mod
+    out = main_mod.agent_get_safety_tips(topic="night")
+    assert "Live Guard" in out
