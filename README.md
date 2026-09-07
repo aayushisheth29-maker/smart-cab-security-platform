@@ -243,5 +243,25 @@ See: [Database Files](database/)
 ### Bug Fixing
 - [Bug Fixing](docs/Bug_Fixing.md)
 
+# Week 8 - Deployment and Documentation
 
+The final week focused on API integration, integration testing, final feature enhancement, deployment testing, and final project verification.
+
+### Week 8 Documentation
+
+- [API Integration](docs/API_Integration.md)
+- [Integration Testing](docs/Integration_Testing.md)
+- [Final Feature Enhancement](docs/Final_Feature_Enhancement.md)
+- [Deployment Testing](docs/Deployment_Testing.md)
+
+### Week 8 Activities
+
+- API integration between frontend and backend
+- Integration testing of major modules
+- Final feature enhancement
+- GPS and emergency workflow verification
+- Error handling verification
+- Frontend and backend deployment testing
+- Final system verification
+- Final project documentation
 
