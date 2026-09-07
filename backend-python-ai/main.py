@@ -3738,6 +3738,64 @@ def _agent_context_line(lang: str, trip) -> str:
     )
 
 
+def _extract_agent_reply_text(content: Any) -> str:
+    """Extract only user-readable text from an LLM message's content.
+
+    Gemini 2.5 and earlier return ``content`` as a plain string, while
+    Gemini 3+ via ``langchain-google-genai`` returns a *list of blocks* such
+    as ``[{'type': 'text', 'text': '...', 'extras': {'signature': ...}}]``
+    plus internal ``thinking``/``reasoning`` blocks. The old code called
+    ``str(content)`` on that list, so riders saw raw dictionaries and
+    thought signatures in the chat widget.
+
+    Only two shapes are treated as readable (mirroring LangChain's
+    ``AIMessage.text`` behaviour):
+
+    - a plain ``str`` — returned as-is (stripped);
+    - a list/tuple of blocks — plain ``str`` items plus dicts whose
+      ``type`` is exactly ``"text"``, contributing only their ``text`` field.
+
+    Everything else — ``thinking``/``reasoning``/``tool_use`` blocks,
+    ``extras``/``signature``/``metadata``, dicts, ``None`` — yields ``""``
+    so the caller falls back to the scripted assistant instead of leaking
+    internal data. The function never calls ``str()`` on structured content.
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content.strip()
+    if isinstance(content, (list, tuple)):
+        parts: List[str] = []
+        for block in content:
+            if isinstance(block, str):
+                # Preserve original spacing (LangChain joins with ""); skip
+                # whitespace-only fragments so they add no noise.
+                if block.strip():
+                    parts.append(block)
+            elif isinstance(block, dict):
+                # ONLY type=="text" is user-readable. Thinking, reasoning,
+                # tool calls, images and any extras/signatures are internal.
+                if block.get("type") != "text":
+                    continue
+                text = block.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text)
+            else:
+                # Defensive: object-style content blocks exposing .type/.text
+                # (future LangChain shapes). Any failure means "not readable".
+                try:
+                    if getattr(block, "type", None) != "text":
+                        continue
+                    text = getattr(block, "text", "")
+                except Exception:
+                    continue
+                if isinstance(text, str) and text.strip():
+                    parts.append(text)
+        return "".join(parts).strip()
+    # Any other shape (dict, int, ...) is NOT readable text — never str() it.
+    return ""
+
+
 class AgentQuery(BaseModel):
     message: str
     language: Optional[str] = "en"
@@ -3778,7 +3836,13 @@ def ai_safety_agent(payload: AgentQuery, request: Request):
         try:
             result = _AGENT_EXECUTOR.submit(_call).result(timeout=_AGENT_TIMEOUT_SECONDS)
             last = result["messages"][-1]
-            reply = str(getattr(last, "content", None) or last or "").strip()
+            if isinstance(last, dict):
+                raw_content = last.get("content")
+            else:
+                raw_content = getattr(last, "content", None)
+                if raw_content is None and isinstance(last, (str, list, tuple)):
+                    raw_content = last
+            reply = _extract_agent_reply_text(raw_content)
             if not reply:
                 raise RuntimeError("empty reply from model")
             out.update(reply=reply, engine="ai", model=GEMINI_MODEL)
