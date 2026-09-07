@@ -54,6 +54,8 @@ import hmac
 import base64
 import secrets
 import threading
+import asyncio
+import unicodedata
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("smartcab")
@@ -3469,12 +3471,102 @@ def ai_assistant(payload: AssistantQuery, request: Request):
 # assistant above, so the app can never break.
 # ---------------------------------------------------------------------------
 
-import concurrent.futures
-
 FRONTEND_URL = os.environ.get("SMARTCAB_FRONTEND_URL", "https://smart-cab-security-platform.vercel.app")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
-_AGENT_TIMEOUT_SECONDS = 30
-_AGENT_EXECUTOR = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+
+def _agent_timeout_setting(name: str, default: float) -> float:
+    """Bad optional tuning must not prevent the scripted assistant from booting."""
+    try:
+        value = float(os.environ.get(name, default))
+        if math.isfinite(value) and value > 0:
+            return value
+    except (TypeError, ValueError):
+        pass
+    log.warning("Invalid %s; using %.1fs", name, default)
+    return default
+
+
+# Allow a multi-tool conversation more time than the old 30s outer wait, but
+# fail a stalled individual Gemini request sooner. The SDK timeout is in seconds.
+_AGENT_TIMEOUT_SECONDS = _agent_timeout_setting("SMARTCAB_AGENT_TIMEOUT_SECONDS", 60.0)
+_AGENT_MODEL_TIMEOUT_SECONDS = min(
+    _agent_timeout_setting("SMARTCAB_GEMINI_TIMEOUT_SECONDS", 20.0), _AGENT_TIMEOUT_SECONDS,
+)
+# Retain the old four-call concurrency cap without an unbounded executor queue.
+# Nonblocking acquisition also works across TestClient event loops.
+_AGENT_CAPACITY = threading.BoundedSemaphore(4)
+
+
+def _agent_model_options(model: str) -> Dict[str, Any]:
+    options: Dict[str, Any] = {
+        "temperature": 0.2,
+        "timeout": _AGENT_MODEL_TIMEOUT_SECONDS,
+        # langchain-google-genai 4.x maps this to SDK *attempts*. 0 means the
+        # SDK default retries; 1 really means one request with no retry/backoff.
+        "max_retries": 1,
+    }
+    name = model.lower().rsplit("/", 1)[-1]
+    if name.startswith(("gemini-3-", "gemini-3.")):
+        options.update(thinking_level="low", temperature=1.0)
+    elif name.startswith("gemini-2.5-flash"):
+        # Gemini 2.5 uses a budget, not a level. Pro cannot disable thinking.
+        options.update(thinking_budget=0)
+    return options
+
+
+def _normalize_agent_fast_path(text: str) -> str:
+    # Whole-message matching, NOT the fallback's broad substring scoring:
+    # "hi" inside "this", "unsafe" or "share my live location" must never
+    # send a ride/safety action to a generic greeting/FAQ response.
+    text = unicodedata.normalize("NFKC", text).casefold()
+    text = "".join(c for c in text if not unicodedata.category(c).startswith(("P", "S")))
+    return " ".join(text.split())
+
+
+def _build_agent_fast_paths() -> Dict[str, str]:
+    phrases = {
+        "greeting": ["hi there", "hello there", "hey there", "good afternoon", "how are you"],
+        "book": ["how can I book a ride", "how to book a ride", "how do I book a cab", "booking help"],
+        "fare": ["how are fares calculated", "how much does a ride cost", "what are your fares",
+                 "are there hidden charges", "pricing", "fares", "тарифы", "料金", "车费", "tarifs", "preise"],
+        "sos": ["what is SOS", "how does SOS work", "what does the SOS button do",
+                "does SOS call the police", "is SOS a real emergency call"],
+        "cancel": ["how do I cancel a ride", "how can I cancel a ride", "what is the cancellation policy"],
+        "report_driver": ["how do I report a driver", "how can I report a driver"],
+        "lost_item": ["how do I report a lost item", "what is the lost item policy"],
+        "driver_app": ["how do I become a driver", "how can I become a driver", "apply to drive"],
+        "safety": ["what safety features do you have", "how does live guard work"],
+        "language": ["how do I change the language", "what languages are supported", "change language"],
+        "contact": ["how do I contact support", "what is your support email", "support email", "contact"],
+    }
+    for intent in ("greeting", "thanks"):
+        for words in _ASSISTANT_KEYWORDS[intent].values():
+            phrases.setdefault(intent, []).extend(words)
+    for suggestions in _ASSISTANT_SUGGESTIONS.values():
+        # All six locales' informational quick questions. Index 2 is a request
+        # to FILE a report, not an FAQ, and must still reach the tool agent.
+        for index, intent in ((0, "book"), (1, "sos"), (3, "driver_app"), (4, "contact")):
+            phrases[intent].append(suggestions[index])
+    return {_normalize_agent_fast_path(phrase): intent
+            for intent, words in phrases.items() for phrase in words}
+
+
+_AGENT_FAST_PATHS = _build_agent_fast_paths()
+
+
+def _agent_fast_path_intent(text: str) -> Optional[str]:
+    normalized = _normalize_agent_fast_path(text)
+    intent = _AGENT_FAST_PATHS.get(normalized)
+    if intent:
+        return intent
+    # Also accept "Hello, how do I book a ride?", but never discard arbitrary
+    # trailing text: "Hello, I'm scared" and FAQ + SOS combinations use the agent.
+    for greeting, kind in _AGENT_FAST_PATHS.items():
+        if kind == "greeting" and normalized.startswith(greeting + " "):
+            return _AGENT_FAST_PATHS.get(normalized[len(greeting) + 1:])
+    return None
+
 
 AGENT_SYSTEM_PROMPT = """You are the Smart Security AI Cab safety agent, an AI agent that helps riders during their cab ride.
 
@@ -3690,6 +3782,41 @@ def agent_get_safety_tips(topic: str = "general") -> str:
 
 _safety_agent = None
 _safety_agent_error: Optional[str] = None
+_safety_agent_lock = threading.Lock()
+
+
+def _agent_latency_callback():
+    """Lazy optional dependency; log timings/counts, never messages or thoughts."""
+    from langchain_core.callbacks import BaseCallbackHandler
+
+    class AgentLatencyCallback(BaseCallbackHandler):
+        def __init__(self):
+            self._starts = {}
+
+        def on_chat_model_start(self, serialized, messages, *, run_id, metadata=None, **kwargs):
+            meta = metadata or {}
+            self._starts[run_id] = (time.monotonic(), meta.get("agent_request_id"), meta.get("langgraph_step"))
+
+        def _finish(self, run_id, usage=None, error_type=None):
+            started, request_id, step = self._starts.pop(run_id, (time.monotonic(), None, None))
+            usage = usage or {}
+            log.info(
+                "Safety agent LLM step request_id=%s step=%s elapsed_ms=%.0f "
+                "output_tokens=%s reasoning_tokens=%s error_type=%s",
+                request_id, step, (time.monotonic() - started) * 1000,
+                usage.get("output_tokens"), (usage.get("output_token_details") or {}).get("reasoning"),
+                error_type,
+            )
+
+        def on_llm_end(self, response, *, run_id, **kwargs):
+            generations = response.generations
+            message = getattr(generations[0][0], "message", None) if generations and generations[0] else None
+            self._finish(run_id, getattr(message, "usage_metadata", None))
+
+        def on_llm_error(self, error, *, run_id, **kwargs):
+            self._finish(run_id, error_type=type(error).__name__)
+
+    return AgentLatencyCallback()
 
 
 def _get_safety_agent():
@@ -3697,29 +3824,34 @@ def _get_safety_agent():
     recorded reason) when GEMINI_API_KEY is unset or the LLM packages are
     missing — the endpoint then uses the scripted fallback."""
     global _safety_agent, _safety_agent_error
-    if _safety_agent is not None or _safety_agent_error:
+    with _safety_agent_lock:
+        if _safety_agent is not None or _safety_agent_error:
+            return _safety_agent
+        try:
+            api_key = os.environ.get("GEMINI_API_KEY", "").strip()
+            if not api_key:
+                raise RuntimeError("GEMINI_API_KEY is not set")
+            from langchain_core.tools import tool
+            from langchain_google_genai import ChatGoogleGenerativeAI
+            from langgraph.prebuilt import create_react_agent
+            options = _agent_model_options(GEMINI_MODEL)
+            llm = ChatGoogleGenerativeAI(
+                model=GEMINI_MODEL, api_key=api_key, callbacks=[_agent_latency_callback()], **options,
+            )
+            tools = [
+                tool(agent_get_ride_status),
+                tool(agent_share_live_location),
+                tool(agent_trigger_sos),
+                tool(agent_report_driver),
+                tool(agent_get_safety_tips),
+            ]
+            _safety_agent = create_react_agent(llm, tools)
+            log.info("🤖 Safety agent ready (model=%s, %d tools, options=%s, deadline=%.1fs)",
+                     GEMINI_MODEL, len(tools), options, _AGENT_TIMEOUT_SECONDS)
+        except Exception as e:
+            _safety_agent_error = str(e) or type(e).__name__
+            log.warning("⚠️ Safety agent unavailable (%s: %s) — scripted fallback active", type(e).__name__, e)
         return _safety_agent
-    try:
-        api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-        if not api_key:
-            raise RuntimeError("GEMINI_API_KEY is not set")
-        from langchain_core.tools import tool
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from langgraph.prebuilt import create_react_agent
-        llm = ChatGoogleGenerativeAI(model=GEMINI_MODEL, api_key=api_key, temperature=0.2, max_retries=0)
-        tools = [
-            tool(agent_get_ride_status),
-            tool(agent_share_live_location),
-            tool(agent_trigger_sos),
-            tool(agent_report_driver),
-            tool(agent_get_safety_tips),
-        ]
-        _safety_agent = create_react_agent(llm, tools)
-        log.info("🤖 Safety agent ready (model=%s, %d tools)", GEMINI_MODEL, len(tools))
-    except Exception as e:
-        _safety_agent_error = str(e)
-        log.warning("⚠️ Safety agent unavailable (%s) — scripted fallback active", e)
-    return _safety_agent
 
 
 def _agent_context_line(lang: str, trip) -> str:
@@ -3803,15 +3935,16 @@ class AgentQuery(BaseModel):
 
 
 @app.post("/api/agent")
-def ai_safety_agent(payload: AgentQuery, request: Request):
-    """🤖 LangChain ReAct safety agent (Gemini). Real tool calls: ride status,
-    live-location share, SOS, driver report, safety tips. Falls back to the
-    scripted assistant when no GEMINI_API_KEY is set or a call fails."""
+async def ai_safety_agent(payload: AgentQuery, request: Request):
+    """Local greeting/FAQ fast paths, otherwise a cancellable Gemini tool agent.
+    Missing credentials, errors, timeouts and overload keep the scripted fallback."""
     if rate_limited(f"agent:{client_key(request)}", limit=8, window_seconds=60):
         raise HTTPException(status_code=429, detail="Too many questions. One moment, please.")
     text = (payload.message or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Please type a question.")
+    started = time.monotonic()
+    request_id = uuid.uuid4().hex[:12]
     lang = _normalize_assistant_lang(payload.language)
     active_trip = _agent_resolve_active_ride(request, payload.rideCode or "")
     out = {
@@ -3823,37 +3956,62 @@ def ai_safety_agent(payload: AgentQuery, request: Request):
         "activeRideCode": (active_trip or {}).get("rideCode"),
         "suggestions": _ASSISTANT_SUGGESTIONS[lang],
     }
-    agent = _get_safety_agent()
-    if agent is not None:
-        user_msg = f"{text}\n\n{_agent_context_line(lang, active_trip)}"
-
-        def _call():
-            return agent.invoke(
+    fast_intent = _agent_fast_path_intent(text)
+    if fast_intent:
+        out.update(reply=_assistant_l10n(_ASSISTANT_REPLIES, lang, fast_intent), engine="scripted")
+    elif not _AGENT_CAPACITY.acquire(blocking=False):
+        out.update(fallbackReason="agent_busy")
+    else:
+        async def _call():
+            # Imports/client initialization can block on the first request. Only
+            # initialization uses a thread; model I/O uses the SDK's native async path.
+            agent = await asyncio.to_thread(_get_safety_agent)
+            if agent is None:
+                return None
+            user_msg = f"{text}\n\n{_agent_context_line(lang, active_trip)}"
+            return await agent.ainvoke(
                 {"messages": [("system", AGENT_SYSTEM_PROMPT), ("human", user_msg)]},
-                config={"recursion_limit": 10},
+                config={"recursion_limit": 10, "metadata": {"agent_request_id": request_id}},
             )
 
         try:
-            result = _AGENT_EXECUTOR.submit(_call).result(timeout=_AGENT_TIMEOUT_SECONDS)
-            last = result["messages"][-1]
-            if isinstance(last, dict):
-                raw_content = last.get("content")
+            # Unlike Future.result(timeout=...), wait_for cancels the graph and
+            # its in-flight async model request, preventing later tool-loop steps.
+            # An already-running synchronous tool cannot be rolled back/cancelled.
+            result = await asyncio.wait_for(_call(), timeout=_AGENT_TIMEOUT_SECONDS)
+            if result is None:
+                out.update(fallbackReason=_safety_agent_error or "GEMINI_API_KEY not set")
             else:
-                raw_content = getattr(last, "content", None)
-                if raw_content is None and isinstance(last, (str, list, tuple)):
-                    raw_content = last
-            reply = _extract_agent_reply_text(raw_content)
-            if not reply:
-                raise RuntimeError("empty reply from model")
-            out.update(reply=reply, engine="ai", model=GEMINI_MODEL)
+                last = result["messages"][-1]
+                if isinstance(last, dict):
+                    raw_content = last.get("content")
+                else:
+                    raw_content = getattr(last, "content", None)
+                    if raw_content is None and isinstance(last, (str, list, tuple)):
+                        raw_content = last
+                reply = _extract_agent_reply_text(raw_content)
+                if not reply:
+                    raise RuntimeError("empty reply from model")
+                out.update(reply=reply, engine="ai", model=GEMINI_MODEL)
+        except TimeoutError as e:
+            log.warning(
+                "Safety agent timeout request_id=%s error_type=%s elapsed_ms=%.0f "
+                "deadline_seconds=%.1f model_timeout_seconds=%.1f — scripted fallback",
+                request_id, type(e).__name__, (time.monotonic() - started) * 1000,
+                _AGENT_TIMEOUT_SECONDS, _AGENT_MODEL_TIMEOUT_SECONDS,
+            )
+            out.update(fallbackReason="agent_timeout")
         except Exception as e:
-            log.warning("⚠️ Safety agent call failed (%s) — scripted fallback", e)
+            log.warning("Safety agent call failed request_id=%s error_type=%s detail=%r — scripted fallback",
+                        request_id, type(e).__name__, str(e))
             out.update(fallbackReason="agent_error")
-    else:
-        out.update(fallbackReason=_safety_agent_error or "GEMINI_API_KEY not set")
+        finally:
+            _AGENT_CAPACITY.release()
     if not out["reply"]:
         _, reply = _scripted_assistant_reply(text, lang)
         out["reply"] = reply
+    log.info("Safety agent response request_id=%s engine=%s intent=%s fallback_reason=%s elapsed_ms=%.0f",
+             request_id, out["engine"], fast_intent, out["fallbackReason"], (time.monotonic() - started) * 1000)
     return out
 
 

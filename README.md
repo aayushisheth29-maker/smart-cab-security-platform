@@ -210,7 +210,35 @@ help", the agent fires a real SOS itself (ride → DANGER, emergency logged, con
 - Without the key, or if a call fails, the endpoint **automatically falls back** to the scripted
   multilingual assistant (`/api/assistant` logic) — the app never breaks. The chat shows a
   🤖 AI Agent badge on replies that came from the LLM.
-- Agent tools + fallback are covered by automated tests in [`backend-python-ai/tests/test_api.py`](backend-python-ai/tests/test_api.py).
+- Known greetings and informational FAQs (including the informational quick questions in all six
+  chat languages, but not the report action) take a **local fast path**, returning
+  `engine: "scripted"` without initializing/calling Gemini.
+  Only whole-message matches are eligible: ride-specific questions, SOS/share/report actions,
+  mixed safety requests and unknown questions still go to the tool agent. Failure replies retain
+  `engine: "fallback"`; successful LLM replies retain `engine: "ai"` and the AI badge.
+- **Latency defaults (Issue #9):** Gemini 3 uses `thinking_level="low"` and `temperature=1.0`
+  (the current SDK uses fixed sampling defaults for 3.6). Gemini 2.5 Flash uses `thinking_budget=0`.
+  Other models keep compatible defaults. This does **not** change `GEMINI_MODEL` or any deployed
+  Render/API-key settings. Install the updated requirements (`langchain-google-genai>=4.4.0,<5.0`):
+  older SDKs can accept `thinking_level` but silently omit it for models absent from their registry.
+- `SMARTCAB_GEMINI_TIMEOUT_SECONDS` defaults to **20s per model request**, with no SDK retries
+  (`max_retries=1` means one attempt in SDK 4.x; `0` uses its default retries).
+  `SMARTCAB_AGENT_TIMEOUT_SECONDS` defaults to **60s for initialization + the whole ReAct loop**,
+  giving multi-tool work more room than the old 30s wait. Both accept positive finite seconds;
+  invalid values use defaults and the model timeout is capped at the overall deadline.
+- The endpoint uses native async execution: the overall timeout cancels the graph/model request
+  instead of abandoning a still-running executor job. At most four agent requests run at once;
+  overload falls back immediately rather than queueing. An already-started synchronous tool
+  cannot be rolled back by cancellation. Overall deadlines/overload return `agent_timeout`/`agent_busy`
+  in `fallbackReason`; SDK/network errors retain `agent_error` and the scripted fallback too.
+- Timing logs correlate each response and LLM step using `request_id`: route/engine, total and
+  per-step `elapsed_ms`, exception type, and output/reasoning token counts when the SDK provides
+  them. Prompts, reply content, reasoning text, signatures and API keys are not logged by this
+  telemetry. After deployment, compare these timings and timeout rates on the same ride/SOS/share
+  prompts; live Gemini latency/quality still needs verification with the owner's configured key.
+- Agent tools, routing, cancellation, SDK configuration, reply formatting and fallback are covered
+  by the tests in [`backend-python-ai/tests/`](backend-python-ai/tests/). Run locally (no API key):
+  `cd backend-python-ai && python -m pytest tests/ -q` after installing requirements and dev requirements.
 
 ### Backend (Java — Spring Boot) ⚠️ RETIRED
 See: [Java Backend](backend-java-core/)
