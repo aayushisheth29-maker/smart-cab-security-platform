@@ -647,7 +647,7 @@ def test_agent_endpoint_falls_back_without_api_key(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     main_mod._safety_agent = None
     main_mod._safety_agent_error = None
-    res = client.post("/api/agent", json={"message": "Is SOS real?", "language": "en"})
+    res = client.post("/api/agent", json={"message": "Trigger SOS for my ride", "language": "en"})
     assert res.status_code == 200, res.text
     data = res.json()
     assert data["engine"] == "fallback"
