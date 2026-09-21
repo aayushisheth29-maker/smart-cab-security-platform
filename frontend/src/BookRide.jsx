@@ -4014,7 +4014,9 @@ const BookRide = () => {
                             title: 'SmartBike',
                             tagline: 'Fastest in city traffic · Solo ride',
                             icon: Bike,
-                            seats: '1 Seat',
+                            seats: '👤 1 Rider',
+                            fuel: '⚡ EV Green',
+                            luggage: '🎒 1 Backpack',
                             eta: '3 min away',
                             badge: 'Helmet Verified',
                             badgeTone: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -4026,7 +4028,9 @@ const BookRide = () => {
                             title: 'SmartMini',
                             tagline: 'Affordable compact AC cab',
                             icon: Car,
-                            seats: '4 Seats',
+                            seats: '👤 4 Seats',
+                            fuel: '⚡ Electric / CNG',
+                            luggage: '🧳 2 Bags',
                             eta: '5 min away',
                             badge: 'SOS Active',
                             badgeTone: 'bg-emerald-50 text-emerald-700 border-emerald-200',
@@ -4038,7 +4042,9 @@ const BookRide = () => {
                             title: 'SmartSedan',
                             tagline: 'Extra comfort · Top-rated driver',
                             icon: Car,
-                            seats: '4 Seats',
+                            seats: '👤 4 Seats',
+                            fuel: '⛽ Hybrid Petrol',
+                            luggage: '🧳 3 Bags',
                             eta: '7 min away',
                             badge: 'Top Rated Driver',
                             badgeTone: 'bg-blue-50 text-blue-700 border-blue-200',
@@ -4050,7 +4056,9 @@ const BookRide = () => {
                             title: 'SmartSUV',
                             tagline: 'Spacious 6-seater · Extra trunk room',
                             icon: Car,
-                            seats: '6 Seats',
+                            seats: '👤 6 Seats',
+                            fuel: '⛽ Petrol / Diesel',
+                            luggage: '🧳 4 Large Bags',
                             eta: '10 min away',
                             badge: 'Large Trunk Space',
                             badgeTone: 'bg-purple-50 text-purple-700 border-purple-200',
@@ -4085,21 +4093,27 @@ const BookRide = () => {
                                   <p className={`text-xs mt-0.5 ${isSelected ? 'text-slate-300' : 'text-slate-500'}`}>
                                     {car.tagline}
                                   </p>
-                                  <div className="flex items-center gap-2 mt-1.5">
+                                  <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/20 text-emerald-300' : 'bg-emerald-50 text-emerald-700 border border-emerald-200'}`}>
+                                      {car.fuel}
+                                    </span>
+                                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${isSelected ? 'bg-white/10 text-slate-300' : 'bg-slate-100 text-slate-600'}`}>
+                                      {car.luggage}
+                                    </span>
                                     <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${
                                       isSelected ? 'bg-white/10 text-emerald-300 border-white/20' : `${car.badgeTone}`
                                     }`}>
-                                      ✓ {car.badge}
+                                      {car.badge}
                                     </span>
-                                    <span className={`text-[10px] font-medium flex items-center gap-1 ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
-                                      <Clock className="h-3 w-3" /> {car.eta}
+                                    <span className={`text-[10px] ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
+                                      • {car.eta}
                                     </span>
                                   </div>
                                 </div>
                               </div>
-                              <div className="text-right pl-3 shrink-0">
-                                <div className="text-xl font-extrabold">₹{fare}</div>
-                                <div className={`text-[11px] font-medium ${isSelected ? 'text-slate-300' : 'text-slate-400'}`}>
+                              <div className="text-right shrink-0 pl-2">
+                                <div className="font-extrabold text-xl tracking-tight">₹{fare}</div>
+                                <div className={`text-[10px] font-semibold ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
                                   est. fare
                                 </div>
                               </div>
