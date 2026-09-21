@@ -242,7 +242,7 @@ export default function MyRides() {
             <Link to="/" className="hover:text-green-400 transition">Book Ride</Link>
             <Link to="/safety" className="hover:text-green-400 transition">Safety Center</Link>
             <Link to="/rides" className="text-green-400">My Rides</Link>
-            <Link to="/" className="hover:text-green-400 transition">Profile</Link>
+            <Link to="/route-lab" className="hover:text-green-400 transition text-emerald-400">🧭 Route Lab</Link>
           </nav>
         </div>
       </header>

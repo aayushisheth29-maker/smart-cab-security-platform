@@ -216,6 +216,7 @@ export default function SafetyCenter() {
             <Link to="/" className="hover:text-green-400 transition">Book Ride</Link>
             <Link to="/rides" className="hover:text-green-400 transition">My Rides</Link>
             <Link to="/safety" className="text-green-400">Safety Center</Link>
+            <Link to="/route-lab" className="hover:text-green-400 transition text-emerald-400">🧭 Route Lab</Link>
           </nav>
         </div>
       </header>
@@ -285,6 +286,71 @@ export default function SafetyCenter() {
           </div>
         )}
 
+        {/* Quick Emergency Hotlines */}
+        <div className="mb-8 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5 text-red-500" /> One-Tap National Helplines
+            </span>
+            <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-full">
+              Toll-Free 24/7
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <a
+              href="tel:112"
+              className="flex items-center gap-3 p-3 bg-red-50 hover:bg-red-100/80 border border-red-200 rounded-2xl transition group"
+            >
+              <div className="p-2.5 rounded-xl bg-red-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                112
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">National Police</div>
+                <div className="text-[10px] text-red-700 font-semibold">Immediate Dispatch</div>
+              </div>
+            </a>
+
+            <a
+              href="tel:181"
+              className="flex items-center gap-3 p-3 bg-pink-50 hover:bg-pink-100/80 border border-pink-200 rounded-2xl transition group"
+            >
+              <div className="p-2.5 rounded-xl bg-pink-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                181
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">Women Helpline</div>
+                <div className="text-[10px] text-pink-700 font-semibold">24/7 Confidential</div>
+              </div>
+            </a>
+
+            <a
+              href="tel:108"
+              className="flex items-center gap-3 p-3 bg-amber-50 hover:bg-amber-100/80 border border-amber-200 rounded-2xl transition group"
+            >
+              <div className="p-2.5 rounded-xl bg-amber-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                108
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">Ambulance</div>
+                <div className="text-[10px] text-amber-700 font-semibold">Medical Emergency</div>
+              </div>
+            </a>
+
+            <a
+              href="tel:1091"
+              className="flex items-center gap-3 p-3 bg-purple-50 hover:bg-purple-100/80 border border-purple-200 rounded-2xl transition group"
+            >
+              <div className="p-2.5 rounded-xl bg-purple-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                1091
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">Women in Distress</div>
+                <div className="text-[10px] text-purple-700 font-semibold">Quick Support</div>
+              </div>
+            </a>
+          </div>
+        </div>
+
         <div className="grid md:grid-cols-2 gap-6">
           {/* SOS */}
           <Card
@@ -340,17 +406,30 @@ export default function SafetyCenter() {
 
           {/* Emergency contacts */}
           <Card icon={Users} tone="blue" title="Emergency Contacts" subtitle="Manage trusted contacts">
-            <div className="space-y-2 mb-4">
+            <div className="space-y-2 mb-4 max-h-56 overflow-y-auto">
               {contacts.length === 0 ? (
-                <p className="text-sm text-slate-400">No trusted contacts yet. Add someone so SOS alerts reach them.</p>
+                <p className="text-sm text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 text-center">
+                  No trusted contacts yet. Add someone so SOS alerts reach them immediately.
+                </p>
               ) : (
                 contacts.map((c) => (
-                  <div key={c.phone} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2.5">
-                    <div className="text-sm">
-                      <div className="font-bold text-slate-800">{c.name}</div>
-                      <div className="text-slate-500 text-xs">{c.phone}</div>
+                  <div key={c.phone} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl p-3 hover:bg-slate-100/80 transition">
+                    <div className="flex items-center gap-3">
+                      <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 font-extrabold text-xs flex items-center justify-center shrink-0">
+                        {c.name ? c.name.slice(0, 2).toUpperCase() : 'EC'}
+                      </div>
+                      <div className="text-sm">
+                        <div className="font-extrabold text-slate-900">{c.name}</div>
+                        <a href={`tel:${c.phone}`} className="text-slate-500 hover:text-blue-600 text-xs font-semibold flex items-center gap-1">
+                          <Phone className="h-3 w-3 text-emerald-600" /> {c.phone}
+                        </a>
+                      </div>
                     </div>
-                    <button onClick={() => removeContact(c.phone)} className="text-red-400 hover:text-red-600 transition p-1">
+                    <button
+                      onClick={() => removeContact(c.phone)}
+                      className="text-slate-400 hover:text-red-600 hover:bg-red-50 transition p-2 rounded-lg"
+                      title={`Remove ${c.name}`}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </button>
                   </div>
@@ -361,17 +440,21 @@ export default function SafetyCenter() {
               <input
                 value={newContact.name}
                 onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
-                placeholder="Name (e.g. Mom)"
-                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                placeholder="Name (e.g. Mom, Bestie)"
+                className="flex-1 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-600 outline-none font-medium"
               />
               <input
                 value={newContact.phone}
                 onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                placeholder="+91 …"
-                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                placeholder="+91 98765 43210"
+                className="flex-1 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-600 outline-none font-medium"
               />
-              <button onClick={addContact} disabled={contactBusy} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-700 transition disabled:opacity-60">
-                <Plus className="h-5 w-5" />
+              <button
+                onClick={addContact}
+                disabled={contactBusy || !newContact.name.trim() || !newContact.phone.trim()}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl transition disabled:opacity-50 font-bold flex items-center justify-center"
+              >
+                <Plus className="h-4 w-4" />
               </button>
             </div>
           </Card>
@@ -406,6 +489,12 @@ export default function SafetyCenter() {
             ) : (
               <p className="text-sm text-slate-500">We compare your live GPS position against the pickup → dropoff route. If you're more than 500 m off, you get a clear warning — a rule-based check, not a guess.</p>
             )}
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">Interactive Route Intelligence Lab</span>
+              <Link to="/route-lab" className="text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1">
+                Open Route Lab →
+              </Link>
+            </div>
           </Card>
         </div>
       </main>

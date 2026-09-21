@@ -273,3 +273,14 @@ See: [Database Files](database/)
 
 
 
+
+### 📱 Route Lab — separate mobile/ML preview (not production)
+
+A synthetic-only Route Lab now has an independent React preview, Capacitor Android/iOS project
+shells, explainable route warnings, and a reproducible Isolation Forest demonstration. It does
+not connect to real rides or execute SOS/vehicle actions. Native binaries are not signed or published.
+
+See **[Mobile preview & ML training guide](docs/ROUTE_LAB_MOBILE_GUIDE.md)** for setup, the distinction
+between route rules and ML, honest model evaluation, device-build prerequisites, privacy boundaries,
+and the additional work required before any real-data pilot. The production app and Render blueprint
+are unchanged by this preview; use the dedicated `dev:route-preview`/`route_lab.api:app` commands.

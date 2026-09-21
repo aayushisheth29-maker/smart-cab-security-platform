@@ -1,3 +1,4 @@
+import React, { lazy, Suspense } from 'react';
 import TrackRide from './TrackRide';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Dashboard from './Dashboard';
@@ -10,6 +11,8 @@ import SafetyCenter from './SafetyCenter';
 import AdminDashboard from './AdminDashboard';
 import I18nLoader from './I18nLoader';
 import FloatingHelp from './HelpAssistant';
+
+const RouteLabApp = lazy(() => import('../route-preview/App'));
 
 // 🔒 OWNER PORTAL MODE — used by the SECOND, private Vercel project
 // (e.g. https://owner.smart-security-cab.com). That project sets
@@ -43,6 +46,20 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/rides" element={<MyRides />} />
         <Route path="/safety" element={<SafetyCenter />} />
+        <Route
+          path="/route-lab"
+          element={
+            <Suspense
+              fallback={
+                <div className="min-h-screen flex items-center justify-center bg-[#f5f7f6] font-bold text-slate-700">
+                  Loading Route Intelligence Lab…
+                </div>
+              }
+            >
+              <RouteLabApp />
+            </Suspense>
+          }
+        />
         {/* 🔒 OWNER / FLEET PORTAL — PRIVATE. Not linked anywhere in the rider
             app (no button, no footer link). Only reachable by typing the URL:
             /owner  (alias /admin for older saved bookmarks). The admin key
