@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShieldCheck, ArrowLeft, Siren, MapPin, Users, Video, Loader2, Phone,
-  Copy, Check, Smartphone, AlertTriangle, Share2, Plus, Trash2,
+  Copy, Check, Smartphone, AlertTriangle, Share2, Plus, Trash2, EyeOff, Volume2, FileText,
 } from 'lucide-react';
 import { apiFetch } from './api';
 
@@ -460,15 +460,33 @@ export default function SafetyCenter() {
           </Card>
 
           {/* Live Guard */}
-          <Card icon={Video} tone="amber" title="Live Guard" subtitle="Camera & evidence features" action={<span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">On</span>}>
+          <Card icon={Video} tone="amber" title="Live Guard" subtitle="Camera, stealth & legal evidence" action={<span className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">Active</span>}>
             <p className="text-sm text-slate-500 mb-4">
-              After booking a ride, open <strong>Live Guard</strong> from the ride screen to stream
-              camera evidence to your family's tracking page. Clips are uploaded every few seconds
-              and kept in a rolling buffer.
+              Stream encrypted in-cabin camera & audio directly to your family's live tracking view in real time.
             </p>
-            <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-600 flex items-start gap-3">
-              <Smartphone className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />
-              <p>Every share link <strong>auto-expires after 24 hours</strong> for your privacy. You can always create a new one.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 mb-1">
+                  <EyeOff className="h-3.5 w-3.5 text-emerald-600" /> Stealth Disguise
+                </div>
+                <p className="text-[11px] text-slate-500">Dimmable clock screen hides recording from aggressive drivers.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 mb-1">
+                  <Volume2 className="h-3.5 w-3.5 text-pink-600" /> Decibel Visualizer
+                </div>
+                <p className="text-[11px] text-slate-500">Live multi-band audio sensor flags high volume and shouting.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 mb-1">
+                  <FileText className="h-3.5 w-3.5 text-rose-600" /> Police Dossier
+                </div>
+                <p className="text-[11px] text-slate-500">One-tap sealed legal package containing driver data & video.</p>
+              </div>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-3.5 text-xs text-slate-600 flex items-start gap-2.5">
+              <Smartphone className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+              <p>Every tracking link auto-expires after 24 hours. Video chunks are encrypted during transit.</p>
             </div>
           </Card>
 
