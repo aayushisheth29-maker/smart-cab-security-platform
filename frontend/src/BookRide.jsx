@@ -2001,7 +2001,7 @@ const BookRide = () => {
             lat: pCoords[0], lng: pCoords[1],
           }));
         } catch (e) { /* storage may be unavailable */ }
-        alert(`🎉 ${selectedCar} Booked!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}\n\n(Booking saved locally — backend sync will retry)`);
+        alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name} (${randomDriver.plate})\n💰 Fare: ₹${totalFare}\n\nTap 'Live Guard' on the ride screen to enable cabin security!`);
       }
 
       setPickupCoords(pCoords);
