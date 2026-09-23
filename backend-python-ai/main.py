@@ -4127,23 +4127,40 @@ def owner_reset_admin_key():
 # 🧭 ROUTE LAB SYNTHETIC PREVIEW & ISOLATION FOREST ML ENDPOINTS
 # ============================================================================
 try:
-    from route_lab.features import assess_route as _assess_route, DEVIATION_M, DEVIATION_SECONDS, STOP_SECONDS, MAX_ACCURACY_M
+    from route_lab.features import assess_route as _assess_route, DEVIATION_M, DEVIATION_SECONDS, STOP_SECONDS, MAX_ACCURACY_M, Point as _Point, Sample as _Sample
     from route_lab.model import DemoModel as _DemoModel
     from route_lab.scenarios import PLAN as _PLAN, SCENARIOS as _SCENARIOS, SAMPLE_COUNT as _SAMPLE_COUNT, samples_for as _samples_for, scenario_payload as _scenario_payload
+    from route_lab.real_data_pipeline import parse_csv_trajectories as _parse_csv, parse_gpx_trajectories as _parse_gpx, train_real_isolation_forest as _train_real, save_real_model as _save_real
     _route_model_instance = _DemoModel()
 
     class PreviewAnalyzePayload(BaseModel):
         scenario: str
         sampleIndex: int
 
+    class LiveGpsPointPayload(BaseModel):
+        lat: float
+        lng: float
+        timestamp: float = 0.0
+        speed_kph: float = 0.0
+        accuracy_m: float = 10.0
+
+    class LiveRouteEvaluationPayload(BaseModel):
+        plannedRoute: List[Dict[str, float]]
+        samples: List[LiveGpsPointPayload]
+
+    class UploadDatasetPayload(BaseModel):
+        format: str = "csv"
+        data: str
+
     @app.get("/api/preview/health")
     def api_preview_health():
         return {
             "status": "ok",
-            "environment": "synthetic-preview",
-            "acceptsLiveGps": False,
+            "environment": "production-telemetry" if _route_model_instance.is_production else "route-lab",
+            "acceptsLiveGps": True,
             "automaticActions": False,
-            "modelAvailable": _route_model_instance.bundle is not None
+            "modelAvailable": _route_model_instance.pipeline is not None or _route_model_instance.bundle is not None,
+            "modelType": _route_model_instance.status().get("algorithm")
         }
 
     @app.get("/api/preview/scenarios")
@@ -4156,7 +4173,7 @@ try:
                 "stopSeconds": STOP_SECONDS,
                 "maxAccuracyMeters": MAX_ACCURACY_M
             },
-            "notice": "Synthetic preview only. Not navigation, emergency dispatch, or a safety guarantee."
+            "notice": "SmartCab RouteGuard™ Fleet Safety & Anomaly Engine."
         }
 
     @app.get("/api/preview/model")
@@ -4169,16 +4186,55 @@ try:
     @app.post("/api/preview/analyze")
     def api_preview_analyze(payload: PreviewAnalyzePayload):
         if payload.scenario not in _SCENARIOS:
-            raise HTTPException(status_code=404, detail="Unknown synthetic scenario.")
+            raise HTTPException(status_code=404, detail="Unknown scenario.")
         samples = _samples_for(payload.scenario)[:payload.sampleIndex + 1]
         assessment = _assess_route(_PLAN, samples, as_of=samples[-1].timestamp)
         return {
             "scenario": payload.scenario,
             "sampleIndex": payload.sampleIndex,
-            "isDemo": True,
+            "isDemo": not _route_model_instance.is_production,
             "assessment": assessment,
             "ml": _route_model_instance.score(assessment["features"])
         }
+
+    @app.post("/api/preview/evaluate-live")
+    def api_preview_evaluate_live(payload: LiveRouteEvaluationPayload):
+        try:
+            route_pts = [_Point(lat=p["lat"], lng=p["lng"]) for p in payload.plannedRoute]
+            sample_objs = [_Sample(lat=s.lat, lng=s.lng, timestamp=s.timestamp, speed_kph=s.speed_kph, accuracy_m=s.accuracy_m) for s in payload.samples]
+            as_of = sample_objs[-1].timestamp if sample_objs else 0.0
+            assessment = _assess_route(route_pts, sample_objs, as_of=as_of)
+            return {
+                "status": "success",
+                "assessment": assessment,
+                "ml": _route_model_instance.score(assessment.get("features"))
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Evaluation failed: {str(e)}")
+
+    @app.post("/api/preview/upload-dataset")
+    def api_preview_upload_dataset(payload: UploadDatasetPayload):
+        try:
+            if payload.format.lower() == "gpx":
+                trips = _parse_gpx(payload.data)
+            else:
+                trips = _parse_csv(payload.data)
+                
+            if not trips:
+                raise ValueError("No valid GPS trips could be parsed from input.")
+                
+            pipeline, report = _train_real(trips)
+            _save_real(pipeline, report)
+            _route_model_instance.load()
+            
+            return {
+                "status": "success",
+                "message": f"Successfully trained model on {report['datasetSummary']['totalTrips']} trips and {report['datasetSummary']['totalRawGpsPoints']} GPS points.",
+                "report": report
+            }
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Training failed: {str(e)}")
+
 except Exception as _route_err:
     log.warning(f"Route Lab preview endpoints not attached: {_route_err}")
 
