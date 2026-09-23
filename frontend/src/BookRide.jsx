@@ -773,13 +773,15 @@ const BookRide = () => {
   const liveStreamTimerRef = useRef(null);
 
   const locationSuggestions = [
+    { title: "Silver Star, Chandlodia", subtitle: "Silver Star Complex, Chandlodia, Ahmedabad (Home)" },
+    { title: "Chandlodia", subtitle: "Chandlodia, Ahmedabad, Gujarat" },
+    { title: "Gota", subtitle: "SG Highway, Ahmedabad, Gujarat" },
     { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
     { title: "Ahmedabad Junction", subtitle: "Sakar Bazzar, Kalupur, Ahmedabad" },
     { title: "Saraspur", subtitle: "Ahmedabad, Gujarat" },
+    { title: "Sardar Vallabhbhai Patel Airport (AMD)", subtitle: "Hansol, Ahmedabad, Gujarat" },
     { title: "D86", subtitle: "Uttamnagar, Thakkarbapanagar, Ahmedabad" },
     { title: "Aai Shri Khodiyar Mata", subtitle: "Nikol Gam Road, Ahmedabad, Gujarat" },
-    { title: "Gota", subtitle: "Ahmedabad, Gujarat" },
-    { title: "Chandlodia", subtitle: "Ahmedabad, Gujarat" },
     { title: "Delhi Airport", subtitle: "Indira Gandhi International Airport" },
     { title: "Mumbai Central", subtitle: "Mumbai, Maharashtra" }
   ];
@@ -1518,9 +1520,13 @@ const BookRide = () => {
   // locality centres — good enough for a demo ride estimate, and the
   // city-scoped Nominatim search above remains the primary source.
   const AHMEDABAD_GAZETTEER = [
-    ['new ranip', [23.0906, 72.5702]], ['ranip', [23.0862, 72.5715]],
-    ['chandlodia', [23.0728, 72.5459]], ['chandlodiya', [23.0728, 72.5459]],
+    ['silver star chandlodia', [23.0728, 72.5459]],
+    ['chandlodia silver star', [23.0728, 72.5459]],
+    ['silver star', [23.0728, 72.5459]],
+    ['chandlodia', [23.0728, 72.5459]],
+    ['chandlodiya', [23.0728, 72.5459]],
     ['gota', [23.0722, 72.5409]],
+    ['new ranip', [23.0906, 72.5702]], ['ranip', [23.0862, 72.5715]],
     ['saraspur', [23.0252, 72.5990]],
     ['kalupur railway station', [23.0253, 72.6012]], ['kalupur', [23.0280, 72.5997]],
     ['ahmedabad junction', [23.0253, 72.6012]],

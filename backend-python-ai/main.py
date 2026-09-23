@@ -4121,3 +4121,64 @@ def owner_reset_admin_key():
         "status": "ok",
         "message": "Admin key reset to the SMARTCAB_ADMIN_KEY environment value.",
     }
+
+
+# ============================================================================
+# 🧭 ROUTE LAB SYNTHETIC PREVIEW & ISOLATION FOREST ML ENDPOINTS
+# ============================================================================
+try:
+    from route_lab.features import assess_route as _assess_route, DEVIATION_M, DEVIATION_SECONDS, STOP_SECONDS, MAX_ACCURACY_M
+    from route_lab.model import DemoModel as _DemoModel
+    from route_lab.scenarios import PLAN as _PLAN, SCENARIOS as _SCENARIOS, SAMPLE_COUNT as _SAMPLE_COUNT, samples_for as _samples_for, scenario_payload as _scenario_payload
+    _route_model_instance = _DemoModel()
+
+    class PreviewAnalyzePayload(BaseModel):
+        scenario: str
+        sampleIndex: int
+
+    @app.get("/api/preview/health")
+    def api_preview_health():
+        return {
+            "status": "ok",
+            "environment": "synthetic-preview",
+            "acceptsLiveGps": False,
+            "automaticActions": False,
+            "modelAvailable": _route_model_instance.bundle is not None
+        }
+
+    @app.get("/api/preview/scenarios")
+    def api_preview_scenarios():
+        return {
+            "scenarios": [_scenario_payload(key) for key in _SCENARIOS],
+            "thresholds": {
+                "deviationMeters": DEVIATION_M,
+                "deviationSeconds": DEVIATION_SECONDS,
+                "stopSeconds": STOP_SECONDS,
+                "maxAccuracyMeters": MAX_ACCURACY_M
+            },
+            "notice": "Synthetic preview only. Not navigation, emergency dispatch, or a safety guarantee."
+        }
+
+    @app.get("/api/preview/model")
+    def api_preview_model():
+        status = _route_model_instance.status()
+        if status.get("report"):
+            status["report"] = {k: v for k, v in status["report"].items() if k != "splitTripIds"}
+        return status
+
+    @app.post("/api/preview/analyze")
+    def api_preview_analyze(payload: PreviewAnalyzePayload):
+        if payload.scenario not in _SCENARIOS:
+            raise HTTPException(status_code=404, detail="Unknown synthetic scenario.")
+        samples = _samples_for(payload.scenario)[:payload.sampleIndex + 1]
+        assessment = _assess_route(_PLAN, samples, as_of=samples[-1].timestamp)
+        return {
+            "scenario": payload.scenario,
+            "sampleIndex": payload.sampleIndex,
+            "isDemo": True,
+            "assessment": assessment,
+            "ml": _route_model_instance.score(assessment["features"])
+        }
+except Exception as _route_err:
+    log.warning(f"Route Lab preview endpoints not attached: {_route_err}")
+
