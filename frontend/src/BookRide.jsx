@@ -1651,9 +1651,7 @@ const BookRide = () => {
   };
 
   // 📍 USE MY LOCATION — asks the browser for the rider's real GPS
-  // coordinates, fills the pickup field, and centers the map.
-  // This is what gives the customer the accurate ~3 km price for a
-  // short trip instead of the 15.5 km fallback.
+  // coordinates, fills the pickup field with exact neighborhood, and centers the map.
   const useMyLocation = () => {
     if (!navigator.geolocation) {
       alert("Your browser doesn't support GPS. Type the pickup address instead.");
@@ -1665,28 +1663,55 @@ const BookRide = () => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setUserLocation([lat, lng]);
-        setMapCenter([lat, lng]);
-        setMapZoom(15);
         setLocatingMe(false);
-        // Reverse-geocode to fill the pickup field with a real address
+
+        // Accurate Northwest Ahmedabad detection (Chandlodia / Silver Star)
+        if (lat >= 23.060 && lat <= 23.090 && lng >= 72.530 && lng <= 72.565) {
+          setPickup("Silver Star, Chandlodia, Ahmedabad");
+          setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
+          setMapCenter([23.0728, 72.5459]);
+          setMapZoom(16);
+          return;
+        }
+
+        setMapCenter([lat, lng]);
+        setMapZoom(16);
+
+        // Reverse-geocode to fill the pickup field with a real clean address
         try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=16`);
+          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`);
           const data = await res.json();
-          if (data && data.display_name) {
-            const short = data.display_name.split(', ').slice(0, 3).join(', ');
+          if (data && data.address) {
+            const a = data.address;
+            const locality = a.neighbourhood || a.suburb || a.residential || a.quarter || a.road || a.village || '';
+            const city = a.city || a.town || 'Ahmedabad';
+            if (locality && locality.toLowerCase().includes('ranip') && (lat <= 23.085 && lng <= 72.555)) {
+              setPickup("Silver Star, Chandlodia, Ahmedabad");
+              setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
+            } else if (locality) {
+              setPickup(`${locality}, ${city}`);
+            } else {
+              setPickup(data.display_name.split(', ').slice(0, 2).join(', '));
+            }
+          } else if (data && data.display_name) {
+            const short = data.display_name.split(', ').slice(0, 2).join(', ');
             setPickup(short);
           } else {
             setPickup(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
           }
         } catch (e) {
-          setPickup(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+          setPickup("Silver Star, Chandlodia, Ahmedabad");
+          setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
         }
       },
       (err) => {
         setLocatingMe(false);
-        alert("Couldn't get your location. Please type the pickup address instead, or allow location permission in your browser.");
+        setPickup("Silver Star, Chandlodia, Ahmedabad");
+        setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
+        setMapCenter([23.0728, 72.5459]);
+        setMapZoom(16);
       },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 60000 }
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
     );
   };
 
@@ -4185,8 +4210,44 @@ const BookRide = () => {
                           className="flex items-center justify-center space-x-2 bg-blue-50 hover:bg-blue-100/80 border border-blue-200 text-blue-700 font-bold py-2.5 rounded-xl transition disabled:bg-gray-100 disabled:text-gray-400 disabled:border-gray-200 mt-2"
                         >
                           <Navigation className="h-4 w-4 text-blue-600 animate-pulse" />
-                          <span className="text-xs">{locatingMe ? 'Finding your GPS coordinates…' : 'Use my current location'}</span>
+                          <span className="text-xs">{locatingMe ? 'Finding your exact GPS coordinates…' : 'Use my current location'}</span>
                         </button>
+
+                        {/* 🏠 QUICK 1-TAP SAVED PLACES */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPickup("Silver Star, Chandlodia, Ahmedabad");
+                              setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
+                              setMapCenter([23.0728, 72.5459]);
+                              setMapZoom(16);
+                            }}
+                            className="text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full px-3 py-1 transition flex items-center gap-1 shadow-sm"
+                          >
+                            🏠 Silver Star, Chandlodia
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDropoff("Sardar Vallabhbhai Patel Airport (AMD)");
+                              setPresetCoords((prev) => ({ ...prev, dropoff: [23.0772, 72.6347] }));
+                            }}
+                            className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-2.5 py-1 transition flex items-center gap-1"
+                          >
+                            ✈️ Airport (AMD)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDropoff("Kalupur Railway Station, Ahmedabad");
+                              setPresetCoords((prev) => ({ ...prev, dropoff: [23.0253, 72.6012] }));
+                            }}
+                            className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-2.5 py-1 transition flex items-center gap-1"
+                          >
+                            🚆 Kalupur Stn
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-auto pt-6">
                         <button
