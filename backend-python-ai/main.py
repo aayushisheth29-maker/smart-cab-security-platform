@@ -640,6 +640,7 @@ EMERGENCIES: List[Dict[str, Any]] = []
 OTP_STORE: Dict[str, Dict[str, Any]] = {}
 PAYMENTS_STORE: Dict[str, Dict[str, Any]] = {}
 DRIVER_KYC_RECORDS: List[Dict[str, Any]] = []
+DRIVER_PAYOUTS_STORE: Dict[str, List[Dict[str, Any]]] = {}
 # Live video chunks: VIDEO_CHUNKS[linkId] is a list of
 # {"id": ..., "ts": ..., "data": <bytes>, "lat": ..., "lng": ...}
 # Each chunk is a small (~3-5 sec) webm blob uploaded by the rider while
@@ -3333,6 +3334,113 @@ def admin_financials():
             "byMethod": by_method
         },
         "transactions": transactions
+    }
+
+
+class DriverPayoutSettlePayload(BaseModel):
+    driverName: str
+    amount: float
+    paymentRef: str
+    paymentMethod: Optional[str] = "UPI"
+    bankOrUpiId: Optional[str] = ""
+    notes: Optional[str] = ""
+
+
+@app.get("/api/admin/driver-payouts", dependencies=[Depends(require_admin)])
+def admin_driver_payouts():
+    """Aggregates all trips by driver, computing gross fares, 80% driver net cuts,
+    total disbursements paid to date, and outstanding payable balance."""
+    driver_stats = {}
+    
+    # 1. Collect from all drivers
+    for d in DRIVERS:
+        name = d.get("name", "Driver")
+        driver_stats[name] = {
+            "driverId": d.get("id"),
+            "driverName": name,
+            "plate": d.get("plate", ""),
+            "carModel": d.get("carModel", "SmartCab"),
+            "phone": d.get("phone", ""),
+            "tripsCount": 0,
+            "totalGrossFares": 0.0,
+            "driverNetEarnings": 0.0,
+            "settledPaid": 0.0,
+            "pendingBalance": 0.0,
+            "history": []
+        }
+        
+    # 2. Accumulate fares from TRIPS
+    for t in TRIPS:
+        driver = t.get("driver")
+        dname = driver.get("name") if isinstance(driver, dict) else (t.get("driverName") or "Assigned Driver")
+        if dname not in driver_stats:
+            driver_stats[dname] = {
+                "driverId": f"drv-{len(driver_stats)+1}",
+                "driverName": dname,
+                "plate": driver.get("plate", "GJ 01") if isinstance(driver, dict) else "",
+                "carModel": driver.get("carModel", "SmartMini") if isinstance(driver, dict) else "SmartCab",
+                "phone": driver.get("phone", "") if isinstance(driver, dict) else "",
+                "tripsCount": 0,
+                "totalGrossFares": 0.0,
+                "driverNetEarnings": 0.0,
+                "settledPaid": 0.0,
+                "pendingBalance": 0.0,
+                "history": []
+            }
+        fare = float(t.get("fare", 0.0))
+        driver_stats[dname]["tripsCount"] += 1
+        driver_stats[dname]["totalGrossFares"] = round(driver_stats[dname]["totalGrossFares"] + fare, 2)
+        driver_stats[dname]["driverNetEarnings"] = round(driver_stats[dname]["driverNetEarnings"] + (fare * 0.80), 2)
+        
+    # 3. Apply settlements
+    for dname, rec in driver_stats.items():
+        settlements = DRIVER_PAYOUTS_STORE.get(dname, [])
+        paid_total = sum(float(s.get("amount", 0.0)) for s in settlements)
+        rec["settledPaid"] = round(paid_total, 2)
+        rec["pendingBalance"] = max(0.0, round(rec["driverNetEarnings"] - paid_total, 2))
+        rec["history"] = settlements
+        
+    payout_list = sorted(driver_stats.values(), key=lambda x: x["pendingBalance"], reverse=True)
+    total_payable = sum(x["pendingBalance"] for x in payout_list)
+    total_disbursed = sum(x["settledPaid"] for x in payout_list)
+    
+    return {
+        "summary": {
+            "totalPayableBalance": round(total_payable, 2),
+            "totalDisbursed": round(total_disbursed, 2),
+            "driversCount": len(payout_list)
+        },
+        "drivers": payout_list
+    }
+
+
+@app.post("/api/admin/driver-payouts/settle", dependencies=[Depends(require_admin)])
+def admin_settle_driver_payout(payload: DriverPayoutSettlePayload):
+    """Records an 80% net earnings payout settlement for a driver."""
+    dname = payload.driverName
+    if not dname:
+        raise HTTPException(status_code=400, detail="Driver name required")
+        
+    settlement = {
+        "settlementId": f"SETTLE-{int(time.time())}-{secrets.token_hex(2).upper()}",
+        "driverName": dname,
+        "amount": round(payload.amount, 2),
+        "paymentRef": payload.paymentRef,
+        "paymentMethod": payload.paymentMethod or "UPI",
+        "bankOrUpiId": payload.bankOrUpiId or "",
+        "notes": payload.notes or "Weekly 80% Driver Net Payout",
+        "settledAt": _now_iso()
+    }
+    
+    if dname not in DRIVER_PAYOUTS_STORE:
+        DRIVER_PAYOUTS_STORE[dname] = []
+    DRIVER_PAYOUTS_STORE[dname].append(settlement)
+    
+    log.info("💰 Driver payout recorded: ₹%.2f settled to %s (Ref: %s)", payload.amount, dname, payload.paymentRef)
+    return {
+        "status": "ok",
+        "message": f"Successfully settled ₹{payload.amount:.2f} to {dname}.",
+        "settlement": settlement
     }
 
 

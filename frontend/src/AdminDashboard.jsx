@@ -4,10 +4,11 @@ import {
   ArrowLeft, Car, Siren, Users, RefreshCw, Loader2,
   MapPin, CheckCircle2, LogOut, Lock, Activity, Route as RouteIcon, Mail, BadgeCheck,
   TrendingUp, Receipt, Download, CreditCard, QrCode, Banknote, Wallet, DollarSign, Filter,
-  Radio
+  Radio, Send, FileText, Check, AlertCircle, X
 } from 'lucide-react';
 import { apiFetch, getAdminKey, storeAdminKey, API_BASE } from './api';
 import FleetRadarMap from './FleetRadarMap';
+import { LanguageSwitcher, useLanguage } from './i18n';
 
 const STATUS_META = {
   REQUESTED: 'bg-slate-100 text-slate-700',
@@ -100,7 +101,14 @@ export default function AdminDashboard() {
   const [driverAlerts, setDriverAlerts] = useState([]);
   const [supportReqs, setSupportReqs] = useState([]);
   const [financials, setFinancials] = useState(null);
+  const [driverPayouts, setDriverPayouts] = useState(null);
   const [paymentFilter, setPaymentFilter] = useState('ALL');
+  const [payoutModalDriver, setPayoutModalDriver] = useState(null);
+  const [payoutAmount, setPayoutAmount] = useState('');
+  const [payoutRef, setPayoutRef] = useState('');
+  const [payoutMethod, setPayoutMethod] = useState('UPI');
+  const [payoutNotes, setPayoutNotes] = useState('');
+  const [payoutBusy, setPayoutBusy] = useState(false);
   const [bgNotes, setBgNotes] = useState({});
   const [alertNotes, setAlertNotes] = useState({});
   const [reqNotes, setReqNotes] = useState({});
@@ -130,16 +138,18 @@ export default function AdminDashboard() {
         apiFetch('/api/admin/driver-applications'),
         apiFetch('/api/drivers/kyc-list'),
         apiFetch('/api/admin/financials'),
+        apiFetch('/api/admin/driver-payouts'),
         apiFetch('/api/admin/driver-alerts'),
         apiFetch('/api/admin/support-requests'),
       ]);
-      const [e, r, da, kyc, fin, als, sr] = results.map((x) => (x.status === 'fulfilled' && x.value ? x.value : null));
+      const [e, r, da, kyc, fin, dp, als, sr] = results.map((x) => (x.status === 'fulfilled' && x.value ? x.value : null));
       setStats(stats);
       setEmergencies(Array.isArray(e) ? e : []);
       setRides(Array.isArray(r) ? r : []);
       setDriverApps(Array.isArray(da) ? da : []);
       setDriverKycList(Array.isArray(kyc) ? kyc : []);
       setFinancials(fin);
+      setDriverPayouts(dp);
       setDriverAlerts(Array.isArray(als) ? als : []);
       setSupportReqs(Array.isArray(sr) ? sr : []);
       setAuthenticated(true);
@@ -182,6 +192,7 @@ export default function AdminDashboard() {
           apiFetch('/api/admin/driver-applications'),
           apiFetch('/api/drivers/kyc-list'),
           apiFetch('/api/admin/financials'),
+          apiFetch('/api/admin/driver-payouts'),
           apiFetch('/api/admin/driver-alerts'),
         ]);
         if (results[0].status === 'fulfilled' && results[0].value) setStats(results[0].value);
@@ -190,7 +201,8 @@ export default function AdminDashboard() {
         if (results[3].status === 'fulfilled' && Array.isArray(results[3].value)) setDriverApps(results[3].value);
         if (results[4].status === 'fulfilled' && Array.isArray(results[4].value)) setDriverKycList(results[4].value);
         if (results[5].status === 'fulfilled' && results[5].value) setFinancials(results[5].value);
-        if (results[6].status === 'fulfilled' && Array.isArray(results[6].value)) setDriverAlerts(results[6].value);
+        if (results[6].status === 'fulfilled' && results[6].value) setDriverPayouts(results[6].value);
+        if (results[7].status === 'fulfilled' && Array.isArray(results[7].value)) setDriverAlerts(results[7].value);
       } catch (e) { /* background silent poll */ }
     }, 4000);
     return () => clearInterval(interval);
@@ -453,6 +465,135 @@ export default function AdminDashboard() {
     };
   }, [financials, effectiveTransactions]);
 
+  // Synthesize Driver Payout Ledger
+  const effectiveDriverPayoutList = useMemo(() => {
+    if (driverPayouts?.drivers && Array.isArray(driverPayouts.drivers) && driverPayouts.drivers.length > 0) {
+      return driverPayouts.drivers;
+    }
+    // Fallback: Aggregate from effectiveTransactions
+    const map = {};
+    effectiveTransactions.forEach((tx) => {
+      const dname = tx.driverName || 'Assigned Driver';
+      if (!map[dname]) {
+        map[dname] = {
+          driverName: dname,
+          plate: 'GJ 01 SC 4921',
+          carModel: 'SmartSedan Prime',
+          phone: '+91 98765 00000',
+          tripsCount: 0,
+          totalGrossFares: 0,
+          driverNetEarnings: 0,
+          settledPaid: 0,
+          pendingBalance: 0
+        };
+      }
+      map[dname].tripsCount += 1;
+      map[dname].totalGrossFares += tx.amount || 0;
+      map[dname].driverNetEarnings += tx.driverCut || (tx.amount * 0.80);
+    });
+    return Object.values(map).map((d) => ({
+      ...d,
+      totalGrossFares: Number(d.totalGrossFares.toFixed(2)),
+      driverNetEarnings: Number(d.driverNetEarnings.toFixed(2)),
+      pendingBalance: Number((d.driverNetEarnings - d.settledPaid).toFixed(2))
+    }));
+  }, [driverPayouts, effectiveTransactions]);
+
+  const handleOpenPayoutModal = (driver) => {
+    setPayoutModalDriver(driver);
+    setPayoutAmount(driver.pendingBalance > 0 ? driver.pendingBalance.toString() : '500');
+    setPayoutRef(`UPI-${Date.now().toString().slice(-8)}`);
+    setPayoutMethod('UPI');
+    setPayoutNotes('Weekly Driver 80% Payout Disbursement');
+  };
+
+  const submitPayoutSettlement = async (e) => {
+    e.preventDefault();
+    if (!payoutModalDriver || !payoutAmount) return;
+    setPayoutBusy(true);
+    try {
+      await apiFetch('/api/admin/driver-payouts/settle', {
+        method: 'POST',
+        body: JSON.stringify({
+          driverName: payoutModalDriver.driverName,
+          amount: parseFloat(payoutAmount),
+          paymentRef: payoutRef || `SETTLE-${Date.now()}`,
+          paymentMethod: payoutMethod,
+          notes: payoutNotes
+        })
+      });
+      alert(`✅ Payout of ₹${payoutAmount} to ${payoutModalDriver.driverName} logged successfully!`);
+      setPayoutModalDriver(null);
+      await refresh();
+    } catch (err) {
+      alert(`⚠️ Settlement failed: ${err.message}`);
+    } finally {
+      setPayoutBusy(false);
+    }
+  };
+
+  const downloadDriverSettlementSlip = (driver) => {
+    const slipHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>SmartCab Driver Settlement Slip - ${driver.driverName}</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #1e293b; max-width: 700px; margin: auto; }
+          .header { border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+          .title { font-size: 22px; font-weight: 800; color: #0f172a; }
+          .meta { font-size: 12px; color: #64748b; }
+          .box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 16px; margin: 20px 0; }
+          .row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px dashed #cbd5e1; font-size: 13px; }
+          .row:last-child { border-bottom: none; }
+          .total { font-size: 18px; font-weight: bold; color: #059669; }
+          .footer { margin-top: 40px; text-align: center; font-size: 11px; color: #94a3b8; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="title">🚕 SmartCab Driver Disbursement Voucher</div>
+            <div class="meta">SmartCab Technologies India Pvt Ltd · GSTIN: 24AABCS1429B1Z8</div>
+          </div>
+          <div style="text-align: right; font-size: 12px;">
+            <strong>Date:</strong> ${new Date().toLocaleDateString('en-IN')}<br/>
+            <strong>Voucher:</strong> SLIP-${Date.now().toString().slice(-6)}
+          </div>
+        </div>
+
+        <div class="box">
+          <div class="row"><span>Driver Partner:</span><strong>${driver.driverName}</strong></div>
+          <div class="row"><span>Vehicle & Plate:</span><span>${driver.carModel || 'SmartCab'} · ${driver.plate || 'GJ 01'}</span></div>
+          <div class="row"><span>Total Completed Rides:</span><strong>${driver.tripsCount || 1}</strong></div>
+          <div class="row"><span>Total Gross Fares:</span><span>₹${(driver.totalGrossFares || 0).toFixed(2)}</span></div>
+          <div class="row"><span>Platform Fee (20%):</span><span>-₹${((driver.totalGrossFares || 0) * 0.20).toFixed(2)}</span></div>
+          <div class="row total"><span>Driver Net Payout (80%):</span><span>₹${(driver.driverNetEarnings || 0).toFixed(2)}</span></div>
+          <div class="row"><span>Already Disbursed:</span><span>₹${(driver.settledPaid || 0).toFixed(2)}</span></div>
+          <div class="row" style="font-weight: 800; color: #2563eb;"><span>Payable Balance:</span><span>₹${(driver.pendingBalance || 0).toFixed(2)}</span></div>
+        </div>
+
+        <p style="font-size: 12px; color: #64748b;">
+          This voucher confirms commercial remittance of driver earnings generated under the SmartCab Security Platform dispatch network.
+        </p>
+
+        <div class="footer">
+          SmartCab Automated Fleet Accounting System · Ahmedabad, Gujarat
+        </div>
+      </body>
+      </html>
+    `;
+    const blob = new Blob([slipHtml], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    const win = window.open(url, '_blank');
+    if (!win) {
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Driver_Settlement_${driver.driverName.replace(/\s+/g, '_')}.html`;
+      a.click();
+    }
+  };
+
   const exportFinancialsCsv = () => {
     if (!effectiveTransactions?.length) {
       alert("No payment transactions to export.");
@@ -569,6 +710,7 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <LanguageSwitcher />
             <button onClick={refresh} className="text-sm flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 px-3 py-2 rounded-xl transition">
               <RefreshCw className="h-4 w-4" /> Refresh
             </button>
@@ -889,6 +1031,94 @@ export default function AdminDashboard() {
                               </td>
                             </tr>
                           ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* 💳 DRIVER PAYOUTS & SETTLEMENTS (80% NET EARNINGS) */}
+            <section className="mb-10">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-900">
+                    DRIVER PAYOUTS &amp; SETTLEMENTS{' '}
+                    <span className="text-sm font-bold text-slate-400">
+                      ({effectiveDriverPayoutList.length} drivers)
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500">
+                    Manage 80% driver net disbursements, record UPI/Bank settlements, and print payout receipts
+                  </p>
+                </div>
+              </div>
+
+              {!effectiveDriverPayoutList.length ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                  <Banknote className="h-8 w-8 mx-auto mb-2 opacity-40 text-emerald-600" />
+                  No driver earnings to disburse yet. As rides are completed, driver 80% balances accumulate here.
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-extrabold">
+                        <tr>
+                          <th className="py-3.5 px-4">Driver Partner</th>
+                          <th className="py-3.5 px-4">Vehicle &amp; DL</th>
+                          <th className="py-3.5 px-4">Completed Rides</th>
+                          <th className="py-3.5 px-4">Gross Generated</th>
+                          <th className="py-3.5 px-4 text-emerald-700 bg-emerald-50/50">Driver Net (80%)</th>
+                          <th className="py-3.5 px-4 text-slate-600">Disbursed to Date</th>
+                          <th className="py-3.5 px-4 text-blue-700 font-black">Payable Balance</th>
+                          <th className="py-3.5 px-4 text-right">Settlement Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {effectiveDriverPayoutList.map((d, idx) => (
+                          <tr key={idx} className="hover:bg-slate-50/80 transition">
+                            <td className="py-3.5 px-4">
+                              <strong className="text-slate-900 text-sm block">{d.driverName}</strong>
+                              <span className="text-[10px] text-slate-400">{d.phone || '+91 98765 00000'}</span>
+                            </td>
+                            <td className="py-3.5 px-4">
+                              <span className="text-slate-800 font-semibold block">{d.carModel || 'SmartCab'}</span>
+                              <span className="font-mono text-[10px] text-amber-600">{d.plate || 'GJ 01 SC 1000'}</span>
+                            </td>
+                            <td className="py-3.5 px-4 font-bold text-slate-700">
+                              {d.tripsCount || 1} trips
+                            </td>
+                            <td className="py-3.5 px-4 font-bold text-slate-900">
+                              ₹{(d.totalGrossFares || 0).toFixed(2)}
+                            </td>
+                            <td className="py-3.5 px-4 font-black text-emerald-600 bg-emerald-50/40 text-sm">
+                              ₹{(d.driverNetEarnings || 0).toFixed(2)}
+                            </td>
+                            <td className="py-3.5 px-4 text-slate-500 font-semibold">
+                              ₹{(d.settledPaid || 0).toFixed(2)}
+                            </td>
+                            <td className="py-3.5 px-4 font-black text-sm text-blue-600">
+                              ₹{(d.pendingBalance || 0).toFixed(2)}
+                            </td>
+                            <td className="py-3.5 px-4 text-right space-x-1.5">
+                              <button
+                                onClick={() => handleOpenPayoutModal(d)}
+                                className="bg-slate-900 hover:bg-slate-800 text-white font-bold px-3 py-1.5 rounded-lg text-xs transition inline-flex items-center gap-1 shadow-sm"
+                              >
+                                <Banknote className="h-3.5 w-3.5" />
+                                <span>Disburse</span>
+                              </button>
+                              <button
+                                onClick={() => downloadDriverSettlementSlip(d)}
+                                className="bg-white border border-slate-200 hover:bg-slate-100 text-slate-700 font-bold px-2.5 py-1.5 rounded-lg text-xs transition inline-flex items-center gap-1"
+                                title="Download Settlement Slip"
+                              >
+                                <FileText className="h-3.5 w-3.5 text-slate-500" />
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
                       </tbody>
                     </table>
                   </div>
@@ -1335,6 +1565,94 @@ export default function AdminDashboard() {
           </>
         )}
       </main>
+
+      {/* 💸 DRIVER PAYOUT DISBURSEMENT MODAL */}
+      {payoutModalDriver && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[600] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl relative text-slate-900">
+            <button
+              onClick={() => setPayoutModalDriver(null)}
+              className="absolute top-5 right-5 p-2 bg-slate-100 hover:bg-slate-200 rounded-full transition"
+            >
+              <X className="h-5 w-5 text-slate-600" />
+            </button>
+
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-emerald-100 rounded-2xl text-emerald-800">
+                <Banknote className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-lg">Disburse Driver Payout (80%)</h3>
+                <p className="text-xs text-slate-500">{payoutModalDriver.driverName} · {payoutModalDriver.plate}</p>
+              </div>
+            </div>
+
+            <form onSubmit={submitPayoutSettlement} className="space-y-3 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Disbursement Amount (₹)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={payoutAmount}
+                  onChange={(e) => setPayoutAmount(e.target.value)}
+                  className="w-full text-base font-bold px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                  required
+                />
+                <span className="text-[10px] text-slate-400">
+                  Total Outstanding Balance: ₹{(payoutModalDriver.pendingBalance || 0).toFixed(2)}
+                </span>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Payment Method / Channel</label>
+                <select
+                  value={payoutMethod}
+                  onChange={(e) => setPayoutMethod(e.target.value)}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                >
+                  <option value="UPI">🟢 UPI Direct Transfer (GPay / PhonePe)</option>
+                  <option value="IMPS_NEFT">🏦 Bank IMPS / NEFT Transfer</option>
+                  <option value="CASH">💵 Cash Settlement on Fleet Desk</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Bank Reference / UPI UTR Number</label>
+                <input
+                  type="text"
+                  value={payoutRef}
+                  onChange={(e) => setPayoutRef(e.target.value)}
+                  placeholder="e.g. UPI-948102948123"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none font-mono"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Settlement Memo / Notes</label>
+                <input
+                  type="text"
+                  value={payoutNotes}
+                  onChange={(e) => setPayoutNotes(e.target.value)}
+                  placeholder="e.g. Weekly net payout for 12 completed trips"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={payoutBusy}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold py-3 rounded-xl transition flex items-center justify-center gap-1.5 shadow-md disabled:opacity-50 text-sm"
+                >
+                  {payoutBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  <span>Confirm &amp; Record Settlement</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* 👁 DOCUMENT PREVIEW MODAL — owner inspects the actual photo */}
       {previewDoc && (

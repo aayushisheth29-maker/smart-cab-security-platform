@@ -17,6 +17,7 @@ import PaymentModal from './PaymentModal';
 import PhoneOtpModal from './PhoneOtpModal';
 import DriverKycModal from './DriverKycModal';
 import DpdpPolicyModal from './DpdpPolicyModal';
+import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
 // Order matters: H.264/MP4 first because it plays on iOS Safari, Android
@@ -3316,14 +3317,8 @@ const BookRide = () => {
             </button>
           </div>
         </div>
-        <div className="flex flex-wrap justify-center items-center gap-2 md:gap-6 font-medium text-sm w-full md:w-auto">
-          <button
-            onClick={() => setIsLangModalOpen(true)}
-            className="flex items-center hover:bg-gray-800 px-3 py-2 rounded-full"
-            title="🌐 International languages: Русский · 日本語 · 中文 · Français · Deutsch"
-          >
-            <Globe className="h-4 w-4 mr-2" /> <span className="uppercase notranslate">{getGoogleLang() || 'EN'}</span>
-          </button>
+        <div className="flex flex-wrap justify-center items-center gap-2 md:gap-4 font-medium text-sm w-full md:w-auto">
+          <LanguageSwitcher />
           {loggedInUser ? (
             <>
               <span className="hidden sm:flex items-center text-yellow-300 font-semibold text-sm">

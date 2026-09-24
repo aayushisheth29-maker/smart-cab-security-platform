@@ -88,3 +88,31 @@ def test_admin_financials_aggregation():
     assert "transactions" in fin
     assert isinstance(fin["transactions"], list)
 
+
+def test_driver_payouts_and_settlement_flow():
+    headers = {"X-Admin-Key": "smartcab-admin-dev-key"}
+    
+    # 1. Fetch driver payouts list
+    res = client.get("/api/admin/driver-payouts", headers=headers)
+    assert res.status_code == 200
+    payout_data = res.json()
+    assert "summary" in payout_data
+    assert "drivers" in payout_data
+    assert isinstance(payout_data["drivers"], list)
+
+    # 2. Settle a driver payout
+    settle_payload = {
+        "driverName": "Rahul S.",
+        "amount": 250.0,
+        "paymentRef": "UPI-SETTLE-TEST-999",
+        "paymentMethod": "UPI",
+        "bankOrUpiId": "rahul@okhdfcbank",
+        "notes": "Test settlement disbursement"
+    }
+    s_res = client.post("/api/admin/driver-payouts/settle", json=settle_payload, headers=headers)
+    assert s_res.status_code == 200
+    s_data = s_res.json()
+    assert s_data["status"] == "ok"
+    assert "settlement" in s_data
+    assert s_data["settlement"]["paymentRef"] == "UPI-SETTLE-TEST-999"
+
