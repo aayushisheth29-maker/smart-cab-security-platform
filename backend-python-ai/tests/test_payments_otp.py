@@ -70,3 +70,21 @@ def test_payment_order_and_verification_flow():
     cash_res = client.post("/api/payments/cash-confirm", json={"tripId": 102, "amount": 320.0})
     assert cash_res.status_code == 200
     assert cash_res.json()["paymentStatus"] == "CASH_ON_ARRIVAL"
+
+
+def test_admin_financials_aggregation():
+    # Test financials endpoint with admin authorization header
+    headers = {"X-Admin-Key": "smartcab-admin-dev-key"}
+    res = client.get("/api/admin/financials", headers=headers)
+    assert res.status_code == 200
+    fin = res.json()
+    assert "summary" in fin
+    summary = fin["summary"]
+    assert "totalGrossVolume" in summary
+    assert "ownerCommissionProfit" in summary
+    assert "driverPayouts" in summary
+    assert summary["commissionRatePercent"] == 20
+    assert "byMethod" in summary
+    assert "transactions" in fin
+    assert isinstance(fin["transactions"], list)
+
