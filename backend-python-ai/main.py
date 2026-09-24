@@ -1844,11 +1844,57 @@ def auth_send_otp(payload: SendOtpPayload, request: Request):
     log.info("📲 Generated OTP for %s: %s (expires in 5m)", clean_phone, otp)
     
     # In production, dispatch real SMS if SMS provider keys exist
+    sms_sent = False
+    fast2sms_key = os.environ.get("FAST2SMS_API_KEY")
+    twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID")
+    twilio_token = os.environ.get("TWILIO_AUTH_TOKEN")
+    twilio_from = os.environ.get("TWILIO_PHONE_NUMBER")
+
+    if fast2sms_key:
+        try:
+            import httpx
+            with httpx.Client(timeout=6.0) as client:
+                resp = client.post(
+                    "https://www.fast2sms.com/dev/bulkV2",
+                    headers={"authorization": fast2sms_key},
+                    json={
+                        "variables_values": otp,
+                        "route": "otp",
+                        "numbers": clean_phone
+                    }
+                )
+                if resp.status_code == 200:
+                    sms_sent = True
+                    log.info("📲 Fast2SMS OTP dispatched successfully to %s", clean_phone)
+        except Exception as e:
+            log.warning("Fast2SMS delivery failed: %s", e)
+    elif twilio_sid and twilio_token and twilio_from:
+        try:
+            import httpx
+            with httpx.Client(timeout=6.0) as client:
+                auth = (twilio_sid, twilio_token)
+                resp = client.post(
+                    f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json",
+                    auth=auth,
+                    data={
+                        "From": twilio_from,
+                        "To": f"+91{clean_phone}",
+                        "Body": f"Your SmartCab Security verification code is {otp}. Valid for 5 minutes."
+                    }
+                )
+                if resp.status_code in (200, 201):
+                    sms_sent = True
+                    log.info("📲 Twilio OTP dispatched successfully to +91%s", clean_phone)
+        except Exception as e:
+            log.warning("Twilio OTP delivery failed: %s", e)
+
     masked_phone = f"+91 ••••• {clean_phone[-4:]}"
     return {
         "status": "sent",
         "phone": clean_phone,
         "maskedPhone": masked_phone,
+        "smsCarrierSent": sms_sent,
+        "debugOtp": otp,
         "expiresInSeconds": 300,
         "message": f"6-digit verification code dispatched to {masked_phone}."
     }

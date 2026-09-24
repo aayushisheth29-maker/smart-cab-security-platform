@@ -51,7 +51,7 @@ export default function PaymentModal({
       setDiscount(100);
       setPromoApplied(true);
     } else {
-      setPromoError('Invalid coupon code. Try SAFETYFIRST');
+      setPromoError('Invalid coupon code. Try SAFETYFIRST or SMARTCAB50');
     }
   };
 
@@ -64,14 +64,14 @@ export default function PaymentModal({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             tripId: bookingDetails.bookingId,
-            amount: finalFare
+            amount: Number(finalFare.toFixed(2))
           })
         });
         const data = await res.json();
         setReceiptData({
           receiptNumber: `REC-${Date.now().toString().slice(-6)}`,
           orderId: `order_cash_${Date.now()}`,
-          amount: finalFare,
+          amount: finalFare.toFixed(2),
           paymentMethod: 'Cash on Arrival',
           status: 'CASH_ON_ARRIVAL',
           date: new Date().toLocaleDateString('en-IN')
@@ -84,7 +84,7 @@ export default function PaymentModal({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            amount: finalFare,
+            amount: Number(finalFare.toFixed(2)),
             currency: 'INR',
             tripId: bookingDetails.bookingId,
             riderName: bookingDetails.riderName || 'SmartCab Passenger',
@@ -108,7 +108,7 @@ export default function PaymentModal({
         setReceiptData({
           receiptNumber: `REC-${orderData.orderId.slice(-6).toUpperCase()}`,
           orderId: orderData.orderId,
-          amount: finalFare,
+          amount: finalFare.toFixed(2),
           paymentMethod: method === 'upi' ? 'UPI (Google Pay / PhonePe)' : method === 'wallet' ? 'SmartCab Safety Wallet' : 'Credit / Debit Card',
           status: 'PAID',
           date: new Date().toLocaleDateString('en-IN')
@@ -122,7 +122,7 @@ export default function PaymentModal({
       setReceiptData({
         receiptNumber: `REC-${Date.now().toString().slice(-6)}`,
         orderId: `order_sc_${Date.now()}`,
-        amount: finalFare,
+        amount: finalFare.toFixed(2),
         paymentMethod: method.toUpperCase(),
         status: 'PAID',
         date: new Date().toLocaleDateString('en-IN')
@@ -166,7 +166,7 @@ export default function PaymentModal({
               <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto shadow-inner">
                 <CheckCircle2 className="h-10 w-10" />
               </div>
-              <h3 className="text-xl font-extrabold text-slate-900">
+              <h3 className="text-2xl font-black text-slate-900">
                 ₹{receiptData?.amount} Confirmed
               </h3>
               <p className="text-slate-500 text-xs">
@@ -206,17 +206,25 @@ export default function PaymentModal({
               <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-sm">
                 <div className="flex justify-between text-slate-600">
                   <span>Trip Fare ({bookingDetails.distanceKm || '5'} km)</span>
-                  <span className="font-semibold">₹{baseFare}</span>
+                  <span className="font-semibold">₹{baseFare.toFixed(2)}</span>
                 </div>
                 {discount > 0 && (
-                  <div className="flex justify-between text-emerald-600 font-medium">
-                    <span>Safety Promo Discount</span>
-                    <span>-₹{discount}</span>
+                  <div className="flex justify-between text-emerald-600 font-bold bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200">
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3.5 w-3.5" />
+                      Promo Discount ({promoCode.toUpperCase()})
+                    </span>
+                    <span>-₹{discount.toFixed(2)}</span>
                   </div>
                 )}
                 <div className="flex justify-between items-center border-t border-slate-200 pt-2 font-extrabold text-slate-900 text-base">
-                  <span>Total Amount</span>
-                  <span className="text-xl text-emerald-600 font-black">₹{finalFare}</span>
+                  <span>Total Payable:</span>
+                  <div className="flex items-baseline space-x-2">
+                    {discount > 0 && (
+                      <span className="line-through text-slate-400 text-sm font-semibold">₹{baseFare.toFixed(2)}</span>
+                    )}
+                    <span className="text-2xl text-emerald-600 font-black">₹{finalFare.toFixed(2)}</span>
+                  </div>
                 </div>
               </div>
 
@@ -227,27 +235,30 @@ export default function PaymentModal({
                     <Tag className="absolute left-3 top-3 h-4 w-4 text-slate-400" />
                     <input
                       type="text"
-                      placeholder="Promo code (e.g. SAFETYFIRST)"
+                      placeholder="Try coupon: SAFETYFIRST"
                       value={promoCode}
                       onChange={(e) => setPromoCode(e.target.value)}
                       disabled={promoApplied}
-                      className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold uppercase tracking-wider focus:ring-2 focus:ring-emerald-500 outline-none"
+                      className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-xl text-xs font-bold uppercase tracking-wider focus:ring-2 focus:ring-emerald-500 outline-none"
                     />
                   </div>
                   <button
                     type="button"
                     onClick={applyPromo}
                     disabled={promoApplied || !promoCode.trim()}
-                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 px-4 py-2 rounded-xl text-xs font-bold transition"
+                    className="bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 text-white disabled:text-slate-400 px-4 py-2 rounded-xl text-xs font-bold transition shadow-sm"
                   >
-                    {promoApplied ? "Applied ✓" : "Apply"}
+                    {promoApplied ? "Applied ✓" : "Apply Code"}
                   </button>
                 </div>
                 {promoError && (
                   <p className="text-xs text-rose-500 font-medium">{promoError}</p>
                 )}
                 {promoApplied && (
-                  <p className="text-xs text-emerald-600 font-bold">🎉 Promo code applied! ₹{discount} saved.</p>
+                  <p className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Coupon applied! Instant ₹{discount} deducted from fare.
+                  </p>
                 )}
               </div>
 
@@ -261,7 +272,7 @@ export default function PaymentModal({
                 <div
                   onClick={() => setMethod('upi')}
                   className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex items-center justify-between ${
-                    method === 'upi' ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-200 hover:border-slate-300'
+                    method === 'upi' ? 'border-emerald-600 bg-emerald-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -286,7 +297,7 @@ export default function PaymentModal({
                 <div
                   onClick={() => setMethod('card')}
                   className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex items-center justify-between ${
-                    method === 'card' ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-200 hover:border-slate-300'
+                    method === 'card' ? 'border-emerald-600 bg-emerald-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -311,7 +322,7 @@ export default function PaymentModal({
                 <div
                   onClick={() => setMethod('cash')}
                   className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex items-center justify-between ${
-                    method === 'cash' ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-200 hover:border-slate-300'
+                    method === 'cash' ? 'border-emerald-600 bg-emerald-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -336,7 +347,7 @@ export default function PaymentModal({
                 <div
                   onClick={() => setMethod('wallet')}
                   className={`p-3.5 rounded-2xl border-2 transition cursor-pointer flex items-center justify-between ${
-                    method === 'wallet' ? 'border-emerald-600 bg-emerald-50/50' : 'border-slate-200 hover:border-slate-300'
+                    method === 'wallet' ? 'border-emerald-600 bg-emerald-50/50 shadow-sm' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
                   <div className="flex items-center space-x-3">
@@ -370,8 +381,8 @@ export default function PaymentModal({
                   {processing
                     ? "Securing Transaction…"
                     : method === 'cash'
-                      ? `Confirm Cash Ride (₹${finalFare})`
-                      : `Pay ₹${finalFare} & Confirm Ride`}
+                      ? `Confirm Cash Ride (₹${finalFare.toFixed(2)})`
+                      : `Pay ₹${finalFare.toFixed(2)} & Confirm Ride`}
                 </span>
                 {!processing && <ArrowRight className="h-5 w-5 ml-1" />}
               </button>
