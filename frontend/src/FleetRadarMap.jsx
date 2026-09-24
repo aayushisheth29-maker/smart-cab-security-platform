@@ -507,7 +507,7 @@ export default function FleetRadarMap({
       </div>
 
       {/* LEAFLET MAP CONTAINER */}
-      <div className="relative rounded-2xl overflow-hidden border border-slate-700 shadow-inner h-[500px] w-full">
+      <div className="relative rounded-2xl overflow-hidden border border-slate-700 shadow-inner h-[500px] w-full notranslate">
         <MapContainer
           center={DEFAULT_CENTER}
           zoom={13}
