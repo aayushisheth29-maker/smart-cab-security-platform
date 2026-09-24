@@ -3237,6 +3237,10 @@ def _admin_stats() -> Dict[str, Any]:
         l for l in SHARE_LINKS.values()
         if l.get("status") not in ("EXPIRED", "CANCELLED") and not l.get("isFallback")
     ]
+    total_rev = sum(float(p.get("amount", 0.0)) for p in PAYMENTS_STORE.values() if p.get("status") in ("PAID", "SUCCESS", "CASH_ON_ARRIVAL"))
+    if total_rev == 0 and TRIPS:
+        total_rev = sum(float(t.get("fare", 0.0)) for t in TRIPS if t.get("fare"))
+    owner_profit = round(total_rev * 0.20, 2)
     return {
         "activeRides": len(active),
         "emergencyAlerts": len(active_emergencies),
@@ -3246,6 +3250,9 @@ def _admin_stats() -> Dict[str, Any]:
         "totalRides": len(TRIPS),
         "activeShareLinks": len(online_share_links),
         "totalUsers": len(USERS),
+        "totalRevenue": round(total_rev, 2),
+        "ownerProfit": owner_profit,
+        "totalPaymentsCount": len(PAYMENTS_STORE) or len(TRIPS),
         "ts": _now_iso(),
     }
 
@@ -3253,6 +3260,80 @@ def _admin_stats() -> Dict[str, Any]:
 @app.get("/api/admin/stats", dependencies=[Depends(require_admin)])
 def admin_stats():
     return _admin_stats()
+
+
+@app.get("/api/admin/financials", dependencies=[Depends(require_admin)])
+def admin_financials():
+    transactions = []
+    
+    # 1. Collect from PAYMENTS_STORE
+    for order_id, p in PAYMENTS_STORE.items():
+        amt = float(p.get("amount", 0.0))
+        trip_id = p.get("tripId")
+        trip = next((t for t in TRIPS if str(t.get("id")) == str(trip_id) or str(t.get("bookingId")) == str(trip_id)), None)
+        transactions.append({
+            "orderId": order_id,
+            "paymentId": p.get("paymentId", f"pay_{order_id[-6:]}"),
+            "tripId": trip_id or "—",
+            "riderName": p.get("riderName") or (trip.get("riderName") if trip else "SmartCab Passenger"),
+            "driverName": trip.get("driver", {}).get("name") if trip and isinstance(trip.get("driver"), dict) else (trip.get("driverName") if trip else "Assigned Driver"),
+            "pickup": trip.get("pickupLocation") or trip.get("pickup") if trip else "Ahmedabad Pickup",
+            "dropoff": trip.get("dropoffLocation") or trip.get("dropoff") if trip else "Airport",
+            "amount": amt,
+            "paymentMethod": p.get("paymentMethod", "UPI"),
+            "status": p.get("status", "PAID"),
+            "platformCut": round(amt * 0.20, 2),
+            "driverCut": round(amt * 0.80, 2),
+            "paidAt": p.get("paidAt") or p.get("createdAt") or _now_iso()
+        })
+        
+    # 2. Also include any trips with fares not yet explicitly in PAYMENTS_STORE
+    for t in TRIPS:
+        tid = str(t.get("id") or t.get("bookingId"))
+        if not any(str(tx.get("tripId")) == tid for tx in transactions):
+            fare = float(t.get("fare", 0.0))
+            if fare > 0:
+                transactions.append({
+                    "orderId": f"REC-{tid[-6:].upper()}",
+                    "paymentId": t.get("paymentId", f"pay_{tid[-4:]}"),
+                    "tripId": tid,
+                    "riderName": t.get("riderName", "Passenger"),
+                    "driverName": t.get("driver", {}).get("name") if isinstance(t.get("driver"), dict) else (t.get("driverName") or "Assigned Driver"),
+                    "pickup": t.get("pickupLocation") or t.get("pickup") or "Chandlodia",
+                    "dropoff": t.get("dropoffLocation") or t.get("dropoff") or "Airport",
+                    "amount": fare,
+                    "paymentMethod": t.get("paymentMethod", "UPI"),
+                    "status": t.get("paymentStatus", "PAID"),
+                    "platformCut": round(fare * 0.20, 2),
+                    "driverCut": round(fare * 0.80, 2),
+                    "paidAt": t.get("createdAt", _now_iso())
+                })
+                
+    transactions = sorted(transactions, key=lambda tx: tx.get("paidAt", ""), reverse=True)
+    total_volume = sum(tx["amount"] for tx in transactions)
+    owner_profit = round(total_volume * 0.20, 2)
+    driver_payouts = round(total_volume * 0.80, 2)
+    
+    # Method stats
+    by_method = {}
+    for tx in transactions:
+        m = tx["paymentMethod"].upper()
+        if m not in by_method:
+            by_method[m] = {"count": 0, "total": 0.0}
+        by_method[m]["count"] += 1
+        by_method[m]["total"] = round(by_method[m]["total"] + tx["amount"], 2)
+        
+    return {
+        "summary": {
+            "totalGrossVolume": round(total_volume, 2),
+            "ownerCommissionProfit": owner_profit,
+            "driverPayouts": driver_payouts,
+            "commissionRatePercent": 20,
+            "totalTransactions": len(transactions),
+            "byMethod": by_method
+        },
+        "transactions": transactions
+    }
 
 
 @app.get("/api/admin/emergencies", dependencies=[Depends(require_admin)])

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ArrowLeft, Car, Siren, Users, RefreshCw, Loader2,
   MapPin, CheckCircle2, LogOut, Lock, Activity, Route as RouteIcon, Mail, BadgeCheck,
+  TrendingUp, Receipt, Download, CreditCard, QrCode, Banknote, Wallet, DollarSign, Filter
 } from 'lucide-react';
 import { apiFetch, getAdminKey, storeAdminKey, API_BASE } from './api';
 
@@ -96,6 +97,8 @@ export default function AdminDashboard() {
   const [driverKycList, setDriverKycList] = useState([]);
   const [driverAlerts, setDriverAlerts] = useState([]);
   const [supportReqs, setSupportReqs] = useState([]);
+  const [financials, setFinancials] = useState(null);
+  const [paymentFilter, setPaymentFilter] = useState('ALL');
   const [bgNotes, setBgNotes] = useState({});
   const [alertNotes, setAlertNotes] = useState({});
   const [reqNotes, setReqNotes] = useState({});
@@ -124,17 +127,19 @@ export default function AdminDashboard() {
         apiFetch('/api/admin/rides'),
         apiFetch('/api/admin/driver-applications'),
         apiFetch('/api/drivers/kyc-list'),
+        apiFetch('/api/admin/financials'),
         apiFetch('/api/admin/driver-alerts'),
         apiFetch('/api/admin/support-requests'),
       ]);
-      const [e, r, da, kyc, als, sr] = results.map((x) => (x.status === 'fulfilled' && Array.isArray(x.value) ? x.value : []));
+      const [e, r, da, kyc, fin, als, sr] = results.map((x) => (x.status === 'fulfilled' && x.value ? x.value : null));
       setStats(stats);
-      setEmergencies(e);
-      setRides(r);
-      setDriverApps(da);
-      setDriverKycList(kyc);
-      setDriverAlerts(als);
-      setSupportReqs(sr);
+      setEmergencies(Array.isArray(e) ? e : []);
+      setRides(Array.isArray(r) ? r : []);
+      setDriverApps(Array.isArray(da) ? da : []);
+      setDriverKycList(Array.isArray(kyc) ? kyc : []);
+      setFinancials(fin);
+      setDriverAlerts(Array.isArray(als) ? als : []);
+      setSupportReqs(Array.isArray(sr) ? sr : []);
       setAuthenticated(true);
     } catch (err) {
       if (err.status === 401) {
@@ -174,14 +179,16 @@ export default function AdminDashboard() {
           apiFetch('/api/admin/rides'),
           apiFetch('/api/admin/driver-applications'),
           apiFetch('/api/drivers/kyc-list'),
+          apiFetch('/api/admin/financials'),
           apiFetch('/api/admin/driver-alerts'),
         ]);
-        if (results[0].status === 'fulfilled') setStats(results[0].value);
+        if (results[0].status === 'fulfilled' && results[0].value) setStats(results[0].value);
         if (results[1].status === 'fulfilled' && Array.isArray(results[1].value)) setEmergencies(results[1].value);
         if (results[2].status === 'fulfilled' && Array.isArray(results[2].value)) setRides(results[2].value);
         if (results[3].status === 'fulfilled' && Array.isArray(results[3].value)) setDriverApps(results[3].value);
         if (results[4].status === 'fulfilled' && Array.isArray(results[4].value)) setDriverKycList(results[4].value);
-        if (results[5].status === 'fulfilled' && Array.isArray(results[5].value)) setDriverAlerts(results[5].value);
+        if (results[5].status === 'fulfilled' && results[5].value) setFinancials(results[5].value);
+        if (results[6].status === 'fulfilled' && Array.isArray(results[6].value)) setDriverAlerts(results[6].value);
       } catch (e) { /* background silent poll */ }
     }, 4000);
     return () => clearInterval(interval);
@@ -363,6 +370,22 @@ export default function AdminDashboard() {
     }
   };
 
+  const exportFinancialsCsv = () => {
+    if (!financials?.transactions?.length) return;
+    const headers = ['Order ID,Payment ID,Trip ID,Rider Name,Driver Name,Pickup,Dropoff,Total Amount (INR),Payment Method,Status,Owner Commission 20% (INR),Driver Net 80% (INR),Timestamp'];
+    const rows = financials.transactions.map((t) =>
+      `"${t.orderId}","${t.paymentId}","${t.tripId}","${t.riderName}","${t.driverName}","${t.pickup}","${t.dropoff}",${t.amount},"${t.paymentMethod}","${t.status}",${t.platformCut},${t.driverCut},"${t.paidAt}"`
+    );
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers, ...rows].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `smartcab-financial-statement-${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   const logoutAdmin = () => {
     storeAdminKey('');
     setKey('');
@@ -463,6 +486,61 @@ export default function AdminDashboard() {
           </div>
         ) : (
           <>
+            {/* 💰 REVENUE & FINANCIAL STATS (UBER FLEET EARNINGS RADAR) */}
+            <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white rounded-3xl p-6 shadow-xl mb-8 border border-slate-700">
+              <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
+                <div>
+                  <div className="flex items-center space-x-2 text-emerald-400 font-extrabold text-xs uppercase tracking-wider">
+                    <TrendingUp className="h-4 w-4" />
+                    <span>Live Fleet Financials & Commission Radar</span>
+                  </div>
+                  <h2 className="text-2xl font-black mt-1">Owner Earnings & Revenue Hub</h2>
+                  <p className="text-xs text-slate-400">Automated 20% platform commission calculation across all payment methods</p>
+                </div>
+                <button
+                  onClick={exportFinancialsCsv}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs px-4 py-2.5 rounded-xl transition flex items-center gap-1.5 shadow-md"
+                >
+                  <Download className="h-4 w-4" />
+                  <span>Download Financial Statement (CSV)</span>
+                </button>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+                  <span className="text-xs text-slate-300 font-semibold block mb-1">TOTAL GROSS REVENUE</span>
+                  <div className="text-2xl font-black text-white">
+                    ₹{financials?.summary?.totalGrossVolume ? financials.summary.totalGrossVolume.toFixed(2) : (stats?.totalRevenue ? stats.totalRevenue.toFixed(2) : '0.00')}
+                  </div>
+                  <small className="text-[10px] text-slate-400">Total passenger ride fares</small>
+                </div>
+
+                <div className="bg-emerald-500/20 backdrop-blur-md rounded-2xl p-4 border border-emerald-500/30">
+                  <span className="text-xs text-emerald-300 font-bold block mb-1">OWNER PROFIT (20% CUT)</span>
+                  <div className="text-2xl font-black text-emerald-400">
+                    ₹{financials?.summary?.ownerCommissionProfit ? financials.summary.ownerCommissionProfit.toFixed(2) : (stats?.ownerProfit ? stats.ownerProfit.toFixed(2) : '0.00')}
+                  </div>
+                  <small className="text-[10px] text-emerald-200">Your net platform earnings</small>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+                  <span className="text-xs text-slate-300 font-semibold block mb-1">DRIVER PAYOUTS (80%)</span>
+                  <div className="text-2xl font-black text-slate-200">
+                    ₹{financials?.summary?.driverPayouts ? financials.summary.driverPayouts.toFixed(2) : '0.00'}
+                  </div>
+                  <small className="text-[10px] text-slate-400">Disbursed to driver fleet</small>
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+                  <span className="text-xs text-slate-300 font-semibold block mb-1">VERIFIED TRANSACTIONS</span>
+                  <div className="text-2xl font-black text-white">
+                    {financials?.summary?.totalTransactions || stats?.totalPaymentsCount || 0}
+                  </div>
+                  <small className="text-[10px] text-slate-400">UPI, Cards, Cash & Wallet</small>
+                </div>
+              </div>
+            </div>
+
             {/* Stats */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
               <StatCard icon={Car} label="Active Rides" value={stats?.activeRides ?? 0} tone="blue" />
@@ -571,6 +649,111 @@ export default function AdminDashboard() {
                       </button>
                     </div>
                   ))}
+                </div>
+              )}
+            </section>
+
+            {/* 💰 PAYMENTS & REVENUE TRANSACTIONS LEDGER */}
+            <section className="mb-10">
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+                <div>
+                  <h2 className="text-xl font-extrabold text-slate-900">
+                    PAYMENTS & EARNINGS LEDGER{' '}
+                    <span className="text-sm font-bold text-slate-400">
+                      ({(financials?.transactions || []).length} transactions)
+                    </span>
+                  </h2>
+                  <p className="text-xs text-slate-500">Live itemized record of passenger fares, payment channels, and 20% platform profit</p>
+                </div>
+                
+                {/* PAYMENT METHOD FILTER CHIPS */}
+                <div className="flex flex-wrap gap-1.5 text-xs font-bold">
+                  {['ALL', 'UPI', 'CARD', 'CASH', 'WALLET'].map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setPaymentFilter(m)}
+                      className={`px-3 py-1.5 rounded-xl transition ${
+                        paymentFilter === m
+                          ? 'bg-slate-900 text-white shadow-sm'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                      }`}
+                    >
+                      {m === 'ALL' ? 'All Channels' : m === 'UPI' ? '🟢 UPI Instant' : m === 'CARD' ? '💳 Cards' : m === 'CASH' ? '💵 Cash' : '👛 Wallet'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {!(financials?.transactions || []).length ? (
+                <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center text-slate-400">
+                  <Receipt className="h-8 w-8 mx-auto mb-2 opacity-40 text-emerald-600" />
+                  No payment transactions recorded yet. When a passenger books a ride, payments appear here with your 20% commission profit.
+                </div>
+              ) : (
+                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs">
+                      <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase tracking-wider font-extrabold">
+                        <tr>
+                          <th className="py-3.5 px-4">Order / Time</th>
+                          <th className="py-3.5 px-4">Rider & Driver</th>
+                          <th className="py-3.5 px-4">Route</th>
+                          <th className="py-3.5 px-4">Channel</th>
+                          <th className="py-3.5 px-4">Gross Fare</th>
+                          <th className="py-3.5 px-4 text-emerald-700 bg-emerald-50/50">Owner Profit (20%)</th>
+                          <th className="py-3.5 px-4 text-slate-600">Driver Net (80%)</th>
+                          <th className="py-3.5 px-4">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-medium">
+                        {(financials?.transactions || [])
+                          .filter((tx) => paymentFilter === 'ALL' || tx.paymentMethod.toUpperCase() === paymentFilter)
+                          .map((tx, idx) => (
+                            <tr key={idx} className="hover:bg-slate-50/80 transition">
+                              <td className="py-3.5 px-4">
+                                <span className="font-mono font-bold text-slate-900 block">{tx.orderId}</span>
+                                <span className="text-[10px] text-slate-400">{fmtTime(tx.paidAt)}</span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <strong className="text-slate-900 block">{tx.riderName}</strong>
+                                <span className="text-[11px] text-slate-500">Driver: {tx.driverName}</span>
+                              </td>
+                              <td className="py-3.5 px-4 max-w-[200px] truncate text-slate-600">
+                                <span title={`${tx.pickup} → ${tx.dropoff}`}>{tx.pickup} → {tx.dropoff}</span>
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className={`inline-flex items-center gap-1 font-bold px-2 py-0.5 rounded-full text-[10px] ${
+                                  tx.paymentMethod.toUpperCase() === 'UPI' ? 'bg-emerald-100 text-emerald-800' :
+                                  tx.paymentMethod.toUpperCase() === 'CARD' ? 'bg-blue-100 text-blue-800' :
+                                  tx.paymentMethod.toUpperCase() === 'CASH' ? 'bg-amber-100 text-amber-800' :
+                                  'bg-purple-100 text-purple-800'
+                                }`}>
+                                  {tx.paymentMethod.toUpperCase() === 'UPI' && <QrCode className="h-3 w-3" />}
+                                  {tx.paymentMethod.toUpperCase() === 'CARD' && <CreditCard className="h-3 w-3" />}
+                                  {tx.paymentMethod.toUpperCase() === 'CASH' && <Banknote className="h-3 w-3" />}
+                                  {tx.paymentMethod.toUpperCase() === 'WALLET' && <Wallet className="h-3 w-3" />}
+                                  {tx.paymentMethod}
+                                </span>
+                              </td>
+                              <td className="py-3.5 px-4 font-bold text-slate-900 text-sm">
+                                ₹{tx.amount.toFixed(2)}
+                              </td>
+                              <td className="py-3.5 px-4 font-black text-emerald-600 text-sm bg-emerald-50/40">
+                                +₹{tx.platformCut.toFixed(2)}
+                              </td>
+                              <td className="py-3.5 px-4 font-semibold text-slate-600 text-xs">
+                                ₹{tx.driverCut.toFixed(2)}
+                              </td>
+                              <td className="py-3.5 px-4">
+                                <span className="text-[10px] font-extrabold bg-green-100 text-green-800 px-2.5 py-1 rounded-full">
+                                  {tx.status}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </section>
