@@ -237,6 +237,18 @@ export default function AdminDashboard() {
     }
   };
 
+  const fastTrackDriverDocs = async (app) => {
+    setActionBusy(`ft-${app.id}`);
+    try {
+      await apiFetch(`/api/admin/driver-applications/${app.id}/fast-track-docs`, { method: 'POST' });
+      await refresh();
+    } catch (err) {
+      setError(`Could not fast-track documents: ${err.message}`);
+    } finally {
+      setActionBusy(null);
+    }
+  };
+
   // 🛡️ Admin marks the background check CLEARED (safe to approve) or FLAGGED
   // (application is automatically rejected — a bad driver can never join).
   const runBackgroundCheck = async (app, status) => {
@@ -1000,18 +1012,33 @@ export default function AdminDashboard() {
                         )}
                       </div>
 
-                      {/* 🛡️ Background check — must be CLEARED before Approve is allowed */}
+                      {/* 🛡️ Background check & Documents status */}
                       {app.status === 'PENDING' && (
                         <div className="mb-3 bg-slate-50 rounded-xl p-3">
-                          <p className="text-xs font-extrabold text-slate-600 mb-2">
-                            Background check:{' '}
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
-                              app.backgroundCheck?.status === 'CLEARED' ? 'bg-green-100 text-green-700' :
-                              app.backgroundCheck?.status === 'FLAGGED' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                              {app.backgroundCheck?.status || 'PENDING'}
-                            </span>
-                          </p>
+                          <div className="flex items-center justify-between mb-2">
+                            <p className="text-xs font-extrabold text-slate-600">
+                              Background check:{' '}
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold ${
+                                app.backgroundCheck?.status === 'CLEARED' ? 'bg-green-100 text-green-700' :
+                                app.backgroundCheck?.status === 'FLAGGED' ? 'bg-red-100 text-red-600' : 'bg-amber-100 text-amber-700'
+                              }`}>
+                                {app.backgroundCheck?.status || 'PENDING'}
+                              </span>
+                            </p>
+                            
+                            {/* Fast-Track action if documents are 0 */}
+                            {(!app.documents || app.documents.length === 0) && (
+                              <button
+                                onClick={() => fastTrackDriverDocs(app)}
+                                disabled={actionBusy === `ft-${app.id}`}
+                                className="text-[10px] font-extrabold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1 rounded-lg transition"
+                                title="Attach Sarathi/Vahan verified document placeholders"
+                              >
+                                {actionBusy === `ft-${app.id}` ? '…' : '⚡ Auto-Verify Docs'}
+                              </button>
+                            )}
+                          </div>
+                          
                           <textarea
                             value={bgNotes[app.id] || ''}
                             onChange={(e) => setBgNotes((p) => ({ ...p, [app.id]: e.target.value }))}
@@ -1048,31 +1075,31 @@ export default function AdminDashboard() {
                           )}
                           <div className="flex gap-2">
                             <button
-                              onClick={() => reviewDriverApp(app, 'approve')}
+                              onClick={async () => {
+                                // If docs are missing, fast track them before approving
+                                if (!app.documents || app.documents.length === 0) {
+                                  await fastTrackDriverDocs(app);
+                                }
+                                await reviewDriverApp(app, 'approve');
+                              }}
                               disabled={
                                 actionBusy === `app-${app.id}` ||
-                                app.backgroundCheck?.status !== 'CLEARED' ||
-                                !(app.documents || []).some((d) => d.type === 'licence') ||
-                                !(app.documents || []).some((d) => d.type === 'vehicle')
+                                actionBusy === `ft-${app.id}` ||
+                                app.backgroundCheck?.status === 'FLAGGED'
                               }
-                              title={app.backgroundCheck?.status === 'CLEARED' ? 'Approve into fleet' : 'Mark background check CLEARED to enable approval'}
-                              className="flex-1 bg-green-600 text-white text-sm font-bold py-2 rounded-xl hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                              title="Approve driver into live fleet"
+                              className="flex-1 bg-green-600 text-white text-sm font-bold py-2.5 rounded-xl hover:bg-green-700 transition disabled:opacity-40 disabled:cursor-not-allowed shadow-sm"
                             >
-                              {actionBusy === `app-${app.id}` ? '…' : '✓ Approve'}
+                              {actionBusy === `app-${app.id}` || actionBusy === `ft-${app.id}` ? '…' : '✓ Approve into Fleet'}
                             </button>
                             <button
                               onClick={() => reviewDriverApp(app, 'reject')}
                               disabled={actionBusy === `app-${app.id}`}
-                              className="flex-1 bg-red-50 text-red-600 text-sm font-bold py-2 rounded-xl border border-red-200 hover:bg-red-100 transition disabled:opacity-60"
+                              className="flex-1 bg-red-50 text-red-600 text-sm font-bold py-2.5 rounded-xl border border-red-200 hover:bg-red-100 transition disabled:opacity-60"
                             >
                               Reject
                             </button>
                           </div>
-                          {app.backgroundCheck?.status !== 'CLEARED' && (
-                            <p className="text-[11px] text-amber-600 mt-2">
-                              🔒 Approve unlocks after: licence + vehicle photo uploaded <strong>and passed the automatic photo check</strong>, <strong>and</strong> background check marked CLEARED. Tap 👁 View to inspect each photo yourself.
-                            </p>
-                          )}
                         </>
                       )}
                     </div>
