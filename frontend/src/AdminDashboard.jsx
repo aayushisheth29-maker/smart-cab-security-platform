@@ -3,9 +3,11 @@ import { Link } from 'react-router-dom';
 import {
   ArrowLeft, Car, Siren, Users, RefreshCw, Loader2,
   MapPin, CheckCircle2, LogOut, Lock, Activity, Route as RouteIcon, Mail, BadgeCheck,
-  TrendingUp, Receipt, Download, CreditCard, QrCode, Banknote, Wallet, DollarSign, Filter
+  TrendingUp, Receipt, Download, CreditCard, QrCode, Banknote, Wallet, DollarSign, Filter,
+  Radio
 } from 'lucide-react';
 import { apiFetch, getAdminKey, storeAdminKey, API_BASE } from './api';
+import FleetRadarMap from './FleetRadarMap';
 
 const STATUS_META = {
   REQUESTED: 'bg-slate-100 text-slate-700',
@@ -723,6 +725,14 @@ export default function AdminDashboard() {
                 {keyErr && <p className="mt-3 text-sm font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">⚠️ {keyErr}</p>}
               </div>
             </section>
+
+            {/* 🛰️ LIVE INTERACTIVE FLEET GPS RADAR & TELEMETRY MAP */}
+            <FleetRadarMap
+              rides={rides}
+              emergencies={emergencies}
+              drivers={stats?.driversOnline}
+              onRespondEmergency={respondEmergency}
+            />
 
             {/* Active emergencies */}
             <section className="mb-10">
