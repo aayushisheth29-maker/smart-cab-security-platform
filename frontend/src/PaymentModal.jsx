@@ -134,6 +134,89 @@ export default function PaymentModal({
     }
   };
 
+  const downloadInvoice = () => {
+    const invoiceHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>SmartCab Tax Invoice - ${receiptData?.receiptNumber}</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 40px; color: #1e293b; max-width: 700px; margin: auto; }
+          .header { display: flex; justify-content: space-between; border-bottom: 2px solid #0f172a; padding-bottom: 20px; margin-bottom: 20px; }
+          .title { font-size: 24px; font-weight: 800; color: #0f172a; }
+          .meta { font-size: 12px; color: #64748b; }
+          .table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 14px; }
+          .table th { background: #f1f5f9; text-align: left; padding: 10px; border-bottom: 1px solid #cbd5e1; }
+          .table td { padding: 10px; border-bottom: 1px solid #e2e8f0; }
+          .total { font-size: 18px; font-weight: bold; color: #059669; text-align: right; padding-top: 15px; }
+          .footer { margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 15px; font-size: 11px; color: #94a3b8; text-align: center; }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="title">🛡️ SmartCab Tax Invoice</div>
+            <div class="meta">SmartCab Technologies India Pvt Ltd<br/>CIN: U72900GJ2026PTC149812 · GSTIN: 24AABCS1429B1Z8<br/>Ahmedabad, Gujarat - 380054</div>
+          </div>
+          <div style="text-align: right;">
+            <div style="font-weight: bold;">Invoice #${receiptData?.receiptNumber}</div>
+            <div class="meta">Date: ${receiptData?.date}<br/>Status: ${receiptData?.status}</div>
+          </div>
+        </div>
+
+        <div style="margin-bottom: 20px; font-size: 13px;">
+          <strong>Rider Name:</strong> ${bookingDetails?.riderName || 'SmartCab Passenger'}<br/>
+          <strong>Pickup Location:</strong> ${bookingDetails?.pickup}<br/>
+          <strong>Dropoff Location:</strong> ${bookingDetails?.dropoff}<br/>
+          <strong>Vehicle Model:</strong> ${bookingDetails?.selectedCar || 'SmartCab Verified'}<br/>
+          <strong>Driver:</strong> ${bookingDetails?.driver?.name || 'Assigned Driver'} (${bookingDetails?.driver?.plate || 'GJ-01-AB-1234'})
+        </div>
+
+        <table class="table">
+          <thead>
+            <tr>
+              <th>Description</th>
+              <th>Distance</th>
+              <th>Amount (INR)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Base Fare & City Transport Service</td>
+              <td>${bookingDetails?.distanceKm || 5} km</td>
+              <td>₹${baseFare.toFixed(2)}</td>
+            </tr>
+            ${discount > 0 ? `
+            <tr style="color: #059669;">
+              <td>Promo Discount (${promoCode.toUpperCase()})</td>
+              <td>—</td>
+              <td>-₹${discount.toFixed(2)}</td>
+            </tr>
+            ` : ''}
+            <tr>
+              <td>GST (5% Transport Sector)</td>
+              <td>Included</td>
+              <td>₹${(finalFare * 0.05).toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="total">Total Amount Paid: ₹${finalFare.toFixed(2)}</div>
+        <div style="font-size: 12px; color: #64748b; text-align: right; margin-top: 5px;">Payment Method: ${receiptData?.paymentMethod}</div>
+
+        <div class="footer">
+          This is a computer-generated digital tax invoice compliant with Indian Motor Vehicle Aggregator Guidelines & GST Rules.
+        </div>
+      </body>
+      </html>
+    `;
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(invoiceHtml);
+      printWindow.document.close();
+      printWindow.print();
+    }
+  };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-in fade-in duration-200">
       <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden border border-slate-100 flex flex-col max-h-[90vh]">
@@ -192,12 +275,23 @@ export default function PaymentModal({
                 </div>
               </div>
 
-              <button
-                onClick={onClose}
-                className="w-full bg-slate-900 hover:bg-black text-white font-bold py-3.5 rounded-2xl shadow-lg transition mt-4"
-              >
-                Done & View Live Ride Tracking
-              </button>
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={downloadInvoice}
+                  className="w-1/2 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold py-3 rounded-2xl border border-slate-200 text-xs flex items-center justify-center gap-1.5 transition shadow-sm"
+                >
+                  <Receipt className="h-4 w-4 text-slate-600" />
+                  <span>Download Tax Invoice</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-1/2 bg-slate-900 hover:bg-black text-white font-bold py-3 rounded-2xl text-xs transition shadow-md"
+                >
+                  Track Live Ride
+                </button>
+              </div>
             </div>
           ) : (
             /* PAYMENT METHODS SELECTION */

@@ -15,6 +15,8 @@ import L from 'leaflet';
 import { API_BASE, authHeaders } from './api';
 import PaymentModal from './PaymentModal';
 import PhoneOtpModal from './PhoneOtpModal';
+import DriverKycModal from './DriverKycModal';
+import DpdpPolicyModal from './DpdpPolicyModal';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
 // Order matters: H.264/MP4 first because it plays on iOS Safari, Android
@@ -522,6 +524,8 @@ const BookRide = () => {
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingBookingDetails, setPendingBookingDetails] = useState(null);
   const [showOtpModal, setShowOtpModal] = useState(false);
+  const [showDriverKycModal, setShowDriverKycModal] = useState(false);
+  const [showDpdpModal, setShowDpdpModal] = useState(false);
   const [dashboardBookings, setDashboardBookings] = useState([]);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [userProfile, setUserProfile] = useState({
@@ -2284,6 +2288,20 @@ const BookRide = () => {
         }}
       />
 
+      {/* 🪪 DRIVER KYC & DOCUMENT VERIFICATION MODAL */}
+      <DriverKycModal
+        isOpen={showDriverKycModal}
+        onClose={() => setShowDriverKycModal(false)}
+        onKycSuccess={(data) => {
+          console.log("Driver KYC Approved:", data);
+        }}
+      />
+
+      {/* ⚖️ DPDP PRIVACY & DATA GOVERNANCE MODAL */}
+      <DpdpPolicyModal
+        isOpen={showDpdpModal}
+        onClose={() => setShowDpdpModal(false)}
+      />
       {/* 🌐 in-page translator element is mounted globally in App.jsx (I18nLoader) */}
 
       {/* ---- SELECTED CARD MODAL ---- */}
@@ -3281,6 +3299,20 @@ const BookRide = () => {
               title="Interactive AI Route Intelligence & Anomaly Lab"
             >
               🧭 Route Lab
+            </button>
+            <button
+              onClick={() => setShowDriverKycModal(true)}
+              className="px-3 py-2 rounded-full transition flex items-center hover:bg-gray-800 text-yellow-300"
+              title="Government Verified Driver KYC & Onboarding"
+            >
+              🪪 Driver KYC
+            </button>
+            <button
+              onClick={() => setShowDpdpModal(true)}
+              className="px-3 py-2 rounded-full transition flex items-center hover:bg-gray-800 text-blue-300"
+              title="DPDP Act 2023 Compliance & Data Protection"
+            >
+              ⚖️ DPDP Privacy
             </button>
           </div>
         </div>
