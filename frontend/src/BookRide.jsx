@@ -13,6 +13,8 @@ import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-lea
 import L from 'leaflet';
 
 import { API_BASE, authHeaders } from './api';
+import PaymentModal from './PaymentModal';
+import PhoneOtpModal from './PhoneOtpModal';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
 // Order matters: H.264/MP4 first because it plays on iOS Safari, Android
@@ -517,6 +519,9 @@ const BookRide = () => {
   const [pricingLoading, setPricingLoading] = useState(false);
 
   const [currentBookingId, setCurrentBookingId] = useState(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [pendingBookingDetails, setPendingBookingDetails] = useState(null);
+  const [showOtpModal, setShowOtpModal] = useState(false);
   const [dashboardBookings, setDashboardBookings] = useState([]);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
   const [userProfile, setUserProfile] = useState({
@@ -2012,8 +2017,23 @@ const BookRide = () => {
         const surgeNote = estimate.surgeMultiplier > 1
           ? ` (${estimate.surgeMultiplier}x — ${estimate.surgeReason || 'surge pricing'})`
           : '';
-        const rideIdLine = savedBooking?.rideCode ? `\n🏷️ Ride ID: ${savedBooking.rideCode}\n` : '';
-        alert(`🎉 ${selectedCar} Booked Successfully!${rideIdLine}\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name}\n💰 Fare: ₹${totalFare}${surgeNote}\n\nTap 'Live Guard' to share your ride with family!`);
+        
+        // 💳 OPEN THE SECURE PAYMENT MODAL (UPI, Cards, Cash, Wallet)
+        setPendingBookingDetails({
+          bookingId: savedBooking?.id || localId,
+          rideCode: savedBooking?.rideCode || null,
+          fare: totalFare,
+          baseFare: estimate.baseFare,
+          distanceFare: estimate.distanceFare,
+          surgeMultiplier: estimate.surgeMultiplier,
+          distanceKm: distKm.toFixed(1),
+          pickup,
+          dropoff,
+          selectedCar,
+          riderName: bookingData.riderName,
+          driver: randomDriver
+        });
+        setShowPaymentModal(true);
 
       } catch (error) {
         console.warn("Could not reach Smart Security AI Cab Python backend:", error);
@@ -2032,7 +2052,18 @@ const BookRide = () => {
             lat: pCoords[0], lng: pCoords[1],
           }));
         } catch (e) { /* storage may be unavailable */ }
-        alert(`🎉 ${selectedCar} Booked Successfully!\n\n📍 ${pickup} → ${dropoff}\n📏 ${distKm.toFixed(1)} km\n🚗 Driver ${randomDriver.name} (${randomDriver.plate})\n💰 Fare: ₹${totalFare}\n\nTap 'Live Guard' on the ride screen to enable cabin security!`);
+        setPendingBookingDetails({
+          bookingId: localId,
+          rideCode: null,
+          fare: totalFare,
+          distanceKm: distKm.toFixed(1),
+          pickup,
+          dropoff,
+          selectedCar,
+          riderName: bookingData.riderName,
+          driver: randomDriver
+        });
+        setShowPaymentModal(true);
       }
 
       setPickupCoords(pCoords);
@@ -2232,6 +2263,26 @@ const BookRide = () => {
         .goog-te-banner-frame { display: none !important; }
         .hide-scrollbar::-webkit-scrollbar { display: none; }
       `}</style>
+
+      {/* 💳 SECURE PAYMENT CHECKOUT MODAL (UPI, Cards, Cash, Wallet) */}
+      <PaymentModal
+        isOpen={showPaymentModal}
+        onClose={() => setShowPaymentModal(false)}
+        bookingDetails={pendingBookingDetails}
+        onPaymentSuccess={(data) => {
+          console.log("Payment Confirmed:", data);
+        }}
+      />
+
+      {/* 📲 PHONE OTP LOGIN & VERIFICATION MODAL */}
+      <PhoneOtpModal
+        isOpen={showOtpModal}
+        onClose={() => setShowOtpModal(false)}
+        onLoginSuccess={(user) => {
+          setLoggedInUser(user);
+          alert(`🎉 Welcome ${user.name || 'Rider'}! Verified with Phone OTP.`);
+        }}
+      />
 
       {/* 🌐 in-page translator element is mounted globally in App.jsx (I18nLoader) */}
 
@@ -3257,6 +3308,14 @@ const BookRide = () => {
           ) : (
             <>
               <button
+                onClick={() => setShowOtpModal(true)}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3 py-2 rounded-full flex items-center gap-1.5 shadow-sm text-xs md:text-sm"
+                title="1-Tap Instant Phone OTP Sign In"
+              >
+                <Phone className="h-3.5 w-3.5" />
+                <span>Phone OTP</span>
+              </button>
+              <button
                 onClick={() => { setAuthError(''); setMainView('login'); }}
                 className="hover:bg-gray-800 px-3 py-2 rounded-full"
               >
@@ -3309,6 +3368,21 @@ const BookRide = () => {
               className="w-full bg-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg mt-4 disabled:opacity-50"
             >
               {authLoading ? 'Signing in…' : 'Sign In'}
+            </button>
+
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-gray-300"></div>
+              <span className="flex-shrink mx-4 text-xs font-bold text-gray-400 uppercase">Or</span>
+              <div className="flex-grow border-t border-gray-300"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowOtpModal(true)}
+              className="w-full bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-500 text-emerald-800 font-extrabold text-base py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+            >
+              <Phone className="h-4 w-4 text-emerald-600" />
+              <span>Sign In with Phone OTP (Fast & Secure)</span>
             </button>
           </div>
           <p className="text-center mt-6 text-gray-600 font-medium cursor-pointer hover:underline">Forgot password?</p>
@@ -3378,6 +3452,21 @@ const BookRide = () => {
               className="w-full bg-black text-white font-bold text-lg py-4 rounded-xl hover:bg-gray-800 transition shadow-lg mt-4 disabled:opacity-50"
             >
               {authLoading ? 'Creating account…' : 'Register & Continue'}
+            </button>
+
+            <div className="relative flex py-2 items-center">
+              <div className="flex-grow border-t border-gray-300"></div>
+              <span className="flex-shrink mx-4 text-xs font-bold text-gray-400 uppercase">Or</span>
+              <div className="flex-grow border-t border-gray-300"></div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowOtpModal(true)}
+              className="w-full bg-emerald-50 hover:bg-emerald-100 border-2 border-emerald-500 text-emerald-800 font-extrabold text-base py-3.5 rounded-xl transition flex items-center justify-center gap-2 shadow-sm"
+            >
+              <Phone className="h-4 w-4 text-emerald-600" />
+              <span>1-Tap Instant Sign Up with Phone OTP</span>
             </button>
           </div>
           <p className="text-center mt-6 text-gray-600">
