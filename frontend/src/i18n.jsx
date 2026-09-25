@@ -1,35 +1,32 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { Globe, X, Check, Sparkles, Search } from 'lucide-react';
 
-// 🌐 INTERNATIONAL LANGUAGES — Smart Security AI Cab
+// 🌐 INTERNATIONAL & INDIAN VERNACULAR LANGUAGES — Smart Security AI Cab
 //
-// Language selection works through the in-page translator (same approach the
-// app already used for Indian languages): we set the googtrans cookie and
-// reload, so the WHOLE site (ride flow, safety, admin, everywhere) renders in
-// the chosen language. The help widget + AI assistant additionally ship with
-// authored translations for the 6 core languages so they work even before the
-// page translator kicks in (and stay readable if the translator is blocked).
+// Language selection works through the in-page Google translator + native React state.
+// Setting the googtrans cookie translates the whole app safely without breaking React DOM.
 
 export const LANGS = [
-  { code: 'en', google: 'en',     eng: 'English',                    native: 'English',         ai: 'en' },
-  { code: 'gu', google: 'gu',     eng: 'Gujarati',                   native: 'ગુજરાતી',          ai: 'gu' },
-  { code: 'hi', google: 'hi',     eng: 'Hindi',                      native: 'हिन्दी',           ai: 'hi' },
-  { code: 'ru', google: 'ru',     eng: 'Russian',                    native: 'Русский',         ai: 'ru' },
-  { code: 'ja', google: 'ja',     eng: 'Japanese',                   native: '日本語',           ai: 'ja' },
-  { code: 'zh', google: 'zh-CN',  eng: 'Chinese (Simplified)',       native: '中文（简体）',     ai: 'zh' },
-  { code: 'fr', google: 'fr',     eng: 'French',                     native: 'Français',        ai: 'fr' },
-  { code: 'de', google: 'de',     eng: 'German',                     native: 'Deutsch',         ai: 'de' },
-  { code: 'bn', google: 'bn',     eng: 'Bangla',                     native: 'বাংলা',            ai: 'en' },
-  { code: 'kn', google: 'kn',     eng: 'Kannada',                    native: 'ಕನ್ನಡ',            ai: 'en' },
-  { code: 'mr', google: 'mr',     eng: 'Marathi',                    native: 'मराठी',            ai: 'en' },
-  { code: 'ta', google: 'ta',     eng: 'Tamil',                      native: 'தமிழ்',            ai: 'en' },
-  { code: 'te', google: 'te',     eng: 'Telugu',                     native: 'తెలుగు',           ai: 'en' },
-  { code: 'ur', google: 'ur',     eng: 'Urdu',                       native: 'اردو',             ai: 'en' },
-];
-
-export const LANGUAGES = [
-  { code: 'en', label: 'English', native: 'English', flag: '🇬🇧' },
-  { code: 'gu', label: 'Gujarati', native: 'ગુજરાતી', flag: '🇮🇳' },
-  { code: 'hi', label: 'Hindi', native: 'हिन्दी', flag: '🇮🇳' }
+  // 🇮🇳 Indian Languages
+  { code: 'gu', google: 'gu',     eng: 'Gujarati',                   native: 'ગુજરાતી',          ai: 'gu', region: 'India' },
+  { code: 'hi', google: 'hi',     eng: 'Hindi',                      native: 'हिन्दी',           ai: 'hi', region: 'India' },
+  { code: 'mr', google: 'mr',     eng: 'Marathi',                    native: 'मराठी',            ai: 'mr', region: 'India' },
+  { code: 'bn', google: 'bn',     eng: 'Bangla',                     native: 'বাংলা',            ai: 'bn', region: 'India' },
+  { code: 'ta', google: 'ta',     eng: 'Tamil',                      native: 'தமிழ்',            ai: 'ta', region: 'India' },
+  { code: 'te', google: 'te',     eng: 'Telugu',                     native: 'తెలుగు',           ai: 'te', region: 'India' },
+  { code: 'kn', google: 'kn',     eng: 'Kannada',                    native: 'ಕನ್ನಡ',            ai: 'kn', region: 'India' },
+  { code: 'ml', google: 'ml',     eng: 'Malayalam',                  native: 'മലയാളം',          ai: 'ml', region: 'India' },
+  { code: 'pa', google: 'pa',     eng: 'Punjabi',                    native: 'ਪੰਜਾਬੀ',          ai: 'pa', region: 'India' },
+  { code: 'ur', google: 'ur',     eng: 'Urdu',                       native: 'اردو',             ai: 'ur', region: 'India' },
+  // 🌍 International Languages
+  { code: 'en', google: 'en',     eng: 'English',                    native: 'English',         ai: 'en', region: 'Global' },
+  { code: 'es', google: 'es',     eng: 'Spanish',                    native: 'Español',         ai: 'es', region: 'Global' },
+  { code: 'fr', google: 'fr',     eng: 'French',                     native: 'Français',        ai: 'fr', region: 'Global' },
+  { code: 'de', google: 'de',     eng: 'German',                     native: 'Deutsch',         ai: 'de', region: 'Global' },
+  { code: 'ru', google: 'ru',     eng: 'Russian',                    native: 'Русский',         ai: 'ru', region: 'Global' },
+  { code: 'ja', google: 'ja',     eng: 'Japanese',                   native: '日本語',           ai: 'ja', region: 'Global' },
+  { code: 'zh', google: 'zh-CN',  eng: 'Chinese (Simplified)',       native: '中文（简体）',     ai: 'zh', region: 'Global' },
+  { code: 'ar', google: 'ar',     eng: 'Arabic',                     native: 'العربية',          ai: 'ar', region: 'Global' },
 ];
 
 export const SUPPORTED_LANG_CODES = LANGS.map((l) => l.code);
@@ -64,7 +61,9 @@ export function setSiteLanguage(code) {
       document.cookie = `googtrans=/en/${lang.google}; path=/;`;
       document.cookie = `googtrans=/en/${lang.google}; path=/; domain=${window.location.hostname};`;
     }
-    try { localStorage.setItem('smartcab_lang', code); } catch (e) { /* noop */ }
+    try {
+      localStorage.setItem('smartcab_lang', code);
+    } catch (e) { /* noop */ }
     window.location.reload();
   }
 }
@@ -93,58 +92,14 @@ export const HELP_T = {
     fr: 'Signaler un chauffeur, trouver de l’aide ou nous écrire — dans votre langue.',
     de: 'Fahrer melden, Hilfe finden oder uns mailen — in deiner Sprache.',
   },
-  tab_help: { en: 'Help Center', hi: 'सहायता केंद्र', gu: 'હેલ્પ સેન્ટર', ru: 'Справочный центр', ja: 'ヘルプセンター', zh: '帮助中心', fr: 'Centre d’aide', de: 'Hilfe-Center' },
-  tab_report: { en: 'Report a Driver', hi: 'ड्राइवर रिपोर्ट', gu: 'ડ્રાઈવર ફરિયાદ', ru: 'Пожаловаться на водителя', ja: 'ドライバーを通報', zh: '投诉司机', fr: 'Signaler un chauffeur', de: 'Fahrer melden' },
-  tab_assistant: { en: 'AI Assistant', hi: 'एआई सहायक', gu: 'AI સહાયક', ru: 'ИИ-помощник', ja: 'AIアシスタント', zh: 'AI助手', fr: 'Assistant IA', de: 'KI-Assistent' },
-  close: { en: 'Close', hi: 'बंद करें', gu: 'બંધ કરો', ru: 'Закрыть', ja: '閉じる', zh: '关闭', fr: 'Fermer', de: 'Schließen' },
-
-  faq_heading: { en: 'Frequently asked questions', hi: 'अक्सर पूछे जाने वाले सवाल', gu: 'વારંવાર પૂછાતા પ્રશ્નો', ru: 'Часто задаваемые вопросы', ja: 'よくある質問', zh: '常见问题', fr: 'Questions fréquentes', de: 'Häufige Fragen' },
-  faq_q1: { en: 'How does AI route security work?', hi: 'एआई रूट सुरक्षा कैसे काम करती है?', gu: 'AI રૂટ સુરક્ષા કેવી રીતે કાર્ય કરે છે?', ru: 'Как работает ИИ-контроль маршрута?', ja: 'AIルート安全機能とは？', zh: 'AI路线安全是如何工作的？', fr: 'Comment fonctionne la sécurité IA de l’itinéraire ?', de: 'Wie funktioniert die KI-Routensicherheit?' },
-  faq_a1: {
-    en: 'Live GPS follows your route. If the vehicle deviates, the app alerts and flags the unusual behaviour so our team can check on you.',
-    hi: 'लाइव जीपीएस आपके मार्ग को ट्रैक करता है। यदि वाहन विचलित होता है, तो ऐप तुरंत चेतावनी जारी करता है।',
-    gu: 'લાઇવ GPS તમારા રૂટને ટ્રૅક કરે છે. જો વાહન વિચલિત થાય, તો ઍપ તરત જ ચેતવણી આપે છે જેથી સુરક્ષા ટીમ તમને સહાય કરી શકે.',
-    ru: 'GPS в реальном времени следит за маршрутом. При отклонении приложение предупреждает и помечает необычное поведение.',
-    ja: 'リアルタイムGPSがルートを追跡します。逸脱を検知するとアプリが通知し、異常な挙動としてフラグを立ててチームが確認します。',
-    zh: '实时GPS追踪路线。若车辆偏离，应用会提醒并标记异常行为，让团队联系您。',
-    fr: 'Le GPS suit votre itinéraire en temps réel. En cas de déviation, l’app alerte et signale le comportement inhabituel.',
-    de: 'Live-GPS verfolgt deine Route. Bei Abweichung warnt die App und markiert das ungewöhnliche Verhalten.',
-  },
-  emergency_heading: { en: 'In an emergency', hi: 'आपातकाल में', gu: 'ઇમરજન્સી સમયે', ru: 'В экстренной ситуации', ja: '緊急時は', zh: '紧急情况', fr: 'En cas d’urgence', de: 'Im Notfall' },
-  emergency_text: {
-    en: 'Call your local emergency number immediately (112 in India), then use the SOS button in the app.',
-    hi: 'तुरंत 112 डायल करें, फिर ऐप में एसओएस बटन दबाएं।',
-    gu: 'તરત જ 112 પર કૉલ કરો, પછી ઍપમાં SOS બટન દબાવો.',
-    ru: 'Сначала позвоните в местную службу спасения (112 в Индии), затем нажмите SOS в приложении.',
-    ja: 'まず現地の緊急番号（インドは112）にお電話ください。その後にアプリのSOSボタンを使用してください。',
-    zh: '请立即拨打当地紧急号码（印度为112），然后使用应用内的SOS按钮。',
-    fr: 'Appelez immédiatement votre numéro local (112 en Inde), puis utilisez le bouton SOS dans l’app.',
-    de: 'Ruf sofort die örtliche Notrufnummer an (in Indien 112), dann nutze den SOS-Button in der App.',
-  },
   send: { en: 'Send', hi: 'भेजें', gu: 'મોકલો', ru: 'Отправить', ja: '送信', zh: '发送', fr: 'Envoyer', de: 'Senden' },
   typing: { en: 'thinking…', hi: 'सोच रहा हूँ…', gu: 'વિચારી રહ્યું છે…', ru: 'думаю…', ja: '考え中…', zh: '思考中…', fr: 'réfléchit…', de: 'denkt nach…' },
-  assistant_welcome: {
-    en: 'Hello! 👋 I’m here to help — booking, fares, safety, SOS, reporting a driver or becoming a driver. What do you need?',
-    hi: 'नमस्ते! 👋 मैं आपकी सहायता के लिए यहाँ हूँ — बुकिंग, किराया, सुरक्षा, एसओएस या ड्राइवर बनने से जुड़े कोई भी सवाल पूछें।',
-    gu: 'નમસ્તે! 👋 હું તમારી સહાય માટે અહીં છું — બુકિંગ, ભાડું, સુરક્ષા, SOS, ડ્રાઈવર રજીસ્ટ્રેશન અંગે સહાય મેળવો.',
-    ru: 'Здравствуйте! 👋 Я здесь, чтобы помочь — бронирование, стоимость, безопасность, SOS, жалобы на водителя или работа водителем.',
-    ja: 'こんにちは！👋 予約、料金、安全、SOS、ドライバー通報、ドライバー応募 — ご質問をどうぞ。',
-    zh: '您好！👋 我可以帮助预订、费用、安全、SOS、投诉司机或成为司机。请问需要什么？',
-    fr: 'Bonjour ! 👋 Je peux aider pour la réservation, les tarifs, la sécurité, le SOS ou devenir chauffeur.',
-    de: 'Hallo! 👋 Ich helfe bei Buchen, Preisen, Sicherheit, SOS oder Fahrer werden.',
-  }
 };
 
 export const T = (key, lang = 'en') => {
   const bucket = HELP_T[key];
   if (!bucket) return key;
   return bucket[lang] || bucket.en;
-};
-
-export const normalizeAiLang = (l) => {
-  const code = (l || 'en').toLowerCase();
-  if (code.startsWith('zh')) return 'zh';
-  return ['en', 'gu', 'hi', 'ru', 'ja', 'zh', 'fr', 'de'].includes(code) ? code : 'en';
 };
 
 // ---------------------------------------------------------------------------
@@ -188,23 +143,190 @@ export function useLanguage() {
   return context;
 }
 
-export function LanguageSwitcher({ className = '' }) {
+/**
+ * 🌐 Globe Icon Language Switcher & Full Multilingual Modal
+ * Renders the prominent Globe button and dropdown supporting all Indian & International languages.
+ */
+export function LanguageSwitcher({ className = '', showGlobeOnly = false }) {
   const { lang, setLanguage } = useLanguage();
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const activeLangObj = LANGS.find((l) => l.code === lang) || LANGS[0];
+
+  const filteredLangs = LANGS.filter(
+    (l) =>
+      l.eng.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      l.native.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  const indianLangs = filteredLangs.filter((l) => l.region === 'India');
+  const globalLangs = filteredLangs.filter((l) => l.region === 'Global');
 
   return (
-    <div className={`inline-flex items-center bg-slate-800/90 rounded-xl p-1 border border-slate-700 text-xs font-bold ${className}`}>
-      {LANGUAGES.map((l) => (
+    <>
+      <div className={`inline-flex items-center gap-1.5 ${className}`}>
+        {/* 🌐 PROMINENT GLOBE BUTTON */}
         <button
-          key={l.code}
-          onClick={() => setLanguage(l.code)}
-          className={`px-2.5 py-1 rounded-lg transition flex items-center gap-1 ${
-            lang === l.code ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
-          }`}
-          title={l.label}
+          onClick={() => setIsModalOpen(true)}
+          className="flex items-center gap-2 bg-slate-800/90 hover:bg-slate-700 text-white px-3 py-1.5 rounded-xl border border-slate-700 transition shadow-sm text-xs font-bold"
+          title="🌐 Select Language (Google Translate & AI Voice)"
         >
-          <span>{l.native}</span>
+          <Globe className="h-4 w-4 text-emerald-400" />
+          <span className="notranslate">{activeLangObj.native || 'English'}</span>
         </button>
-      ))}
-    </div>
+
+        {/* Quick switch pills for top 3 languages if not globe-only */}
+        {!showGlobeOnly && (
+          <div className="hidden sm:inline-flex items-center bg-slate-900/80 rounded-xl p-0.5 border border-slate-800 text-xs font-bold">
+            {['en', 'hi', 'gu'].map((code) => {
+              const l = LANGS.find((item) => item.code === code);
+              return (
+                <button
+                  key={code}
+                  onClick={() => setLanguage(code)}
+                  className={`px-2 py-1 rounded-lg transition notranslate ${
+                    lang === code ? 'bg-emerald-600 text-white shadow-sm' : 'text-slate-400 hover:text-white'
+                  }`}
+                  title={l?.eng}
+                >
+                  {l?.native}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* 🌐 FULL MULTILINGUAL TRANSLATOR MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-[500] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-2xl w-full p-6 text-white shadow-2xl relative max-h-[85vh] flex flex-col">
+            {/* Close Button */}
+            <button
+              onClick={() => setIsModalOpen(false)}
+              className="absolute top-5 right-5 text-slate-400 hover:text-white p-2 rounded-full bg-slate-800 hover:bg-slate-700 transition"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            {/* Modal Header */}
+            <div className="flex items-center gap-3 mb-4 pr-10">
+              <div className="p-3 bg-emerald-500/20 border border-emerald-500/40 rounded-2xl text-emerald-400">
+                <Globe className="h-6 w-6 animate-spin-slow" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-lg flex items-center gap-2 notranslate">
+                  Select Language / ભાષા પસંદ કરો
+                </h3>
+                <p className="text-xs text-slate-400">
+                  Google Translate & Multilingual Voice AI Support
+                </p>
+              </div>
+            </div>
+
+            {/* Search Input */}
+            <div className="relative mb-4">
+              <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search language (e.g. Gujarati, Hindi, French, Marathi)..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            {/* Language Lists */}
+            <div className="overflow-y-auto flex-1 pr-1 space-y-5">
+              {/* 🇮🇳 Indian Languages */}
+              {indianLangs.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-extrabold text-amber-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5 notranslate">
+                    <span>🇮🇳</span> Indian Vernacular Languages
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {indianLangs.map((l) => {
+                      const isSelected = lang === l.code;
+                      return (
+                        <button
+                          key={l.code}
+                          onClick={() => {
+                            setIsModalOpen(false);
+                            setLanguage(l.code);
+                          }}
+                          className={`p-3 rounded-2xl border text-left transition flex items-center justify-between notranslate ${
+                            isSelected
+                              ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md'
+                              : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-sm font-bold">{l.native}</div>
+                            <div className="text-[11px] text-slate-400">{l.eng}</div>
+                          </div>
+                          {isSelected && <Check className="h-4 w-4 text-emerald-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 🌍 International Languages */}
+              {globalLangs.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-extrabold text-cyan-400 uppercase tracking-wider mb-2.5 flex items-center gap-1.5 notranslate">
+                    <span>🌍</span> International Languages
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                    {globalLangs.map((l) => {
+                      const isSelected = lang === l.code;
+                      return (
+                        <button
+                          key={l.code}
+                          onClick={() => {
+                            setIsModalOpen(false);
+                            setLanguage(l.code);
+                          }}
+                          className={`p-3 rounded-2xl border text-left transition flex items-center justify-between notranslate ${
+                            isSelected
+                              ? 'bg-emerald-600/20 border-emerald-500 text-white shadow-md'
+                              : 'bg-slate-950/80 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white'
+                          }`}
+                        >
+                          <div>
+                            <div className="text-sm font-bold">{l.native}</div>
+                            <div className="text-[11px] text-slate-400">{l.eng}</div>
+                          </div>
+                          {isSelected && <Check className="h-4 w-4 text-emerald-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-[11px] text-slate-400">
+              <span className="flex items-center gap-1">
+                <Sparkles className="h-3.5 w-3.5 text-emerald-400" />
+                Translates entire app & activates matching Voice AI
+              </span>
+              <button
+                onClick={() => {
+                  setIsModalOpen(false);
+                  setLanguage('en');
+                }}
+                className="text-slate-400 hover:text-white underline text-xs"
+              >
+                Reset to English
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
