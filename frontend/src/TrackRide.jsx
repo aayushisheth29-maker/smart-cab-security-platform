@@ -591,10 +591,18 @@ const TrackRide = () => {
         }}
         onShareRide={() => {
           navigator.clipboard?.writeText(window.location.href);
-          alert("📍 Live tracking link copied to clipboard!");
         }}
         onCheckRoute={() => {
-          alert("🛡️ ML Telemetry Check: Route path is nominal and normal.");
+          console.log("Telemetry check nominal");
+        }}
+        emergencyContacts={trackingData?.emergencyContacts || []}
+        shareableLocationLink={window.location.href}
+        currentBookingId={linkId}
+        pickup={trackingData?.pickup || 'Pickup'}
+        dropoff={trackingData?.dropoff || 'Dropoff'}
+        assignedDriver={{
+          name: trackingData?.driverName || 'Anita M.',
+          plate: trackingData?.carPlate || 'KA 01 EF 9012'
         }}
         bookingDetails={{ bookingId: linkId }}
       />

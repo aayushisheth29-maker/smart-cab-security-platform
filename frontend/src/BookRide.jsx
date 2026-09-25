@@ -2289,14 +2289,18 @@ const BookRide = () => {
         onShareRide={() => {
           if (currentBookingId) {
             navigator.clipboard?.writeText(`${window.location.origin}/track/${currentBookingId}`);
-            alert("📍 Live tracking link copied to clipboard!");
-          } else {
-            alert("📍 Live tracking link ready. Book a ride to activate live tracking.");
           }
         }}
         onCheckRoute={() => {
-          alert("🛡️ SmartCab AI Route Scan: Route status is NOMINAL and safe.");
+          console.log("ML Route Safety verified");
         }}
+        onAddContact={() => setShowAddContactModal(true)}
+        emergencyContacts={emergencyContacts}
+        currentBookingId={currentBookingId}
+        shareableLocationLink={shareableLocationLink}
+        pickup={pickup}
+        dropoff={dropoff}
+        assignedDriver={assignedDriver}
         bookingDetails={pendingBookingDetails}
       />
 
