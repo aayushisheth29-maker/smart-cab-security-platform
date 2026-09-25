@@ -1,0 +1,9 @@
+{
+  "appId": "com.smartcab.routelab.preview",
+  "appName": "SmartCab Preview",
+  "webDir": "build/route-preview",
+  "backgroundColor": "#f5f7f6",
+  "server": {
+    "androidScheme": "https"
+  }
+}

@@ -13,6 +13,12 @@ export default defineConfig({
     host: true,
     // Allow any host so preview hosts (e.g. 5173-<sandbox>.e2b.app) work.
     allowedHosts: true,
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:8000',
+        changeOrigin: true,
+      },
+    },
   },
 })
 
