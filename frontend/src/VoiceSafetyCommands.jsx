@@ -167,13 +167,25 @@ export default function VoiceSafetyCommands({
         gu: 'gu-IN'
       };
       utterance.lang = voiceLangMap[targetLang] || 'en-IN';
-      utterance.rate = 0.95;
+      utterance.rate = 0.92;
       utterance.pitch = 1.0;
 
       if (availableVoices.length > 0) {
-        const match = availableVoices.find(
+        // Try finding exact regional voice first
+        let match = availableVoices.find(
           (v) => v.lang.startsWith(targetLang) || v.lang.includes(voiceLangMap[targetLang])
         );
+        // If Gujarati voice is not natively installed in the OS/browser, fallback to clear Indian Hindi voice (which correctly renders Devanagari/Indic phonetics)
+        if (!match && targetLang === 'gu') {
+          match = availableVoices.find(
+            (v) => v.lang.startsWith('hi') || v.lang.includes('hi-IN') || v.lang.includes('hin')
+          );
+        }
+        if (!match) {
+          match = availableVoices.find(
+            (v) => v.lang.includes('en-IN') || v.lang.includes('India')
+          );
+        }
         if (match) utterance.voice = match;
       }
       window.speechSynthesis.speak(utterance);
