@@ -9,6 +9,7 @@ import BookRide from './BookRide';
 import MyRides from './MyRides';
 import SafetyCenter from './SafetyCenter';
 import AdminDashboard from './AdminDashboard';
+import DriverDashboard from './DriverDashboard';
 import I18nLoader from './I18nLoader';
 import FloatingHelp from './HelpAssistant';
 
@@ -154,6 +155,7 @@ function App() {
               gate protects it. Riders never see this page in navigation. */}
           <Route path="/owner" element={<AdminDashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
+          <Route path="/driver" element={<DriverDashboard />} />
         </Routes>
         <FloatingHelp />
       </Router>
