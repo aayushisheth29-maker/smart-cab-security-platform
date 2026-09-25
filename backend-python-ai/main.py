@@ -3787,6 +3787,11 @@ class DriverAdvanceRidePayload(BaseModel):
     action: str  # "ACCEPT" | "ARRIVED" | "START" | "COMPLETE"
 
 
+class TTSRequestPayload(BaseModel):
+    text: str
+    language: Optional[str] = "gu-IN"
+
+
 class VoiceSafetyCommandPayload(BaseModel):
     transcript: str
     language: Optional[str] = "en"
@@ -3926,6 +3931,74 @@ def get_driver_dashboard_stats(driver_name: Optional[str] = None):
         "rating": 4.9,
         "recentTrips": sorted(driver_trips, key=lambda x: x.get("createdAt", ""), reverse=True)[:5]
     }
+
+
+INDIAN_LANGUAGE_LOCALE_MAP = {
+    "gu": "gu",
+    "gu-in": "gu",
+    "hi": "hi",
+    "hi-in": "hi",
+    "en": "en",
+    "en-in": "en",
+    "mr": "mr",
+    "mr-in": "mr",
+    "bn": "bn",
+    "bn-in": "bn",
+    "ta": "ta",
+    "ta-in": "ta",
+    "te": "te",
+    "te-in": "te",
+    "kn": "kn",
+    "kn-in": "kn",
+    "ml": "ml",
+    "ml-in": "ml",
+    "pa": "pa",
+    "pa-in": "pa",
+}
+
+
+def text_to_speech(text: str, language: str = "gu-IN") -> dict:
+    """Centralized Indian Vernacular Text-to-Speech Engine.
+    Converts AI response into streamable natural studio audio across 10+ Indian languages.
+    """
+    clean_text = (text or "").strip()
+    if not clean_text:
+        return {"status": "error", "message": "text cannot be empty"}
+        
+    lang_key = (language or "gu-IN").lower()
+    gtts_lang = INDIAN_LANGUAGE_LOCALE_MAP.get(lang_key, lang_key.split("-")[0])
+    
+    # Try high-quality gTTS studio streaming if installed
+    try:
+        from gtts import gTTS
+        from io import BytesIO
+        import base64
+        
+        fp = BytesIO()
+        tts = gTTS(text=clean_text, lang=gtts_lang, slow=False)
+        tts.write_to_fp(fp)
+        fp.seek(0)
+        audio_b64 = base64.b64encode(fp.read()).decode("utf-8")
+        return {
+            "status": "success",
+            "language": language,
+            "langCode": gtts_lang,
+            "format": "mp3",
+            "audioBase64": f"data:audio/mp3;base64,{audio_b64}"
+        }
+    except Exception as e:
+        return {
+            "status": "client_fallback",
+            "language": language,
+            "langCode": gtts_lang,
+            "note": f"Audio rendered via client-side Indic Web Speech API synthesizer ({e})"
+        }
+
+
+@app.post("/api/ai/tts")
+def api_text_to_speech(payload: TTSRequestPayload):
+    """Centralized Indian Vernacular TTS endpoint."""
+    return text_to_speech(payload.text, payload.language)
 
 
 @app.post("/api/ai/voice-command")

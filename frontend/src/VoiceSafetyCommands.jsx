@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { API_BASE } from './api';
 import { useLanguage } from './i18n';
+import { playTextToSpeech } from './ttsService';
 
 // Web Audio API instant chime generator
 function playAudioChime(type = 'success') {
@@ -157,41 +158,20 @@ export default function VoiceSafetyCommands({
   }, [activeLang]);
 
   const speakText = (textToSpeak, targetLang = activeLang) => {
-    if (!('speechSynthesis' in window)) return;
-    try {
-      window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(textToSpeak);
-      const voiceLangMap = {
-        en: 'en-IN',
-        hi: 'hi-IN',
-        gu: 'gu-IN'
-      };
-      utterance.lang = voiceLangMap[targetLang] || 'en-IN';
-      utterance.rate = 0.92;
-      utterance.pitch = 1.0;
-
-      if (availableVoices.length > 0) {
-        // Try finding exact regional voice first
-        let match = availableVoices.find(
-          (v) => v.lang.startsWith(targetLang) || v.lang.includes(voiceLangMap[targetLang])
-        );
-        // If Gujarati voice is not natively installed in the OS/browser, fallback to clear Indian Hindi voice (which correctly renders Devanagari/Indic phonetics)
-        if (!match && targetLang === 'gu') {
-          match = availableVoices.find(
-            (v) => v.lang.startsWith('hi') || v.lang.includes('hi-IN') || v.lang.includes('hin')
-          );
-        }
-        if (!match) {
-          match = availableVoices.find(
-            (v) => v.lang.includes('en-IN') || v.lang.includes('India')
-          );
-        }
-        if (match) utterance.voice = match;
-      }
-      window.speechSynthesis.speak(utterance);
-    } catch (e) {
-      console.warn('Speech synthesis error:', e);
-    }
+    const localeMap = {
+      gu: 'gu-IN',
+      hi: 'hi-IN',
+      en: 'en-IN',
+      mr: 'mr-IN',
+      ta: 'ta-IN',
+      te: 'te-IN',
+      bn: 'bn-IN',
+      kn: 'kn-IN',
+      ml: 'ml-IN',
+      pa: 'pa-IN'
+    };
+    const locale = localeMap[targetLang] || 'en-IN';
+    playTextToSpeech(textToSpeak, locale);
   };
 
   const handleProcessVoice = async (spokenText) => {

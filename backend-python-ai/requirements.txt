@@ -12,3 +12,5 @@ langgraph>=0.2
 # can silently drop it for models missing from their capability registry.
 # The 4.x retry setting counts attempts (1 = no retries).
 langchain-google-genai>=4.4.0,<5.0
+# Indian Vernacular TTS Engine (Gujarati, Hindi, Marathi, Tamil, etc.)
+gTTS>=2.5.0
