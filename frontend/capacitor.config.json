@@ -1,9 +1,25 @@
 {
-  "appId": "com.smartcab.routelab.preview",
-  "appName": "SmartCab Preview",
-  "webDir": "build/route-preview",
-  "backgroundColor": "#f5f7f6",
+  "appId": "com.smartsecuritycab.app",
+  "appName": "Smart Security AI Cab",
+  "webDir": "dist",
+  "backgroundColor": "#0f172a",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "https",
+    "cleartext": false
+  },
+  "android": {
+    "allowMixedContent": false,
+    "captureInput": true,
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 2000,
+      "launchAutoHide": true,
+      "backgroundColor": "#0f172a",
+      "androidSplashResourceName": "splash",
+      "androidScaleType": "CENTER_CROP",
+      "showSpinner": false
+    }
   }
 }

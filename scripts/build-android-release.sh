@@ -1,27 +1,38 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# 🤖 SmartCab Android Production Release & Keystore Signing Tool
+# 🤖 Smart Security AI Cab - Android Production Release & Packaging Tool
 # ==============================================================================
 set -e
 
-echo "🚀 Preparing SmartCab Android Production Release Bundle..."
+echo "🚀 Starting Smart Security AI Cab Android Production Build..."
 
-cd "$(dirname "$0")/../frontend"
+ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+FRONTEND_DIR="$ROOT_DIR/frontend"
 
-# 1. Build the production web bundle
-echo "📦 Building React Production Assets (Vite)..."
+cd "$FRONTEND_DIR"
+
+# 1. Build the production web bundle (Vite)
+echo "📦 1/3: Compiling React 19 + Vite Production Web Bundle..."
 npm run build
 
-# 2. Sync web assets with native Capacitor shell
-echo "🔄 Syncing Capacitor Android Project..."
+# 2. Sync web assets with native Capacitor Android shell
+echo "🔄 2/3: Syncing web bundle with Android Native Capacitor Container..."
 npx cap sync android
 
-echo "✅ Android assets synced successfully to frontend/android/app/src/main/assets/public"
+echo "✅ 3/3: Native Android assets updated successfully at frontend/android/app/src/main/assets/public"
 echo ""
-echo "📱 NEXT STEPS TO GENERATE SIGNED .AAB BUNDLE FOR GOOGLE PLAY:"
-echo "1. Open Android Studio: npx cap open android"
-echo "2. Go to 'Build' -> 'Generate Signed Bundle / APK...'"
-echo "3. Select 'Android App Bundle' (.aab)"
-echo "4. Create or select your release keystore (smartcab-release.jks)"
-echo "5. Select 'release' build variant and click 'Finish'"
-echo "6. Upload app-release.aab to Google Play Console Production Track."
+echo "========================================================================"
+echo "📱 ANDROID PRODUCTION BUILD INSTRUCTIONS FOR GOOGLE PLAY STORE"
+echo "========================================================================"
+echo ""
+echo "1. Build Android App Bundle (.aab) for Google Play Console:"
+echo "   cd frontend/android && ./gradlew bundleRelease"
+echo ""
+echo "2. Build Direct APK (.apk) for Phone Testing:"
+echo "   cd frontend/android && ./gradlew assembleRelease"
+echo ""
+echo "3. Open Android Studio Project:"
+echo "   cd frontend && npx cap open android"
+echo ""
+echo "📄 Refer to docs/GOOGLE_PLAY_STORE_RELEASE_GUIDE.md for complete Play Store listing details."
+echo "========================================================================"

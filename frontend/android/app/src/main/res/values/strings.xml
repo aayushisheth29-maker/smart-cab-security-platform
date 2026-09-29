@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
-    <string name="app_name">SmartCab Preview</string>
-    <string name="title_activity_main">SmartCab Preview</string>
-    <string name="package_name">com.smartcab.routelab.preview</string>
-    <string name="custom_url_scheme">com.smartcab.routelab.preview</string>
+    <string name="app_name">Smart Security AI Cab</string>
+    <string name="title_activity_main">Smart Security AI Cab</string>
+    <string name="package_name">com.smartsecuritycab.app</string>
+    <string name="custom_url_scheme">smartcab</string>
 </resources>
