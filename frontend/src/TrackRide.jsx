@@ -2,10 +2,11 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users } from 'lucide-react';
+import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users, Star } from 'lucide-react';
 import { API_BASE } from './api';
 import VoiceSafetyCommands from './VoiceSafetyCommands';
 import SplitFareModal from './SplitFareModal';
+import TripRatingModal from './TripRatingModal';
 
 const carIcon = new L.DivIcon({
   className: 'custom-map-icon',
@@ -33,6 +34,7 @@ const TrackRide = () => {
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showSplitModal, setShowSplitModal] = useState(false);
+  const [showRatingModal, setShowRatingModal] = useState(false);
   const videoRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -420,6 +422,13 @@ const TrackRide = () => {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
+              onClick={() => setShowRatingModal(true)}
+              className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+            >
+              <Star className="h-4 w-4 mr-1.5 fill-white" /> Rate Driver &amp; Tip
+            </button>
+            <button
+              type="button"
               onClick={() => setShowSplitModal(true)}
               className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
             >
@@ -638,6 +647,18 @@ const TrackRide = () => {
           bookingId: linkId,
           rideCode: linkId,
           totalFare: 240,
+          riderName: trackingData?.riderName || 'Rider'
+        }}
+      />
+
+      {/* ⭐ Post-Trip Driver Rating & Tip Modal */}
+      <TripRatingModal
+        isOpen={showRatingModal}
+        onClose={() => setShowRatingModal(false)}
+        tripDetails={{
+          bookingId: linkId,
+          driverName: trackingData?.driverName || 'Anita M.',
+          carPlate: trackingData?.carPlate || 'KA 01 EF 9012',
           riderName: trackingData?.riderName || 'Rider'
         }}
       />

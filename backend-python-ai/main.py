@@ -2229,6 +2229,117 @@ def pay_split_share(split_id: str, payload: SettleSplitSharePayload):
 
 
 # ---------------------------------------------------------------------------
+# ⭐ POST-TRIP DRIVER RATING, REVIEWS & UPI DRIVER TIP CALCULATOR
+# ---------------------------------------------------------------------------
+TRIP_REVIEWS: List[Dict[str, Any]] = []
+
+class TripRatingPayload(BaseModel):
+    tripId: Optional[Union[str, int]] = None
+    driverId: Optional[Union[str, int]] = None
+    driverName: Optional[str] = "Anita M."
+    rating: int = 5  # 1 to 5
+    safetyCompliments: Optional[List[str]] = []
+    feedback: Optional[str] = ""
+    tipAmount: Optional[float] = 0.0
+    tipPaymentMethod: Optional[str] = "UPI"
+    riderName: Optional[str] = "Rider"
+
+
+@app.post("/api/trips/rate")
+@app.post("/api/trips/{trip_id}/rating")
+def rate_trip(payload: TripRatingPayload, trip_id: Optional[Union[str, int]] = None):
+    """Submits driver star rating, compliments, review text, and optional 100% direct driver tip."""
+    tid = trip_id or payload.tripId or "TRIP_ACTIVE"
+    rating_val = max(1, min(5, int(payload.rating)))
+    
+    review_record = {
+        "id": f"REV_{secrets.token_hex(4).upper()}",
+        "tripId": tid,
+        "driverId": payload.driverId or 1,
+        "driverName": payload.driverName or "Anita M.",
+        "rating": rating_val,
+        "safetyCompliments": payload.safetyCompliments or [],
+        "feedback": (payload.feedback or "").strip(),
+        "tipAmount": max(0.0, float(payload.tipAmount or 0.0)),
+        "tipPaymentMethod": payload.tipPaymentMethod or "UPI",
+        "riderName": payload.riderName or "Verified Passenger",
+        "createdAt": _now_iso()
+    }
+    
+    TRIP_REVIEWS.append(review_record)
+    
+    # If tip was included, register a 100% direct driver tip in payout ledger (0% commission)
+    driver_key = str(payload.driverId or 1)
+    if review_record["tipAmount"] > 0:
+        if driver_key not in DRIVER_PAYOUTS_STORE:
+            DRIVER_PAYOUTS_STORE[driver_key] = []
+        tip_payout = {
+            "payoutId": f"TIP-{secrets.token_hex(4).upper()}",
+            "tripId": tid,
+            "type": "DIRECT_RIDER_TIP",
+            "amount": review_record["tipAmount"],
+            "platformCommission": 0.0,
+            "netPayout": review_record["tipAmount"],
+            "status": "SETTLED_INSTANT_UPI",
+            "description": f"100% Direct Passenger Tip for Trip #{tid} ({review_record['tipPaymentMethod']})",
+            "timestamp": _now_iso()
+        }
+        DRIVER_PAYOUTS_STORE[driver_key].append(tip_payout)
+        log.info("💸 Driver Tip Registered: ₹%s to Driver %s for Trip %s", review_record["tipAmount"], driver_key, tid)
+
+    # Update driver rating in DRIVERS list if matching
+    for d in DRIVERS:
+        if str(d.get("id")) == driver_key or d.get("name") == payload.driverName:
+            driver_reviews = [r for r in TRIP_REVIEWS if str(r.get("driverId")) == driver_key or r.get("driverName") == d.get("name")]
+            if driver_reviews:
+                avg_rate = round(sum(r["rating"] for r in driver_reviews) / len(driver_reviews), 2)
+                d["rating"] = avg_rate
+                d["totalReviews"] = len(driver_reviews)
+
+    log.info("⭐ Trip %s rated %d/5 for driver %s (Tip: ₹%s)", tid, rating_val, payload.driverName, review_record["tipAmount"])
+    return {
+        "status": "ok",
+        "message": f"Thank you! Your feedback for {payload.driverName} has been submitted.",
+        "review": review_record
+    }
+
+
+@app.get("/api/drivers/{driver_id}/reviews")
+def get_driver_reviews(driver_id: str):
+    """Returns passenger feedback, badges, compliments, and ratings for a driver."""
+    reviews = [r for r in TRIP_REVIEWS if str(r.get("driverId")) == str(driver_id)]
+    
+    # Calculate compliment badge frequencies
+    badges_count: Dict[str, int] = {}
+    for r in reviews:
+        for tag in r.get("safetyCompliments", []):
+            badges_count[tag] = badges_count.get(tag, 0) + 1
+            
+    avg_rating = round(sum(r["rating"] for r in reviews) / len(reviews), 2) if reviews else 4.95
+    total_tips = sum(r.get("tipAmount", 0.0) for r in reviews)
+    
+    return {
+        "driverId": driver_id,
+        "averageRating": avg_rating,
+        "totalReviews": len(reviews),
+        "totalTipsReceived": round(total_tips, 2),
+        "topCompliments": badges_count,
+        "reviews": reviews[::-1][:10]  # Most recent 10 reviews
+    }
+
+
+@app.get("/api/trips/{trip_id}/rating")
+def get_trip_rating(trip_id: str):
+    """Checks if a trip has already received feedback."""
+    review = next((r for r in TRIP_REVIEWS if str(r.get("tripId")) == str(trip_id)), None)
+    return {
+        "tripId": trip_id,
+        "hasRated": review is not None,
+        "review": review
+    }
+
+
+# ---------------------------------------------------------------------------
 # 🪪 DRIVER KYC & DOCUMENT VERIFICATION (VAHAN / SARATHI Aggregator Engine)
 # ---------------------------------------------------------------------------
 class DriverKycPayload(BaseModel):

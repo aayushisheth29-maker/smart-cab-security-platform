@@ -5,6 +5,7 @@ import {
   Calendar, CheckCircle2, XCircle, Clock, Siren, RefreshCw, LogIn,
 } from 'lucide-react';
 import { apiFetch } from './api';
+import TripRatingModal from './TripRatingModal';
 
 const STATUS_META = {
   REQUESTED: { label: 'Requested', color: 'bg-slate-100 text-slate-700' },
@@ -42,7 +43,7 @@ function formatDate(iso) {
   }
 }
 
-function RideCard({ ride, onTrack }) {
+function RideCard({ ride, onTrack, onRate }) {
   const driver = ride.driver || {};
   const isSos = ride.status === 'DANGER';
   return (
@@ -114,16 +115,26 @@ function RideCard({ ride, onTrack }) {
           </Link>
         )}
         {ride.status === 'COMPLETED' && (
-          <Link to="/" className="flex-1 bg-slate-100 text-slate-700 text-sm font-bold py-2.5 rounded-xl text-center hover:bg-slate-200 transition">
-            Book again
-          </Link>
+          <>
+            <button
+              onClick={() => onRate && onRate(ride)}
+              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold py-2.5 rounded-xl text-center transition shadow-sm flex items-center justify-center gap-1.5"
+            >
+              <Star className="h-4 w-4 fill-white" /> Rate &amp; Tip
+            </button>
+            <Link to="/" className="flex-1 bg-slate-100 text-slate-700 text-sm font-bold py-2.5 rounded-xl text-center hover:bg-slate-200 transition">
+              Book again
+            </Link>
+          </>
         )}
-        <button
-          onClick={() => onTrack(ride, true)}
-          className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition flex-1 text-sm font-semibold"
-        >
-          Share ride
-        </button>
+        {ride.status !== 'COMPLETED' && (
+          <button
+            onClick={() => onTrack(ride, true)}
+            className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-500 hover:bg-slate-50 transition flex-1 text-sm font-semibold"
+          >
+            Share ride
+          </button>
+        )}
       </div>
     </div>
   );
@@ -149,6 +160,7 @@ export default function MyRides() {
   const [tab, setTab] = useState('active');
   const [sharing, setSharing] = useState(null);
   const [shareMessage, setShareMessage] = useState('');
+  const [ratingModalRide, setRatingModalRide] = useState(null);
 
   useEffect(() => {
     try {
@@ -314,13 +326,34 @@ export default function MyRides() {
             ) : (
               <div className="grid md:grid-cols-2 gap-4">
                 {visible.map((ride) => (
-                  <RideCard key={ride.id} ride={ride} onTrack={handleTrack} />
+                  <RideCard
+                    key={ride.id}
+                    ride={ride}
+                    onTrack={handleTrack}
+                    onRate={(r) => setRatingModalRide(r)}
+                  />
                 ))}
               </div>
             )}
           </>
         )}
       </main>
+
+      {/* ⭐ Post-Trip Driver Rating & Tip Modal */}
+      <TripRatingModal
+        isOpen={!!ratingModalRide}
+        onClose={() => setRatingModalRide(null)}
+        tripDetails={ratingModalRide ? {
+          ...ratingModalRide,
+          driverName: ratingModalRide.driver?.name || ratingModalRide.driverName || 'Anita M.',
+          driverPlate: ratingModalRide.driver?.plate || ratingModalRide.carPlate || 'KA 01 EF 9012',
+          bookingId: ratingModalRide.id || ratingModalRide.bookingId,
+          riderName: user?.name || 'Rider'
+        } : null}
+        onRatingSubmitted={() => {
+          loadRides();
+        }}
+      />
     </div>
   );
 }
