@@ -2,11 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users, Star } from 'lucide-react';
+import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users, Star, Volume2, VolumeX, Bell } from 'lucide-react';
 import { API_BASE } from './api';
 import VoiceSafetyCommands from './VoiceSafetyCommands';
 import SplitFareModal from './SplitFareModal';
 import TripRatingModal from './TripRatingModal';
+import { Chimes, announceMilestone } from './ttsService';
 
 const carIcon = new L.DivIcon({
   className: 'custom-map-icon',
@@ -35,6 +36,7 @@ const TrackRide = () => {
   const [loading, setLoading] = useState(true);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [audioAnnounceEnabled, setAudioAnnounceEnabled] = useState(true);
   const videoRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -440,6 +442,62 @@ const TrackRide = () => {
             >
               <PhoneCall className="h-4 w-4 mr-1.5" /> Emergency 112
             </a>
+          </div>
+        </div>
+
+        {/* 🔔 LIVE TRIP AUDIO CHIMES & SPOKEN MILESTONES BANNER */}
+        <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-200 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl border border-indigo-100">
+              <Bell className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-black text-sm text-slate-900 flex items-center gap-2">
+                Live Trip Audio Chimes &amp; Spoken Milestones
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 font-bold px-2 py-0.5 rounded-full">
+                  10 Indian Languages
+                </span>
+              </div>
+              <p className="text-xs text-slate-500">
+                Spoken chimes for driver arrival, route milestones, and destination alerts.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-1.5 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => {
+                const next = !audioAnnounceEnabled;
+                setAudioAnnounceEnabled(next);
+                if (next) Chimes.tripStarted();
+              }}
+              className={`px-3 py-1.5 rounded-xl text-xs font-black transition flex items-center gap-1 border ${
+                audioAnnounceEnabled
+                  ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                  : 'bg-slate-100 border-slate-200 text-slate-500'
+              }`}
+            >
+              {audioAnnounceEnabled ? <Volume2 className="w-3.5 h-3.5" /> : <VolumeX className="w-3.5 h-3.5" />}
+              {audioAnnounceEnabled ? 'Chimes Active' : 'Chimes Muted'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => announceMilestone('HALFWAY', 'gu-IN')}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition"
+              title="Audition 50% Milestone Announcement"
+            >
+              🧭 50% Milestone
+            </button>
+            <button
+              type="button"
+              onClick={() => announceMilestone('APPROACHING_DESTINATION', 'gu-IN')}
+              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[11px] font-bold transition"
+              title="Audition Approaching Destination Announcement"
+            >
+              📍 2 Min Alert
+            </button>
           </div>
         </div>
 
