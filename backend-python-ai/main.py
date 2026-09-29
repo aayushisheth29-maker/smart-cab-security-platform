@@ -2530,7 +2530,6 @@ def create_booking_alias(payload: TripCreate, request: Request):
     return create_trip(payload, request)
 
 
-@app.put("/api/trips/{trip_id}/sos")
 def _dispatch_emergency_sms_whatsapp(rider_name: str, ride_code: str, contacts: List[Dict[str, Any]], driver_name: str = "", car_plate: str = "") -> Dict[str, Any]:
     """Transmits high-priority emergency SMS & WhatsApp broadcasts to passenger's family contacts."""
     base_tracking_url = os.environ.get("FRONTEND_URL", "https://smart-cab-owner-portal.vercel.app")
@@ -2565,6 +2564,7 @@ def _dispatch_emergency_sms_whatsapp(rider_name: str, ride_code: str, contacts: 
     }
 
 
+@app.put("/api/trips/{trip_id}/sos")
 def trigger_sos(trip_id: int, request: Request):
     """SOS workflow: flags the trip DANGER, records the alert, date/time and
     the ride's saved emergency contacts so the Safety Center can show the
@@ -2621,8 +2621,8 @@ def trigger_sos(trip_id: int, request: Request):
 
 # Same alias for old JS code that may still hit /api/bookings/:id/sos
 @app.put("/api/bookings/{trip_id}/sos")
-def trigger_sos_alias(trip_id: int):
-    return trigger_sos(trip_id)
+def trigger_sos_alias(trip_id: int, request: Request):
+    return trigger_sos(trip_id, request)
 
 
 # ---------------------------------------------------------------------------
@@ -3616,31 +3616,20 @@ def admin_approve_driver_application(app_id: int):
             status_code=400,
             detail="Background check must be CLEARED before approval. Review the police-clearance certificate in the admin dashboard first.",
         )
+    # Check for any REJECTED documents (screening failed: duplicate photo / tiny / corrupt)
+    rejected_docs = [d for d in app.get("documents", []) if (d.get("check") or {}).get("status") == "REJECTED"]
+    if rejected_docs:
+        types = ", ".join(d.get("label", d.get("type", "document")) for d in rejected_docs)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot approve: {types} failed automatic screening. Driver must re-upload a clear, valid photo.",
+        )
     doc_types = {d.get("type") for d in app.get("documents", [])}
     if "licence" not in doc_types or "vehicle" not in doc_types:
-        # Auto-attach fast-track docs if admin explicitly approves
-        docs = app.get("documents", [])
-        if "licence" not in doc_types:
-            docs.append({
-                "id": len(docs) + 1,
-                "type": "licence",
-                "label": "Driving Licence (Sarathi Verified)",
-                "filename": "dl_verified.jpg",
-                "contentType": "image/jpeg",
-                "uploadedAt": _now_iso(),
-                "check": {"status": "PASSED", "message": "Verified"}
-            })
-        if "vehicle" not in doc_types:
-            docs.append({
-                "id": len(docs) + 1,
-                "type": "vehicle",
-                "label": "Vehicle RC (Vahan Verified)",
-                "filename": "vehicle_rc.jpg",
-                "contentType": "image/jpeg",
-                "uploadedAt": _now_iso(),
-                "check": {"status": "PASSED", "message": "Verified"}
-            })
-        app["documents"] = docs
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot approve: Driving licence and vehicle photo must both be uploaded and screened before approval.",
+        )
 
     app["status"] = "APPROVED"
     app["approvedAt"] = _now_iso()
