@@ -2016,25 +2016,44 @@ const BookRide = () => {
             console.log("✅ Booking saved to Smart Security AI Cab Python backend:", savedBooking);
           }
         }
-        // 🏷️ Remember this ride (Ride ID, driver, route, coords) so the
-        // Safety Center + My Rides can show it without another booking.
+        // 🏷️ Remember this ride (Ride ID, driver, route, coords) in local storage
+        // so the Safety Center, My Rides, and Route Map show it instantly.
         try {
-          localStorage.setItem('smartcab_last_ride', JSON.stringify({
+          const promoCalc = calculateDiscount(appliedOffer, totalFare);
+          const finalBookingFare = promoCalc.finalFare;
+          const discountAmount = promoCalc.discount;
+
+          const rideObj = {
+            id: savedBooking?.id || localId,
             bookingId: savedBooking?.id || localId,
-            rideCode: savedBooking?.rideCode || null,
+            rideCode: savedBooking?.rideCode || `SC-${localId}`,
             riderName: bookingData.riderName,
+            status: "REQUESTED",
             driver: {
               name: randomDriver.name,
               plate: randomDriver.plate,
               carModel: randomDriver.carModel,
               rating: randomDriver.rating,
             },
+            pickupLocation: pickup,
+            dropoffLocation: dropoff,
             pickup,
             dropoff,
+            fare: finalBookingFare,
+            originalFare: totalFare,
+            discount: discountAmount,
+            distanceKm: distKm.toFixed(1),
+            selectedCar,
+            createdAt: new Date().toISOString(),
             pickupLat: pCoords[0], pickupLng: pCoords[1],
             dropoffLat: dCoords[0], dropoffLng: dCoords[1],
             lat: pCoords[0], lng: pCoords[1],
-          }));
+          };
+
+          localStorage.setItem('smartcab_last_ride', JSON.stringify(rideObj));
+          const existingList = JSON.parse(localStorage.getItem('smartcab_my_rides') || '[]');
+          const updatedList = [rideObj, ...existingList.filter(r => r.id !== rideObj.id)];
+          localStorage.setItem('smartcab_my_rides', JSON.stringify(updatedList));
         } catch (e) { /* storage may be unavailable */ }
         const surgeNote = estimate.surgeMultiplier > 1
           ? ` (${estimate.surgeMultiplier}x — ${estimate.surgeReason || 'surge pricing'})`
@@ -3818,13 +3837,31 @@ const BookRide = () => {
             <h2 className="text-2xl font-bold pb-1 md:pb-3 shrink-0">Ride</h2>
             <div className="flex overflow-x-auto w-full space-x-6 text-sm font-medium text-gray-500 pb-2 hide-scrollbar">
               <button 
-                onClick={() => { setActiveTab('request'); setShowPrices(false); }} 
-                className={`whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'request' && selectedCar !== 'SmartBike' ? 'border-black text-black font-extrabold' : 'border-transparent hover:text-black font-semibold'}`}
+                onClick={() => { 
+                  setActiveTab('request'); 
+                  setSelectedCar('SmartMini'); 
+                  setShowPrices(false);
+                  const input = document.querySelector('input[placeholder*="Pickup"]');
+                  if (input) {
+                    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    input.focus();
+                  }
+                }} 
+                className={`whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'request' && selectedCar !== 'SmartBike' ? 'border-black text-black font-extrabold' : 'border-transparent text-slate-600 hover:text-black font-semibold'}`}
               >
                 <Car className="w-4 h-4" /> Daily Cab
               </button>
               <button 
-                onClick={() => { setActiveTab('request'); setSelectedCar('SmartBike'); setShowPrices(false); }} 
+                onClick={() => { 
+                  setActiveTab('request'); 
+                  setSelectedCar('SmartBike'); 
+                  setShowPrices(false);
+                  const input = document.querySelector('input[placeholder*="Pickup"]');
+                  if (input) {
+                    input.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    input.focus();
+                  }
+                }} 
                 className={`whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'request' && selectedCar === 'SmartBike' ? 'border-emerald-600 text-emerald-800 font-extrabold' : 'border-transparent text-emerald-700 hover:text-emerald-900 font-bold'}`}
               >
                 <Bike className="w-4 h-4 text-emerald-600" /> SmartBike Taxi
