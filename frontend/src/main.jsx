@@ -30,6 +30,17 @@ if (typeof Node === 'function' && Node.prototype) {
     }
     return originalInsertBefore.apply(this, arguments);
   };
+
+  const originalReplaceChild = Node.prototype.replaceChild;
+  Node.prototype.replaceChild = function (newChild, oldChild) {
+    if (oldChild && oldChild.parentNode !== this) {
+      if (console && console.warn) {
+        console.warn('Recovered from Google Translate replaceChild collision');
+      }
+      return oldChild;
+    }
+    return originalReplaceChild.apply(this, arguments);
+  };
 }
 
 createRoot(document.getElementById('root')).render(

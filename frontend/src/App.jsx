@@ -79,6 +79,9 @@ class GlobalErrorBoundary extends React.Component {
             <div className="space-y-2">
               <button
                 onClick={() => {
+                  try {
+                    sessionStorage.removeItem('smartcab_pending_booking');
+                  } catch (e) {}
                   this.setState({ hasError: false, error: null });
                 }}
                 className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-6 rounded-2xl transition"
@@ -98,6 +101,9 @@ class GlobalErrorBoundary extends React.Component {
             <a
               href="/"
               onClick={() => {
+                try {
+                  sessionStorage.removeItem('smartcab_pending_booking');
+                } catch (e) {}
                 this.setState({ hasError: false, error: null });
               }}
               className="inline-block mt-4 text-xs font-bold text-slate-400 hover:text-white"

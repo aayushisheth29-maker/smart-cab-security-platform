@@ -2319,23 +2319,27 @@ const BookRide = () => {
       `}</style>
 
       {/* 💳 SECURE PAYMENT CHECKOUT MODAL (UPI, Cards, Cash, Wallet) */}
-      <PaymentModal
-        isOpen={showPaymentModal}
-        onClose={() => setShowPaymentModal(false)}
-        bookingDetails={pendingBookingDetails}
-        onPaymentSuccess={(data) => {
-          console.log("Payment Confirmed:", data);
-        }}
-      />
+      {showPaymentModal && (
+        <PaymentModal
+          isOpen={showPaymentModal}
+          onClose={() => setShowPaymentModal(false)}
+          bookingDetails={pendingBookingDetails}
+          onPaymentSuccess={(data) => {
+            console.log("Payment Confirmed:", data);
+          }}
+        />
+      )}
 
       {/* 🎁 UBER-STYLE EXCLUSIVE OFFERS & PROMO CODES MODAL */}
-      <RideOffersModal
-        isOpen={showOffersModal}
-        onClose={() => setShowOffersModal(false)}
-        currentFare={150}
-        appliedOfferCode={appliedOffer?.code || ''}
-        onApplyOffer={(offer) => setAppliedOffer(offer)}
-      />
+      {showOffersModal && (
+        <RideOffersModal
+          isOpen={showOffersModal}
+          onClose={() => setShowOffersModal(false)}
+          currentFare={150}
+          appliedOfferCode={appliedOffer?.code || ''}
+          onApplyOffer={(offer) => setAppliedOffer(offer)}
+        />
+      )}
 
       {/* 🎙️ MULTILINGUAL HANDS-FREE VOICE SAFETY ASSISTANT (EN, HI, GU) */}
       <VoiceSafetyCommands
@@ -2362,29 +2366,35 @@ const BookRide = () => {
       />
 
       {/* 📲 PHONE OTP LOGIN & VERIFICATION MODAL */}
-      <PhoneOtpModal
-        isOpen={showOtpModal}
-        onClose={() => setShowOtpModal(false)}
-        onLoginSuccess={(user) => {
-          setLoggedInUser(user);
-          alert(`🎉 Welcome ${user.name || 'Rider'}! Verified with Phone OTP.`);
-        }}
-      />
+      {showOtpModal && (
+        <PhoneOtpModal
+          isOpen={showOtpModal}
+          onClose={() => setShowOtpModal(false)}
+          onLoginSuccess={(user) => {
+            setLoggedInUser(user);
+            alert(`🎉 Welcome ${user.name || 'Rider'}! Verified with Phone OTP.`);
+          }}
+        />
+      )}
 
       {/* 🪪 DRIVER KYC & DOCUMENT VERIFICATION MODAL */}
-      <DriverKycModal
-        isOpen={showDriverKycModal}
-        onClose={() => setShowDriverKycModal(false)}
-        onKycSuccess={(data) => {
-          console.log("Driver KYC Approved:", data);
-        }}
-      />
+      {showDriverKycModal && (
+        <DriverKycModal
+          isOpen={showDriverKycModal}
+          onClose={() => setShowDriverKycModal(false)}
+          onKycSuccess={(data) => {
+            console.log("Driver KYC Approved:", data);
+          }}
+        />
+      )}
 
       {/* ⚖️ DPDP PRIVACY & DATA GOVERNANCE MODAL */}
-      <DpdpPolicyModal
-        isOpen={showDpdpModal}
-        onClose={() => setShowDpdpModal(false)}
-      />
+      {showDpdpModal && (
+        <DpdpPolicyModal
+          isOpen={showDpdpModal}
+          onClose={() => setShowDpdpModal(false)}
+        />
+      )}
       {/* 🌐 in-page translator element is mounted globally in App.jsx (I18nLoader) */}
 
       {/* ---- SELECTED CARD MODAL ---- */}
@@ -5631,61 +5641,67 @@ const BookRide = () => {
       )}
 
       {/* ⏱️ Hourly Rentals Modal */}
-      <HourlyRentalsModal
-        isOpen={showRentalsModal}
-        onClose={() => setShowRentalsModal(false)}
-        defaultPickup={pickup || 'SG Highway, Ahmedabad'}
-        onBookComplete={(booking) => {
-          setPendingBookingDetails({
-            ...booking,
-            bookingId: booking.rideCode || `RENTAL-${booking.id}`,
-            fare: Number(booking.fare || booking.baseFare || 249),
-            finalFare: Number(booking.fare || 249),
-            pickup: booking.pickupLocation,
-            dropoff: booking.dropoffLocation,
-            selectedCar: booking.selectedCar || 'SmartPro'
-          });
-          setShowPaymentModal(true);
-        }}
-      />
+      {showRentalsModal && (
+        <HourlyRentalsModal
+          isOpen={showRentalsModal}
+          onClose={() => setShowRentalsModal(false)}
+          defaultPickup={pickup || 'SG Highway, Ahmedabad'}
+          onBookComplete={(booking) => {
+            setPendingBookingDetails({
+              ...booking,
+              bookingId: booking.rideCode || `RENTAL-${booking.id}`,
+              fare: Number(booking.fare || booking.baseFare || 249),
+              finalFare: Number(booking.fare || 249),
+              pickup: booking.pickupLocation,
+              dropoff: booking.dropoffLocation,
+              selectedCar: booking.selectedCar || 'SmartPro'
+            });
+            setShowPaymentModal(true);
+          }}
+        />
+      )}
 
       {/* 🛣️ Outstation Intercity Modal */}
-      <OutstationModal
-        isOpen={showOutstationModal}
-        onClose={() => setShowOutstationModal(false)}
-        defaultOrigin="Ahmedabad"
-        onBookComplete={(booking) => {
-          setPendingBookingDetails({
-            ...booking,
-            bookingId: booking.rideCode || `OUTSTATION-${booking.id}`,
-            fare: Number(booking.fare || booking.baseFare || 549),
-            finalFare: Number(booking.fare || 549),
-            pickup: booking.pickupLocation,
-            dropoff: booking.dropoffLocation,
-            selectedCar: booking.selectedCar || 'SmartPro'
-          });
-          setShowPaymentModal(true);
-        }}
-      />
+      {showOutstationModal && (
+        <OutstationModal
+          isOpen={showOutstationModal}
+          onClose={() => setShowOutstationModal(false)}
+          defaultOrigin="Ahmedabad"
+          onBookComplete={(booking) => {
+            setPendingBookingDetails({
+              ...booking,
+              bookingId: booking.rideCode || `OUTSTATION-${booking.id}`,
+              fare: Number(booking.fare || booking.baseFare || 549),
+              finalFare: Number(booking.fare || 549),
+              pickup: booking.pickupLocation,
+              dropoff: booking.dropoffLocation,
+              selectedCar: booking.selectedCar || 'SmartPro'
+            });
+            setShowPaymentModal(true);
+          }}
+        />
+      )}
 
       {/* ✈️ SVPI Airport Fast-Track Modal */}
-      <AirportFastTrackModal
-        isOpen={showAirportModal}
-        onClose={() => setShowAirportModal(false)}
-        defaultCityAddress={dropoff || pickup || 'SG Highway, Ahmedabad'}
-        onBookComplete={(booking) => {
-          setPendingBookingDetails({
-            ...booking,
-            bookingId: booking.rideCode || `AIRPORT-${booking.id}`,
-            fare: Number(booking.fare || booking.baseFare || 249),
-            finalFare: Number(booking.fare || 249),
-            pickup: booking.pickupLocation,
-            dropoff: booking.dropoffLocation,
-            selectedCar: booking.selectedCar || 'SmartPro'
-          });
-          setShowPaymentModal(true);
-        }}
-      />
+      {showAirportModal && (
+        <AirportFastTrackModal
+          isOpen={showAirportModal}
+          onClose={() => setShowAirportModal(false)}
+          defaultCityAddress={dropoff || pickup || 'SG Highway, Ahmedabad'}
+          onBookComplete={(booking) => {
+            setPendingBookingDetails({
+              ...booking,
+              bookingId: booking.rideCode || `AIRPORT-${booking.id}`,
+              fare: Number(booking.fare || booking.baseFare || 249),
+              finalFare: Number(booking.fare || 249),
+              pickup: booking.pickupLocation,
+              dropoff: booking.dropoffLocation,
+              selectedCar: booking.selectedCar || 'SmartPro'
+            });
+            setShowPaymentModal(true);
+          }}
+        />
+      )}
 
     </div>
   );

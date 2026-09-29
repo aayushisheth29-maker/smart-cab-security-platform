@@ -39,10 +39,10 @@ export default function SplitFareModal({
 
   if (!isOpen || !bookingDetails) return null;
 
-  const totalFare = Number(bookingDetails.finalFare || bookingDetails.fare || 240);
-  const riderName = bookingDetails.riderName || 'You (Host)';
-  const totalCount = friends.filter(f => f.name.trim()).length + 1;
-  const perPersonEstimated = Math.round(totalFare / totalCount);
+  const totalFare = Number(bookingDetails?.finalFare || bookingDetails?.fare || 240);
+  const riderName = bookingDetails?.riderName || 'You (Host)';
+  const totalCount = (friends || []).filter(f => (f?.name || '').trim()).length + 1;
+  const perPersonEstimated = Math.round(totalFare / Math.max(1, totalCount));
 
   const handleAddFriend = () => {
     if (friends.length < 3) {
@@ -56,12 +56,14 @@ export default function SplitFareModal({
 
   const handleFriendChange = (index, field, value) => {
     const updated = [...friends];
-    updated[index][field] = value;
-    setFriends(updated);
+    if (updated[index]) {
+      updated[index][field] = value;
+      setFriends(updated);
+    }
   };
 
   const handleCreateSplit = async () => {
-    const validFriends = friends.filter(f => f.name.trim());
+    const validFriends = (friends || []).filter(f => (f?.name || '').trim());
     if (validFriends.length === 0) {
       alert("Please add at least one friend's name to split the fare.");
       return;

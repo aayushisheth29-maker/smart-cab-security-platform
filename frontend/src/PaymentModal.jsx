@@ -252,7 +252,7 @@ export default function PaymentModal({
             {paymentDone ? "Payment Successful 🎉" : "Secure Payment"}
           </h2>
           <p className="text-slate-400 text-xs mt-1">
-            {bookingDetails.selectedCar || 'SmartCab Verified Ride'} · {bookingDetails.pickup} → {bookingDetails.dropoff}
+            {bookingDetails?.selectedCar || 'SmartCab Verified Ride'} · {bookingDetails?.pickup || bookingDetails?.pickupLocation || 'Pickup'} → {bookingDetails?.dropoff || bookingDetails?.dropoffLocation || 'Dropoff'}
           </p>
         </div>
 
@@ -274,11 +274,11 @@ export default function PaymentModal({
               <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-left text-xs space-y-2 text-slate-700">
                 <div className="flex justify-between">
                   <span className="text-slate-500">Ride Ref:</span>
-                  <span className="font-mono font-bold">{bookingDetails.bookingId}</span>
+                  <span className="font-mono font-bold">{bookingDetails?.bookingId || bookingDetails?.id || 'SC-ACTIVE'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Vehicle:</span>
-                  <span className="font-bold">{bookingDetails.selectedCar}</span>
+                  <span className="font-bold">{bookingDetails?.selectedCar || 'SmartPro'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-slate-500">Payment Status:</span>
@@ -518,15 +518,17 @@ export default function PaymentModal({
       </div>
 
       {/* Split Fare Modal */}
-      <SplitFareModal
-        isOpen={showSplitModal}
-        onClose={() => setShowSplitModal(false)}
-        bookingDetails={{
-          ...bookingDetails,
-          finalFare,
-          totalFare: finalFare
-        }}
-      />
+      {showSplitModal && (
+        <SplitFareModal
+          isOpen={showSplitModal}
+          onClose={() => setShowSplitModal(false)}
+          bookingDetails={{
+            ...bookingDetails,
+            finalFare,
+            totalFare: finalFare
+          }}
+        />
+      )}
     </div>
   );
 }
