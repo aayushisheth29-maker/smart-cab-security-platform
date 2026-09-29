@@ -57,6 +57,12 @@ import threading
 import asyncio
 import unicodedata
 
+from notification_service import (
+    dispatch_emergency_broadcast,
+    send_trip_share_notification,
+    DISPATCH_LOGS,
+)
+
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("smartcab")
 
@@ -2530,38 +2536,56 @@ def create_booking_alias(payload: TripCreate, request: Request):
     return create_trip(payload, request)
 
 
-def _dispatch_emergency_sms_whatsapp(rider_name: str, ride_code: str, contacts: List[Dict[str, Any]], driver_name: str = "", car_plate: str = "") -> Dict[str, Any]:
+def _dispatch_emergency_sms_whatsapp(
+    rider_name: str,
+    ride_code: str,
+    contacts: List[Dict[str, Any]],
+    driver_name: str = "",
+    car_plate: str = "",
+    pickup: str = "",
+    dropoff: str = "",
+    reason: str = "Manual Emergency SOS"
+) -> Dict[str, Any]:
     """Transmits high-priority emergency SMS & WhatsApp broadcasts to passenger's family contacts."""
-    base_tracking_url = os.environ.get("FRONTEND_URL", "https://smart-cab-owner-portal.vercel.app")
-    tracking_link = f"{base_tracking_url}/track/{ride_code.replace('#', '')}"
-    
-    alert_text = (
-        f"🚨 SMARTCAB EMERGENCY ALERT: {rider_name or 'Passenger'} has triggered an emergency SOS "
-        f"on ride {ride_code}. Driver: {driver_name or 'Assigned Driver'} ({car_plate or 'GJ 01'}). "
-        f"Live GPS Tracking: {tracking_link} . Ahmedabad PCR Police (112) notified."
+    return dispatch_emergency_broadcast(
+        rider_name=rider_name,
+        ride_code=ride_code,
+        contacts=contacts,
+        driver_name=driver_name,
+        car_plate=car_plate,
+        pickup=pickup,
+        dropoff=dropoff,
+        reason=reason
     )
-    
-    dispatched_list = []
-    for c in contacts:
-        phone = c.get("phone") if isinstance(c, dict) else str(c)
-        cname = c.get("name", "Emergency Contact") if isinstance(c, dict) else "Family Contact"
-        if phone:
-            dispatched_list.append({
-                "recipient": cname,
-                "phone": phone,
-                "smsStatus": "DELIVERED",
-                "whatsappStatus": "SENT",
-                "dispatchedAt": _now_iso()
-            })
-            log.warning("📱 Emergency SMS/WhatsApp dispatched to %s (%s): %s", cname, phone, alert_text)
-            
-    return {
-        "status": "DISPATCHED",
-        "message": alert_text,
-        "recipientsCount": len(dispatched_list),
-        "dispatchedList": dispatched_list,
-        "dispatchedAt": _now_iso()
-    }
+
+
+@app.get("/api/emergency/dispatch-logs")
+def get_emergency_dispatch_logs():
+    """Returns the live audit log of all emergency SMS and WhatsApp broadcasts."""
+    return {"status": "ok", "count": len(DISPATCH_LOGS), "logs": DISPATCH_LOGS}
+
+
+class EmergencyTestPayload(BaseModel):
+    phone: str
+    name: Optional[str] = "Family Contact"
+    channel: Optional[str] = "sms"  # sms | whatsapp | both
+
+
+@app.post("/api/emergency/test-broadcast")
+def test_emergency_broadcast(payload: EmergencyTestPayload):
+    """Sends a verified test SMS / WhatsApp broadcast to verify passenger's emergency contact phone."""
+    contacts = [{"name": payload.name, "phone": payload.phone}]
+    report = dispatch_emergency_broadcast(
+        rider_name="Test Passenger",
+        ride_code="SC-TEST-999",
+        contacts=contacts,
+        driver_name="SmartCab Safety Team",
+        car_plate="GJ 01 SC 0001",
+        pickup="Navrangpura, Ahmedabad",
+        dropoff="SG Highway, Ahmedabad",
+        reason="Emergency Contact Verification Test"
+    )
+    return {"status": "ok", "message": "Test broadcast dispatched successfully", "report": report}
 
 
 @app.put("/api/trips/{trip_id}/sos")
@@ -2591,7 +2615,10 @@ def trigger_sos(trip_id: int, request: Request):
                 ride_code=t.get("rideCode") or f"SC-{t.get('id')}",
                 contacts=contacts,
                 driver_name=dname,
-                car_plate=dplate
+                car_plate=dplate,
+                pickup=t.get("pickupLocation", ""),
+                dropoff=t.get("dropoffLocation", ""),
+                reason="Manual SOS"
             )
             
             rec = {

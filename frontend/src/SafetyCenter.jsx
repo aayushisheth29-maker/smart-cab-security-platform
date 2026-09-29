@@ -70,6 +70,24 @@ export default function SafetyCenter() {
   const [routeCheck, setRouteCheck] = useState(null);
   const [routeBusy, setRouteBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [testSending, setTestSending] = useState(null);
+  const [testResult, setTestResult] = useState(null);
+
+  const sendTestBroadcast = async (contact) => {
+    setTestSending(contact.phone);
+    setTestResult(null);
+    try {
+      const data = await apiFetch('/api/emergency/test-broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ phone: contact.phone, name: contact.name })
+      });
+      setTestResult({ phone: contact.phone, success: true, message: `✅ Test alert dispatched to ${contact.name} (${contact.phone}) via SMS & WhatsApp!` });
+    } catch (e) {
+      setTestResult({ phone: contact.phone, success: false, message: `⚠️ ${e.message}` });
+    } finally {
+      setTestSending(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -413,25 +431,43 @@ export default function SafetyCenter() {
                 </p>
               ) : (
                 contacts.map((c) => (
-                  <div key={c.phone} className="flex items-center justify-between bg-slate-50 border border-slate-100 rounded-xl p-3 hover:bg-slate-100/80 transition">
-                    <div className="flex items-center gap-3">
-                      <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 font-extrabold text-xs flex items-center justify-center shrink-0">
-                        {c.name ? c.name.slice(0, 2).toUpperCase() : 'EC'}
+                  <div key={c.phone} className="space-y-1.5 bg-slate-50 border border-slate-100 rounded-xl p-3 hover:bg-slate-100/80 transition">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 font-extrabold text-xs flex items-center justify-center shrink-0">
+                          {c.name ? c.name.slice(0, 2).toUpperCase() : 'EC'}
+                        </div>
+                        <div className="text-sm">
+                          <div className="font-extrabold text-slate-900">{c.name}</div>
+                          <a href={`tel:${c.phone}`} className="text-slate-500 hover:text-blue-600 text-xs font-semibold flex items-center gap-1">
+                            <Phone className="h-3 w-3 text-emerald-600" /> {c.phone}
+                          </a>
+                        </div>
                       </div>
-                      <div className="text-sm">
-                        <div className="font-extrabold text-slate-900">{c.name}</div>
-                        <a href={`tel:${c.phone}`} className="text-slate-500 hover:text-blue-600 text-xs font-semibold flex items-center gap-1">
-                          <Phone className="h-3 w-3 text-emerald-600" /> {c.phone}
-                        </a>
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => sendTestBroadcast(c)}
+                          disabled={testSending === c.phone}
+                          className="px-2.5 py-1 text-[11px] font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg transition disabled:opacity-50"
+                          title="Test SMS and WhatsApp dispatch"
+                        >
+                          {testSending === c.phone ? "Sending…" : "Test SMS/WA"}
+                        </button>
+                        <button
+                          onClick={() => removeContact(c.phone)}
+                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 transition p-1.5 rounded-lg"
+                          title={`Remove ${c.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
                       </div>
                     </div>
-                    <button
-                      onClick={() => removeContact(c.phone)}
-                      className="text-slate-400 hover:text-red-600 hover:bg-red-50 transition p-2 rounded-lg"
-                      title={`Remove ${c.name}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {testResult && testResult.phone === c.phone && (
+                      <div className={`text-[11px] font-bold p-1.5 rounded-md ${testResult.success ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                        {testResult.message}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
