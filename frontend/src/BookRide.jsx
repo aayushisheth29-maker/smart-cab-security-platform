@@ -20,6 +20,8 @@ import DpdpPolicyModal from './DpdpPolicyModal';
 import VoiceSafetyCommands from './VoiceSafetyCommands';
 import RideOffersModal, { PROMO_OFFERS, calculateDiscount } from './RideOffersModal';
 import RideOffersBanner from './RideOffersBanner';
+import HourlyRentalsModal from './HourlyRentalsModal';
+import OutstationModal from './OutstationModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -298,6 +300,8 @@ const BookRide = () => {
 
   const [showDriverForm, setShowDriverForm] = useState(false);
   const [showBusinessForm, setShowBusinessForm] = useState(false);
+  const [showRentalsModal, setShowRentalsModal] = useState(false);
+  const [showOutstationModal, setShowOutstationModal] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
@@ -3813,9 +3817,23 @@ const BookRide = () => {
             <div className="flex overflow-x-auto w-full space-x-6 text-sm font-medium text-gray-500 pb-2 hide-scrollbar">
               <button 
                 onClick={() => { setActiveTab('request'); setShowPrices(false); }} 
-                className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'request' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
+                className={`whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'request' ? 'border-black text-black font-extrabold' : 'border-transparent hover:text-black font-semibold'}`}
               >
-                Request a ride
+                <Car className="w-4 h-4" /> Daily Cab
+              </button>
+              <button 
+                onClick={() => setShowRentalsModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-amber-800 hover:text-amber-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Clock className="w-4 h-4 text-amber-600" /> Hourly Rentals
+                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-black">2-12 Hrs</span>
+              </button>
+              <button 
+                onClick={() => setShowOutstationModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-indigo-800 hover:text-indigo-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Compass className="w-4 h-4 text-indigo-600" /> Outstation
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded font-black">Intercity</span>
               </button>
               <button 
                 onClick={() => { setActiveTab('reserve'); setShowPrices(false); }} 
@@ -3828,12 +3846,6 @@ const BookRide = () => {
                 className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'parcel' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
               >
                 Parcel
-              </button>
-              <button 
-                onClick={() => { setActiveTab('rentals'); setShowPrices(false); }} 
-                className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'rentals' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
-              >
-                Rentals
               </button>
               <button 
                 onClick={handleExploreClick} 
@@ -5564,6 +5576,40 @@ const BookRide = () => {
           </div>
         </div>
       )}
+
+      {/* ⏱️ Hourly Rentals Modal */}
+      <HourlyRentalsModal
+        isOpen={showRentalsModal}
+        onClose={() => setShowRentalsModal(false)}
+        defaultPickup={pickup || 'SG Highway, Ahmedabad'}
+        onBookComplete={(booking) => {
+          setSelectedPaymentRide({
+            ...booking,
+            bookingId: booking.rideCode || `RENTAL-${booking.id}`,
+            finalFare: booking.fare,
+            pickup: booking.pickupLocation,
+            dropoff: booking.dropoffLocation
+          });
+          setShowPaymentModal(true);
+        }}
+      />
+
+      {/* 🛣️ Outstation Intercity Modal */}
+      <OutstationModal
+        isOpen={showOutstationModal}
+        onClose={() => setShowOutstationModal(false)}
+        defaultOrigin="Ahmedabad"
+        onBookComplete={(booking) => {
+          setSelectedPaymentRide({
+            ...booking,
+            bookingId: booking.rideCode || `OUTSTATION-${booking.id}`,
+            finalFare: booking.fare,
+            pickup: booking.pickupLocation,
+            dropoff: booking.dropoffLocation
+          });
+          setShowPaymentModal(true);
+        }}
+      />
 
     </div>
   );

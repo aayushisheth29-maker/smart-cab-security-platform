@@ -2642,6 +2642,283 @@ def pricing_estimate(payload: PricingEstimateRequest):
 
 
 # ---------------------------------------------------------------------------
+# ⏱️ HOURLY RENTAL PACKAGES & 🛣️ OUTSTATION PACKAGES ENGINE
+# ---------------------------------------------------------------------------
+RENTAL_PACKAGES = [
+    {
+        "id": "PKG_2HR_20KM",
+        "name": "2 Hours · 20 km",
+        "durationHours": 2,
+        "includedKm": 20,
+        "popular": False,
+        "description": "Ideal for quick shopping, doctor visits, and local errands.",
+        "rates": {
+            "SmartMini": {"baseFare": 399.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
+            "SmartPro": {"baseFare": 449.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
+            "SmartMax": {"baseFare": 699.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
+            "SmartEV": {"baseFare": 499.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+        }
+    },
+    {
+        "id": "PKG_4HR_40KM",
+        "name": "4 Hours · 40 km",
+        "durationHours": 4,
+        "includedKm": 40,
+        "popular": True,
+        "description": "Perfect for half-day city business meetings and multi-stop client visits.",
+        "rates": {
+            "SmartMini": {"baseFare": 720.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
+            "SmartPro": {"baseFare": 799.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
+            "SmartMax": {"baseFare": 1199.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
+            "SmartEV": {"baseFare": 899.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+        }
+    },
+    {
+        "id": "PKG_8HR_80KM",
+        "name": "8 Hours · 80 km (Full Day)",
+        "durationHours": 8,
+        "includedKm": 80,
+        "popular": False,
+        "description": "Complete full-day cab with private driver on standby throughout the day.",
+        "rates": {
+            "SmartMini": {"baseFare": 1349.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
+            "SmartPro": {"baseFare": 1499.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
+            "SmartMax": {"baseFare": 2199.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
+            "SmartEV": {"baseFare": 1699.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+        }
+    },
+    {
+        "id": "PKG_12HR_120KM",
+        "name": "12 Hours · 120 km (Extended Day)",
+        "durationHours": 12,
+        "includedKm": 120,
+        "popular": False,
+        "description": "Extended city tour, wedding guests, or all-day regional appointments.",
+        "rates": {
+            "SmartMini": {"baseFare": 1999.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
+            "SmartPro": {"baseFare": 2199.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
+            "SmartMax": {"baseFare": 3199.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
+            "SmartEV": {"baseFare": 2499.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+        }
+    }
+]
+
+OUTSTATION_POPULAR_ROUTES = [
+    {
+        "id": "ROUTE_AMD_GND",
+        "origin": "Ahmedabad",
+        "destination": "Gandhinagar / GIFT City",
+        "distanceKm": 32,
+        "estimatedDuration": "45 mins",
+        "oneWayFare": 549.0,
+        "roundTripFare": 949.0,
+        "tollCharges": 0.0,
+        "driverAllowance": 0.0
+    },
+    {
+        "id": "ROUTE_AMD_BDQ",
+        "origin": "Ahmedabad",
+        "destination": "Vadodara (Baroda)",
+        "distanceKm": 115,
+        "estimatedDuration": "2 hrs",
+        "oneWayFare": 1499.0,
+        "roundTripFare": 2499.0,
+        "tollCharges": 185.0,
+        "driverAllowance": 250.0
+    },
+    {
+        "id": "ROUTE_AMD_RAJ",
+        "origin": "Ahmedabad",
+        "destination": "Rajkot (Saurashtra)",
+        "distanceKm": 215,
+        "estimatedDuration": "4 hrs",
+        "oneWayFare": 2699.0,
+        "roundTripFare": 4499.0,
+        "tollCharges": 280.0,
+        "driverAllowance": 300.0
+    },
+    {
+        "id": "ROUTE_AMD_ST",
+        "origin": "Ahmedabad",
+        "destination": "Surat (Diamond City)",
+        "distanceKm": 265,
+        "estimatedDuration": "4.5 hrs",
+        "oneWayFare": 3299.0,
+        "roundTripFare": 5499.0,
+        "tollCharges": 395.0,
+        "driverAllowance": 350.0
+    },
+    {
+        "id": "ROUTE_AMD_UDR",
+        "origin": "Ahmedabad",
+        "destination": "Udaipur (Lake City, RJ)",
+        "distanceKm": 260,
+        "estimatedDuration": "5 hrs",
+        "oneWayFare": 3499.0,
+        "roundTripFare": 5799.0,
+        "tollCharges": 450.0,
+        "driverAllowance": 400.0
+    },
+    {
+        "id": "ROUTE_AMD_DWRK",
+        "origin": "Ahmedabad",
+        "destination": "Dwarka / Somnath (Pilgrimage)",
+        "distanceKm": 440,
+        "estimatedDuration": "8 hrs",
+        "oneWayFare": 5499.0,
+        "roundTripFare": 8999.0,
+        "tollCharges": 560.0,
+        "driverAllowance": 600.0
+    }
+]
+
+class BookRentalPayload(BaseModel):
+    packageId: str
+    selectedCar: str = "SmartPro"
+    pickupLocation: str = "SG Highway, Ahmedabad"
+    stops: Optional[List[str]] = []
+    riderName: Optional[str] = "Verified Rider"
+    phone: Optional[str] = ""
+    startDate: Optional[str] = None
+    appliedPromo: Optional[str] = None
+    discount: Optional[float] = 0.0
+
+class BookOutstationPayload(BaseModel):
+    tripType: str = "ONE_WAY"  # "ONE_WAY" | "ROUND_TRIP"
+    origin: str = "Ahmedabad"
+    destination: str
+    selectedCar: str = "SmartPro"
+    departureDate: str
+    returnDate: Optional[str] = None
+    riderName: Optional[str] = "Verified Rider"
+    phone: Optional[str] = ""
+    appliedPromo: Optional[str] = None
+    discount: Optional[float] = 0.0
+
+
+@app.get("/api/pricing/rental-packages")
+def get_rental_packages():
+    """Lists all available hourly rental tiers and vehicle rates."""
+    return {"status": "ok", "packages": RENTAL_PACKAGES}
+
+
+@app.get("/api/pricing/outstation-routes")
+def get_outstation_routes():
+    """Lists popular outstation routes with one-way and round-trip pricing."""
+    return {"status": "ok", "routes": OUTSTATION_POPULAR_ROUTES}
+
+
+@app.post("/api/trips/book-rental")
+def book_hourly_rental(payload: BookRentalPayload):
+    """Creates a confirmed Hourly Rental booking with multi-stop standby."""
+    pkg = next((p for p in RENTAL_PACKAGES if p["id"] == payload.packageId), RENTAL_PACKAGES[1])
+    car_rates = pkg["rates"].get(payload.selectedCar, pkg["rates"]["SmartPro"])
+    base_price = car_rates["baseFare"]
+    discount = float(payload.discount or 0.0)
+    final_fare = max(0.0, base_price - discount)
+    
+    trip_id = _next_id["trip"]
+    _next_id["trip"] += 1
+    ride_code = f"RENTAL-{secrets.token_hex(3).upper()}"
+    
+    booking_record = {
+        "id": trip_id,
+        "rideCode": ride_code,
+        "category": "RENTAL_HOURLY",
+        "packageName": pkg["name"],
+        "durationHours": pkg["durationHours"],
+        "includedKm": pkg["includedKm"],
+        "extraKmRate": car_rates["extraKmRate"],
+        "extraMinRate": car_rates["extraMinRate"],
+        "pickupLocation": payload.pickupLocation,
+        "dropoffLocation": f"Multi-stop Rental ({len(payload.stops)} intermediate stops)",
+        "stops": payload.stops or [],
+        "selectedCar": payload.selectedCar,
+        "fare": final_fare,
+        "baseFare": base_price,
+        "discount": discount,
+        "appliedPromo": payload.appliedPromo,
+        "riderName": payload.riderName,
+        "phone": payload.phone,
+        "status": "REQUESTED",
+        "createdAt": _now_iso(),
+        "driver": {
+            "name": "Vikram Patel",
+            "phone": "+91 98250 88712",
+            "plate": "GJ 01 AB 9988",
+            "carModel": f"Dedicated {payload.selectedCar}",
+            "rating": 4.98
+        }
+    }
+    
+    TRIPS.append(booking_record)
+    log.info("⏱️ Rental Package Booked: #%s (%s, ₹%s)", ride_code, pkg["name"], final_fare)
+    return {"status": "ok", "booking": booking_record}
+
+
+@app.post("/api/trips/book-outstation")
+def book_outstation_trip(payload: BookOutstationPayload):
+    """Creates a confirmed Outstation one-way or round-trip booking."""
+    matching_route = next(
+        (r for r in OUTSTATION_POPULAR_ROUTES if r["destination"].lower() in payload.destination.lower() or payload.destination.lower() in r["destination"].lower()),
+        None
+    )
+    
+    is_round = payload.tripType.upper() == "ROUND_TRIP"
+    if matching_route:
+        base_price = matching_route["roundTripFare"] if is_round else matching_route["oneWayFare"]
+        tolls = matching_route["tollCharges"]
+        allowance = matching_route["driverAllowance"]
+    else:
+        # Dynamic distance fallback (default ~150km, ₹14/km)
+        base_price = 3200.0 if is_round else 1900.0
+        tolls = 200.0
+        allowance = 250.0
+        
+    discount = float(payload.discount or 0.0)
+    final_fare = max(0.0, base_price - discount)
+    
+    trip_id = _next_id["trip"]
+    _next_id["trip"] += 1
+    ride_code = f"OUTSTATION-{secrets.token_hex(3).upper()}"
+    
+    booking_record = {
+        "id": trip_id,
+        "rideCode": ride_code,
+        "category": "OUTSTATION",
+        "tripType": "ROUND_TRIP" if is_round else "ONE_WAY",
+        "origin": payload.origin,
+        "destination": payload.destination,
+        "pickupLocation": f"{payload.origin} (Doorstep Pickup)",
+        "dropoffLocation": f"{payload.destination} ({'Round-Trip Return' if is_round else 'Drop'})",
+        "departureDate": payload.departureDate,
+        "returnDate": payload.returnDate if is_round else None,
+        "selectedCar": payload.selectedCar,
+        "fare": final_fare,
+        "baseFare": base_price,
+        "tollsEstimate": tolls,
+        "driverAllowance": allowance,
+        "discount": discount,
+        "appliedPromo": payload.appliedPromo,
+        "riderName": payload.riderName,
+        "phone": payload.phone,
+        "status": "REQUESTED",
+        "createdAt": _now_iso(),
+        "driver": {
+            "name": "Rajeshwar Jadeja",
+            "phone": "+91 94260 77411",
+            "plate": "GJ 01 CD 4501",
+            "carModel": f"Highway Certified {payload.selectedCar}",
+            "rating": 4.97
+        }
+    }
+    
+    TRIPS.append(booking_record)
+    log.info("🛣️ Outstation Trip Booked: #%s (%s → %s, ₹%s)", ride_code, payload.origin, payload.destination, final_fare)
+    return {"status": "ok", "booking": booking_record}
+
+
+# ---------------------------------------------------------------------------
 # Trips
 # ---------------------------------------------------------------------------
 @app.get("/api/trips")
