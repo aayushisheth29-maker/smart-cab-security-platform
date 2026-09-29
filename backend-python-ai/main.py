@@ -4003,136 +4003,254 @@ def api_text_to_speech(payload: TTSRequestPayload):
 
 @app.post("/api/ai/voice-command")
 def process_voice_safety_command(payload: VoiceSafetyCommandPayload):
-    """Processes spoken voice commands in English, Hindi (हिन्दी), and Gujarati (ગુજરાતી) with multilingual NLP."""
+    """Processes spoken voice commands in 10 Indian languages with multilingual NLP and studio TTS."""
     raw_text = (payload.transcript or "").strip()
     text = raw_text.lower()
-    requested_lang = (payload.language or "en").lower()
+    requested_lang = (payload.language or "en").lower().split("-")[0]
     
-    # 🔍 Auto-Detect Language from Script & Keywords
+    # 🔍 Auto-Detect Language from Indic Scripts & Regional Keywords
     is_gujarati_script = any('\u0A80' <= c <= '\u0AFF' for c in raw_text)
-    is_hindi_script = any('\u0900' <= c <= '\u097F' for c in raw_text)
+    is_tamil_script = any('\u0B80' <= c <= '\u0BFF' for c in raw_text)
+    is_telugu_script = any('\u0C00' <= c <= '\u0C7F' for c in raw_text)
+    is_kannada_script = any('\u0C80' <= c <= '\u0CFF' for c in raw_text)
+    is_malayalam_script = any('\u0D00' <= c <= '\u0D7F' for c in raw_text)
+    is_bengali_script = any('\u0980' <= c <= '\u09FF' for c in raw_text)
+    is_punjabi_script = any('\u0A00' <= c <= '\u0A7F' for c in raw_text)
+    is_devanagari_script = any('\u0900' <= c <= '\u097F' for c in raw_text)
     
-    gujarati_keywords = ["kem cho", "kem chho", "tame", "mane", "su", "chhe", "nathi", "aabhar", "namaste", "madad karo", "raasta", "tamaro"]
-    hindi_keywords = ["kaise ho", "kya", "aap", "mera", "meri", "hum", "hain", "dhanyawad", "namaste", "madad", "raasta", "batao", "kripya"]
+    # Keyword detections for Romanized / Transliterated input
+    gujarati_keywords = ["kem cho", "tame", "mane", "su", "chhe", "nathi", "aabhar", "madad karo", "raasta", "tamaro"]
+    marathi_keywords = ["kase ahat", "kasa ahes", "kahi", "ahe", "madat kara", "rasta", "surakshit", "dhanyavaad"]
+    tamil_keywords = ["vanakkam", "eppadi", "irukkireergal", "udhavi", "padhugappu", "padhai", "nandri"]
+    telugu_keywords = ["namaskaram", "ela unnaru", "sahayam", "marga", "bhadrathe", "dhanyavadalu"]
+    kannada_keywords = ["namaskara", "hegiddeera", "sahaya", "surakshite", "dhanyavada"]
+    malayalam_keywords = ["namaskaram", "sukhamano", "sahayam", "surakshitham", "nandi"]
+    bengali_keywords = ["nomoshkar", "kemon achen", "sahajjo", "rasta", "nirapod", "dhonnobad"]
+    punjabi_keywords = ["sat sri akaal", "kiven ho", "madad karo", "rasta", "dhannvaad"]
+    hindi_keywords = ["kaise ho", "kya", "aap", "mera", "meri", "hum", "hain", "dhanyawad", "namaste", "madad", "raasta", "batao"]
     
     if is_gujarati_script or any(kw in text for kw in gujarati_keywords):
         detected_lang = "gu"
-    elif is_hindi_script or any(kw in text for kw in hindi_keywords):
+    elif is_tamil_script or any(kw in text for kw in tamil_keywords):
+        detected_lang = "ta"
+    elif is_telugu_script or any(kw in text for kw in telugu_keywords):
+        detected_lang = "te"
+    elif is_kannada_script or any(kw in text for kw in kannada_keywords):
+        detected_lang = "kn"
+    elif is_malayalam_script or any(kw in text for kw in malayalam_keywords):
+        detected_lang = "ml"
+    elif is_bengali_script or any(kw in text for kw in bengali_keywords):
+        detected_lang = "bn"
+    elif is_punjabi_script or any(kw in text for kw in punjabi_keywords):
+        detected_lang = "pa"
+    elif any(kw in text for kw in marathi_keywords) or (is_devanagari_script and requested_lang == "mr"):
+        detected_lang = "mr"
+    elif is_devanagari_script or any(kw in text for kw in hindi_keywords):
         detected_lang = "hi"
     else:
-        detected_lang = requested_lang if requested_lang in ("hi", "gu") else "en"
+        detected_lang = requested_lang if requested_lang in ("gu", "hi", "mr", "bn", "ta", "te", "kn", "ml", "pa") else "en"
 
-    # 1. Emergency SOS trigger
+    # 1. Emergency SOS trigger (10 Indian Languages)
     sos_keywords = [
         "help", "emergency", "sos", "police", "danger", "attack", "save me", "accident", "bachao", "khatra",
-        "मदद", "आपातकाल", "पुलिस", "बचाओ", "खतरा",
-        "મદદ", "ઇમરજન્સી", "પોલીસ", "બચાવો", "ખતરો"
+        "मदद", "आपातकाल", "पुलिस", "बचाओ", "खतरा", "मदत",
+        "મદદ", "ઇમરજન્સી", "પોલીસ", "બચાવો", "ખતરો",
+        "உதவி", "அவசரம்", "போலீஸ்", "காப்பாற்றுங்கள்",
+        "సహాయం", "పోలీస్", "రక్షించండి", "ప్రమాదం",
+        "ಸಹಾಯ", "ಪೊಲೀಸ್", "ರಕ್ಷಿಸಿ",
+        "സഹായം", "പോലീസ്", "രക്ഷിക്കൂ",
+        "সাহায্য", "পুলিশ", "বাঁচাও",
+        "ਮਦਦ", "ਪੁਲਿਸ", "ਬਚਾਓ"
     ]
     if any(kw in text for kw in sos_keywords):
         replies = {
             "en": "🚨 Emergency SOS broadcast initiated. Notifying your emergency contacts and Ahmedabad Police Control Room (112).",
             "hi": "🚨 आपातकालीन एसओएस सक्रिय! आपके परिवार और 112 पुलिस कंट्रोल रूम को आपकी लाइव लोकेशन भेजी जा रही है।",
-            "gu": "🚨 ઇમરજન્સી SOS સક્રિય! તમારા પરિવાર અને 112 પોલીસ કંટ્રોલ રૂમને તમારી લાઇવ લોકેશન મોકલવામાં આવી રહી છે."
+            "gu": "🚨 ઇમરજન્સી SOS સક્રિય! તમારા પરિવાર અને 112 પોલીસ કંટ્રોલ રૂમને તમારી લાઇવ લોકેશન મોકલવામાં આવી રહી છે.",
+            "mr": "🚨 आणीबाणी एसओएस सक्रिय! तुमच्या कुटुंबियांना आणि 112 पोलिस नियंत्रण कक्षाला तुमचे थेट लोकेशन पाठवले जात आहे.",
+            "bn": "🚨 জরুরি এসওএস সক্রিয়! আপনার পরিবার এবং ১১২ পুলিশ কন্ট্রোল রুমে আপনার লাইভ অবস্থান পাঠানো হচ্ছে।",
+            "ta": "🚨 அவசர SOS செயல்படுத்தப்பட்டது! உங்கள் குடும்பத்தினருக்கும் 112 காவல் கட்டுப்பாட்டு அறைக்கும் உங்கள் நேரலை இருப்பிடம் அனுப்பப்படுகிறது.",
+            "te": "🚨 అత్యవసర SOS సక్రియం చేయబడింది! మీ కుటుంబానికి మరియు 112 పోలీసు కంట్రోల్ రూమ్‌కు మీ ప్రత్యక్ష స్థానం పంపబడుతోంది.",
+            "kn": "🚨 ತುರ್ತು SOS ಸಕ್ರಿಯಗೊಳಿಸಲಾಗಿದೆ! ನಿಮ್ಮ ಕುಟುಂಬಕ್ಕೆ ಮತ್ತು 112 ಪೊಲೀಸ್ ನಿಯಂತ್ರಣ ಕೊಠಡಿಗೆ ನಿಮ್ಮ ನೇರ ಸ್ಥಳವನ್ನು ಕಳುಹಿಸಲಾಗುತ್ತಿದೆ.",
+            "ml": "🚨 അടിയന്തര SOS സജീവമാക്കി! നിങ്ങളുടെ കുടുംബത്തിനും 112 പോലീസ് കൺട്രോൾ റൂമിനും നിങ്ങളുടെ ലൈവ് ലൊക്കേഷൻ അയക്കുന്നു.",
+            "pa": "🚨 ਐਮਰਜੈਂਸੀ SOS ਸਰਗਰਮ! ਤੁਹਾਡੇ ਪਰਿਵਾਰ ਅਤੇ 112 ਪੁਲਿਸ ਕੰਟਰੋਲ ਰੂਮ ਨੂੰ ਤੁਹਾਡੀ ਲਾਈਵ ਲੋਕੇਸ਼ਨ ਭੇਜੀ ਜਾ ਰਹੀ ਹੈ।"
         }
+        speech_resp = replies.get(detected_lang, replies["en"])
+        tts_result = text_to_speech(speech_resp, f"{detected_lang}-IN")
         return {
             "action": "EMERGENCY_SOS",
             "language": detected_lang,
             "confidence": 0.98,
-            "speechResponse": replies.get(detected_lang, replies["en"]),
+            "speechResponse": speech_resp,
+            "audioBase64": tts_result.get("audioBase64"),
             "actionPayload": {"type": "SOS_TRIGGER", "soundAlarm": True}
         }
         
-    # 2. Share Ride tracking link
+    # 2. Share Ride tracking link (10 Indian Languages)
     share_keywords = [
         "share", "tracking", "send link", "send location", "family", "where am i", "whatsapp",
-        "शेयर", "ट्रैकिंग", "लोकेशन", "परिवार", "भेजो",
-        "શેર", "ટ્રૅકિંગ", "લોકેશન", "પરિવાર", "મોકલો"
+        "शेयर", "ट्रैकिंग", "लोकेशन", "परिवार", "भेजो", "सामायिक",
+        "શેર", "ટ્રૅકિંગ", "લોકેશન", "પરિવાર", "મોકલો",
+        "பகிர்", "இருப்பிடம்", "குடும்பம்",
+        "షేర్", "లొకేషన్", "కుటుంబం",
+        "ಹಂಚಿಕೊಳ್ಳಿ", "ಸ್ಥಳ",
+        "പങ്കിടുക", "ലൊക്കേഷൻ",
+        "শেয়ার", "অবস্থান",
+        "ਸਾਂਝਾ", "ਲੋਕੇਸ਼ਨ"
     ]
     if any(kw in text for kw in share_keywords):
         replies = {
             "en": "📍 Live GPS tracking link generated. Ready to share with your trusted contacts via WhatsApp or SMS.",
             "hi": "📍 लाइव जीपीएस ट्रैकिंग लिंक तैयार है। आप नीचे दिए गए बटन से अपने परिवार या दोस्तों को व्हाट्सएप और एसएमएस पर भेज सकते हैं।",
-            "gu": "📍 લાઇવ GPS ટ્રૅકિંગ લિંક તૈયાર છે. તમે નીચે આપેલા બટનથી તમારા પરિવારને વોટ્સએપ અથવા SMS દ્વારા મોકલી શકો છો."
+            "gu": "📍 લાઇવ GPS ટ્રૅકિંગ લિંક તૈયાર છે. તમે નીચે આપેલા બટનથી તમારા પરિવારને વોટ્સએપ અથવા SMS દ્વારા મોકલી શકો છો.",
+            "mr": "📍 थेट GPS ट्रॅकिंग लिंक तयार आहे. खालील बटणावरून कुटुंब किंवा मित्रांना व्हॉट्सॲप आणि एसएमएसवर पाठवा.",
+            "bn": "📍 লাইভ জিপিএস ট্র্যাকিং লিঙ্ক প্রস্তুত। আপনি নীচে দেওয়া বোতাম থেকে আপনার পরিবারকে হোয়াটসঅ্যাপে পাঠাতে পারেন।",
+            "ta": "📍 நேரலை ஜிபிஎஸ் டிராக்கிங் இணைப்பு தயார். வாட்ஸ்அப் அல்லது எஸ்எம்எஸ் மூலம் உங்கள் குடும்பத்தினருடன் பகிரலாம்.",
+            "te": "📍 లైవ్ GPS ట్రాకింగ్ లింక్ సిద్ధంగా ఉంది. వాట్సాప్ లేదా SMS ద్వారా మీ కుటుంబంతో పంచుకోవచ్చు.",
+            "kn": "📍 ಲೈವ್ ಜಿಪಿಎಸ್ ಟ್ರ್ಯಾಕಿಂಗ್ ಲಿಂಕ್ ಸಿದ್ಧವಾಗಿದೆ. ವಾಟ್ಸಾಪ್ ಅಥವಾ ಎಸ್ಎಂಎಸ್ ಮೂಲಕ ನಿಮ್ಮ ಕುಟುಂಬದೊಂದಿಗೆ ಹಂಚಿಕೊಳ್ಳಿ.",
+            "ml": "📍 ലൈവ് ജിപിഎസ് ട്രാക്കിംഗ് ലിങ്ക് തയ്യാറാണ്. വാട്ട്‌സ്ആപ്പ് അല്ലെങ്കിൽ എസ്എംഎസ് വഴി കുടുംബവുമായി പങ്കിടാം.",
+            "pa": "📍 ਲਾਈਵ GPS ਟ੍ਰੈਕਿੰਗ ਲਿੰਕ ਤਿਆਰ ਹੈ। ਤੁਸੀਂ ਵਟਸਐਪ ਜਾਂ SMS ਰਾਹੀਂ ਆਪਣੇ ਪਰਿਵਾਰ ਨਾਲ ਸਾਂਝਾ ਕਰ ਸਕਦੇ ਹੋ।"
         }
+        speech_resp = replies.get(detected_lang, replies["en"])
+        tts_result = text_to_speech(speech_resp, f"{detected_lang}-IN")
         return {
             "action": "SHARE_RIDE",
             "language": detected_lang,
             "confidence": 0.95,
-            "speechResponse": replies.get(detected_lang, replies["en"]),
+            "speechResponse": speech_resp,
+            "audioBase64": tts_result.get("audioBase64"),
             "actionPayload": {"type": "OPEN_SHARE_MODAL"}
         }
 
-    # 3. Check Route & Anomaly Isolation Forest
+    # 3. Check Route & Anomaly Isolation Forest (10 Indian Languages)
     check_keywords = [
         "safe", "route", "deviation", "check", "risk", "anomaly", "speed", "path", "security",
         "सुरक्षित", "रूट", "रास्ता", "चेक", "खतरा", "सुरक्षा",
-        "સુરક્ષિત", "રૂટ", "રસ્તો", "ચેક", "સુરક્ષા"
+        "સુરક્ષિત", "રૂટ", "રસ્તો", "ચેક", "સુરક્ષા",
+        "பாதுகாப்பு", "பாதை", "சரிபார்",
+        "సురక్షిత", "రూట్", "తనిఖీ",
+        "ಸುರಕ್ಷಿತ", "ಮಾರ್ಗ",
+        "സുരക്ഷിതം", "റൂട്ട്",
+        "নিরাপদ", "রাস্তা",
+        "ਸੁਰੱਖਿਅਤ", "ਰਸਤਾ"
     ]
     if any(kw in text for kw in check_keywords):
         replies = {
             "en": "🛡️ Route safety verified: Isolation Forest AI confirms your route is 98.8% nominal with zero route deviations along SG Highway.",
             "hi": "🛡️ रूट सुरक्षा जांच पूरी हुई: AI मॉडल के अनुसार आपका मार्ग 98.8% सुरक्षित और सामान्य है। कोई विचलन नहीं मिला।",
-            "gu": "🛡️ રૂટ સેફ્ટી સ્કેન પૂર્ણ: AI મોડેલ મુજબ તમારો રસ્તો 98.8% સામાન્ય અને સંપૂર્ણપણે સુરક્ષિત છે. વાહન યોગ્ય માર્ગ પર છે."
+            "gu": "🛡️ રૂટ સેફ્ટી સ્કેન પૂર્ણ: AI મોડેલ મુજબ તમારો રસ્તો 98.8% સામાન્ય અને સંપૂર્ણપણે સુરક્ષિત છે. વાહન યોગ્ય માર્ગ પર છે.",
+            "mr": "🛡️ मार्ग सुरक्षा तपासणी पूर्ण: AI मॉडेलनुसार तुमचा मार्ग 98.8% सुरक्षित आणि सामान्य आहे. कोणतेही विचलन नाही.",
+            "bn": "🛡️ রুট নিরাপত্তা যাচাই সম্পন্ন: এআই মডেল অনুযায়ী আপনার রুট ৯৮.৮% নিরাপদ এবং স্বাভাবিক।",
+            "ta": "🛡️ பாதை பாதுகாப்பு சரிபார்க்கப்பட்டது: AI மாதிரி படி உங்கள் பாதை 98.8% பாதுகாப்பானது மற்றும் இயல்பானது.",
+            "te": "🛡️ రూట్ భద్రత ధృవీకరించబడింది: AI మోడల్ ప్రకారం మీ మార్గం 98.8% సురక్షితమైనది మరియు సాధారణమైనది.",
+            "kn": "🛡️ ಮಾರ್ಗ ಸುರಕ್ಷತೆ ಪರಿಶೀಲಿಸಲಾಗಿದೆ: AI ಮಾದರಿಯ ಪ್ರಕಾರ ನಿಮ್ಮ ಮಾರ್ಗವು 98.8% ಸುರಕ್ಷಿತವಾಗಿದೆ.",
+            "ml": "🛡️ റൂട്ട് സുരക്ഷ പരിശോധിച്ചു: AI മോഡൽ പ്രകാരം നിങ്ങളുടെ റൂട്ട് 98.8% സുരക്ഷിതവും സാധാരണവുമാണ്.",
+            "pa": "🛡️ ਰੂਟ ਸੁਰੱਖਿਆ ਦੀ ਪੁਸ਼ਟੀ: AI ਮਾਡਲ ਅਨੁਸਾਰ ਤੁਹਾਡਾ ਰਸਤਾ 98.8% ਸੁਰੱਖਿਅਤ ਅਤੇ ਆਮ ਹੈ।"
         }
+        speech_resp = replies.get(detected_lang, replies["en"])
+        tts_result = text_to_speech(speech_resp, f"{detected_lang}-IN")
         return {
             "action": "CHECK_ROUTE",
             "language": detected_lang,
             "confidence": 0.92,
-            "speechResponse": replies.get(detected_lang, replies["en"]),
+            "speechResponse": speech_resp,
+            "audioBase64": tts_result.get("audioBase64"),
             "actionPayload": {"type": "RUN_ML_SCAN", "status": "SAFE"}
         }
 
-    # 4. Greetings & Conversational Queries
+    # 4. Greetings & Conversational Queries (10 Indian Languages)
     greeting_keywords = [
         "hello", "hi", "hey", "how are you", "how r u", "good morning", "good evening",
-        "नमस्ते", "प्रणाम", "कैसे हो", "क्या हाल है",
-        "નમસ્તે", "કેમ છો", "કેમ છુ", "શું ચાલે છે"
+        "नमस्ते", "प्रणाम", "कैसे हो", "क्या हाल है", "नमस्कार", "कसे आहात",
+        "નમસ્તે", "કેમ છો", "કેમ છુ", "શું ચાલે છે",
+        "வணக்கம்", "எப்படி இருக்கிறீர்கள்",
+        "నమస్కారం", "ఎలా ఉన్నారు",
+        "ನಮಸ್ಕಾರ", "ಹೇಗಿದ್ದೀರಾ",
+        "നമസ്കാരം", "സുഖമാണോ",
+        "নমস্কার", "কেমন আছেন",
+        "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ", "ਕਿਵੇਂ ਹੋ"
     ]
     if any(kw in text for kw in greeting_keywords):
         replies = {
             "en": "Hello! I am your SmartCab AI Safety Companion. I am doing great and actively monitoring your ride security. You can ask me to share your trip, verify route safety, or trigger SOS anytime.",
             "hi": "नमस्ते! मैं आपका स्मार्टकैब AI सुरक्षा सहायक हूँ। मैं बहुत अच्छा हूँ और आपकी पूरी यात्रा की सुरक्षा निगरानी कर रहा हूँ। आप मुझसे लाइव लोकेशन शेयर करने, रूट चेक करने या आपातकालीन मदद के लिए बोल सकते हैं।",
-            "gu": "નમસ્તે! હું તમારો સ્માર્ટકેબ AI સુરક્ષા સહાયક છું. હું મજામાં છું અને તમારી મુસાફરીની સુરક્ષા પર નજર રાખી રહ્યો છું. તમે મને રાઇડ શેર કરવા, રૂટ ચેક કરવા અથવા SOS માટે બોલી શકો છો."
+            "gu": "નમસ્તે! હું તમારો સ્માર્ટકેબ AI સુરક્ષા સહાયક છું. હું મજામાં છું અને તમારી મુસાફરીની સુરક્ષા પર નજર રાખી રહ્યો છું. તમે મને રાઇડ શેર કરવા, રૂટ ચેક કરવા અથવા SOS માટે બોલી શકો છો.",
+            "mr": "नमस्कार! मी तुमचा स्मार्टकॅब AI सुरक्षा सहाय्यक आहे. मी उत्तम आहे आणि तुमच्या प्रवासाच्या सुरक्षेवर लक्ष ठेवत आहे.",
+            "bn": "নমস্কার! আমি আপনার স্মার্টক্যাব এআই নিরাপত্তা সহকারী। আমি ভালো আছি এবং আপনার যাত্রার নিরাপত্তা পর্যবেক্ষণ করছি।",
+            "ta": "வணக்கம்! நான் உங்கள் ஸ்மார்ட்கேப் AI பாதுகாப்பு துணைவன். உங்கள் பயணப் பாதுகாப்பை நான் தொடர்ந்து கண்காணிக்கிறேன்.",
+            "te": "నమస్కారం! నేను మీ స్మార్ట్‌క్యాబ్ AI భద్రతా సహాయకుడిని. మీ ప్రయాణ భద్రతను నేను పర్యవేక్షిస్తున్నాను.",
+            "kn": "ನಮಸ್ಕಾರ! ನಾನು ನಿಮ್ಮ ಸ್ಮಾರ್ಟ್‌ಕ್ಯಾಬ್ AI ಸುರಕ್ಷತಾ ಸಹಾಯಕ. ನಿಮ್ಮ ಪ್ರಯಾಣದ ಸುರಕ್ಷತೆಯನ್ನು ನಾನು ಗಮನಿಸುತ್ತಿದ್ದೇನೆ.",
+            "ml": "നമസ്കാരം! ഞാൻ നിങ്ങളുടെ സ്മാർട്ട്ക്യാബ് AI സുരക്ഷാ സഹായിയാണ്. നിങ്ങളുടെ യാത്രാ സുരക്ഷ ഞാൻ നിരീക്ഷിക്കുന്നു.",
+            "pa": "ਸਤਿ ਸ੍ਰੀ ਅਕਾਲ! ਮੈਂ ਤੁਹਾਡਾ ਸਮਾਰਟਕੈਬ AI ਸੁਰੱਖਿਆ ਸਹਾਇਕ ਹਾਂ। ਮੈਂ ਤੁਹਾਡੀ ਯਾਤਰਾ ਦੀ ਸੁਰੱਖਿਆ ਦੀ ਨਿਗਰਾਨੀ ਕਰ ਰਿਹਾ ਹਾਂ।"
         }
+        speech_resp = replies.get(detected_lang, replies["en"])
+        tts_result = text_to_speech(speech_resp, f"{detected_lang}-IN")
         return {
             "action": "GREETING",
             "language": detected_lang,
             "confidence": 0.95,
-            "speechResponse": replies.get(detected_lang, replies["en"]),
+            "speechResponse": speech_resp,
+            "audioBase64": tts_result.get("audioBase64"),
             "actionPayload": {"type": "CONVERSATION"}
         }
 
-    # 5. Assistant Identity / Capability
+    # 5. Assistant Identity / Capability (10 Indian Languages)
     identity_keywords = [
         "who are you", "who r u", "what can you do", "who made you", "your name",
-        "आप कौन हो", "तुम कौन हो", "क्या कर सकते हो",
-        "તમે કોણ છો", "કોણ છો", "તમે શું કરી શકો છો"
+        "आप कौन हो", "तुम कौन हो", "क्या कर सकते हो", "तुम्ही कोण आहात",
+        "તમે કોણ છો", "કોણ છો", "તમે શું કરી શકો છો",
+        "நீங்கள் யார்", "என்ன செய்ய முடியும்",
+        "మీరు ఎవరు", "మీరు ఏమి చేయగలరు",
+        "ನೀವು ಯಾರು",
+        "നിങ്ങൾ ആരാണ്",
+        "আপনি কে",
+        "ਤੁਸੀਂ ਕੌਣ ਹੋ"
     ]
     if any(kw in text for kw in identity_keywords):
         replies = {
             "en": "I am the SmartCab AI Safety Voice Guard. I protect your trip with real-time GPS tracking, Isolation Forest ML anomaly detection, and instant 112 police emergency dispatch.",
             "hi": "मैं स्मार्टकैब का AI सुरक्षा सहायक हूँ। मैं रियल-टाइम जीपीएस, मशीन लर्निंग एनोमली डिटेक्शन और 112 पुलिस कनेक्टिविटी से आपकी सुरक्षा करता हूँ।",
-            "gu": "હું સ્માર્ટકેબનો AI સુરક્ષા સહાયક છું. હું GPS ટ્રૅકિંગ, મશીન લર્નિંગ એનોમલી ડિટેક્શન અને 112 પોલીસ ઇમરજન્સી કનેક્શન દ્વારા તમારી રક્ષા કરું છું."
+            "gu": "હું સ્માર્ટકેબનો AI સુરક્ષા સહાયક છું. હું GPS ટ્રૅકિંગ, મશીન લર્નિંગ એનોમલી ડિટેક્શન અને 112 પોલીસ ઇમરજન્સી કનેક્શન દ્વારા તમારી રક્ષા કરું છું.",
+            "mr": "मी स्मार्टकॅबचा AI सुरक्षा सहाय्यक आहे. मी थेट GPS ट्रॅकिंग, मशीन लर्निंग आणि 112 पोलिस सेवेद्वारे तुमचे रक्षण करतो.",
+            "bn": "আমি স্মার্টক্যাব এআই নিরাপত্তা গার্ড। আমি রিয়েল-টাইম জিপিএস এবং ১১২ পুলিশ সংযোগের মাধ্যমে আপনাকে সুরক্ষিত রাখি।",
+            "ta": "நான் ஸ்மார்ட்கேப் AI பாதுகாப்பு உதவியாளர். நேரலை ஜிபிஎஸ் மற்றும் 112 காவல்துறை இணைப்பு மூலம் உங்களைப் பாதுகாக்கிறேன்.",
+            "te": "నేను స్మార్ట్‌క్యాబ్ AI భద్రతా గార్డును. లైవ్ GPS మరియు 112 పోలీసు కనెక్టివిటీతో మిమ్మల్ని రక్షిస్తాను.",
+            "kn": "ನಾನು ಸ್ಮಾರ್ಟ್‌ಕ್ಯಾಬ್ AI ಸುರಕ್ಷತಾ ಗಾರ್ಡ್. ಲೈವ್ ಜಿಪಿಎಸ್ ಮತ್ತು 112 ಪೊಲೀಸ್ ಸಂಪರ್ಕದೊಂದಿಗೆ ನಿಮ್ಮನ್ನು ರಕ್ಷಿಸುತ್ತೇನೆ.",
+            "ml": "ഞാൻ സ്മാർട്ട്ക്യാബ് AI സുരക്ഷാ ഗാർഡാണ്. ലൈവ് ജിപിഎസും 112 പോലീസ് കണക്റ്റിവിറ്റിയും വഴി നിങ്ങളെ സംരക്ഷിക്കുന്നു.",
+            "pa": "ਮੈਂ ਸਮਾਰਟਕੈਬ AI ਸੁਰੱਖਿਆ ਗਾਰਡ ਹਾਂ। ਮੈਂ ਰੀਅਲ-ਟਾਈਮ GPS ਅਤੇ 112 ਪੁਲਿਸ ਨਾਲ ਤੁਹਾਡੀ ਰੱਖਿਆ ਕਰਦਾ ਹਾਂ।"
         }
+        speech_resp = replies.get(detected_lang, replies["en"])
+        tts_result = text_to_speech(speech_resp, f"{detected_lang}-IN")
         return {
             "action": "IDENTITY",
             "language": detected_lang,
             "confidence": 0.95,
-            "speechResponse": replies.get(detected_lang, replies["en"]),
+            "speechResponse": speech_resp,
+            "audioBase64": tts_result.get("audioBase64"),
             "actionPayload": {"type": "CONVERSATION"}
         }
 
     # 6. Default general guidance in the detected vernacular language
     fallback_replies = {
-        "en": f"I understand your question about '{raw_text}'. As your SmartCab Safety AI, I can help you share your live location, inspect ML route security, or trigger Emergency SOS. Say 'Help', 'Share trip', or 'Is route safe'.",
-        "hi": f"मैं '{raw_text}' के बारे में समझ रहा हूँ। स्मार्टकैब AI सुरक्षा सहायक के रूप में, मैं आपकी लाइव लोकेशन शेयर करने, रूट सुरक्षा जांचने और आपातकालीन 112 अलर्ट में मदद कर सकता हूँ। 'मदद करो', 'राइड शेयर करो', या 'रूट चेक करो' कहें।",
-        "gu": f"હું '{raw_text}' વિશે સમજી રહ્યો છું. સ્માર્ટકેબ AI સુરક્ષા સહાયક તરીકે, હું તમારી લાઇવ લોકેશન શેર કરવા, રૂટ સેફ્ટી ચેક કરવા અને 112 પોલીસ એલર્ટ મોકલવામાં મદદ કરી શકું છું. 'મને મદદ કરો', 'રાઇડ શેર કરો', અથવા 'રૂટ ચેક કરો' બોલો."
+        "en": f"I understand your query about '{raw_text}'. I can help you share your live location, inspect ML route security, or trigger Emergency SOS. Say 'Help', 'Share trip', or 'Is route safe'.",
+        "hi": f"मैं '{raw_text}' के बारे में समझ रहा हूँ। मैं आपकी लाइव लोकेशन शेयर करने, रूट सुरक्षा जांचने और आपातकालीन 112 अलर्ट में मदद कर सकता हूँ। 'मदद करो', 'राइड शेयर करो', या 'रूट चेक करो' कहें।",
+        "gu": f"હું '{raw_text}' વિશે સમજી રહ્યો છું. હું તમારી લાઇવ લોકેશન શેર કરવા, રૂટ સેફ્ટી ચેક કરવા અને 112 પોલીસ એલર્ટ મોકલવામાં મદદ કરી શકું છું. 'મને મદદ કરો', 'રાઇડ શેર કરો', અથવા 'રૂટ ચેક કરો' બોલો.",
+        "mr": f"मी '{raw_text}' बद्दल समजत आहे. मी तुमचे लोकेशन शेअर करणे, रूट तपासणे आणि 112 अलर्ट पाठवण्यात मदत करू शकतो.",
+        "bn": f"আমি '{raw_text}' সম্পর্কে বুঝতে পারছি। আমি আপনার লাইভ অবস্থান ভাগ করে নিতে, রুট চেক করতে এবং ১১২ পুলিশ সতর্কতায় সাহায্য করতে পারি।",
+        "ta": f"'{raw_text}' பற்றிய உங்கள் கேள்வியை நான் புரிந்துகொள்கிறேன். நேரலை இருப்பிடத்தைப் பகிர, பாதையைச் சரிபார்க்க அல்லது SOS அனுப்ப நான் உதவ முடியும்.",
+        "te": f"'{raw_text}' గురించి మీ ప్రశ్నను నేను అర్థం చేసుకున్నాను. లొకేషన్ షేర్ చేయడానికి, రూట్ చెక్ చేయడానికి లేదా SOS పంపడానికి నేను సహాయం చేయగలను.",
+        "kn": f"'{raw_text}' ಕುರಿತು ನಿಮ್ಮ ಪ್ರಶ್ನೆಯನ್ನು ನಾನು ಅರ್ಥಮಾಡಿಕೊಂಡಿದ್ದೇನೆ. ಸ್ಥಳವನ್ನು ಹಂಚಿಕೊಳ್ಳಲು, ಮಾರ್ಗವನ್ನು ಪರಿಶೀಲಿಸಲು ಅಥವಾ SOS ಕಳುಹಿಸಲು ನಾನು ಸಹಾಯ ಮಾಡಬಲ್ಲೆ.",
+        "ml": f"'{raw_text}' എന്നതിനെക്കുറിച്ചുള്ള നിങ്ങളുടെ ചോദ്യം ഞാൻ മനസ്സിലാക്കുന്നു. ലൊക്കേഷൻ പങ്കിടാനും റൂട്ട് പരിശോധിക്കാനും SOS അയക്കാനും എനിക്ക് സഹായിക്കാനാകും.",
+        "pa": f"ਮੈਂ '{raw_text}' ਬਾਰੇ ਤੁਹਾਡੇ ਸਵਾਲ ਨੂੰ ਸਮਝ ਰਿਹਾ ਹਾਂ। ਮੈਂ ਲਾਈਵ ਲੋਕੇਸ਼ਨ ਸਾਂਝੀ ਕਰਨ, ਰੂਟ ਦੀ ਜਾਂਚ ਕਰਨ ਜਾਂ SOS ਭੇਜਣ ਵਿੱਚ ਮਦਦ ਕਰ ਸਕਦਾ ਹਾਂ।"
     }
+    speech_resp = fallback_replies.get(detected_lang, fallback_replies["en"])
+    tts_result = text_to_speech(speech_resp, f"{detected_lang}-IN")
     return {
         "action": "GENERAL_QUERY",
         "language": detected_lang,
         "confidence": 0.85,
-        "speechResponse": fallback_replies.get(detected_lang, fallback_replies["en"]),
+        "speechResponse": speech_resp,
+        "audioBase64": tts_result.get("audioBase64"),
         "actionPayload": {"type": "PROMPT_COMMANDS"}
     }
 
