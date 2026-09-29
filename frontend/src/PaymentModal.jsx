@@ -12,9 +12,11 @@ import {
   Lock,
   Tag,
   AlertCircle,
-  Receipt
+  Receipt,
+  Users
 } from 'lucide-react';
 import { calculateDiscount, PROMO_OFFERS } from './RideOffersModal';
+import SplitFareModal from './SplitFareModal';
 
 const PYTHON_API = import.meta.env.VITE_PYTHON_AI_URL ||
   (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")
@@ -36,6 +38,7 @@ export default function PaymentModal({
   const [processing, setProcessing] = useState(false);
   const [paymentDone, setPaymentDone] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
+  const [showSplitModal, setShowSplitModal] = useState(false);
 
   useEffect(() => {
     if (bookingDetails?.appliedPromo) {
@@ -334,6 +337,23 @@ export default function PaymentModal({
                 </div>
               </div>
 
+              {/* 👥 REAL-TIME UPI SPLIT FARE WITH FRIENDS */}
+              <button
+                type="button"
+                onClick={() => setShowSplitModal(true)}
+                className="w-full p-3.5 bg-gradient-to-r from-blue-50 via-indigo-50 to-blue-50 hover:from-blue-100 hover:to-indigo-100 border border-blue-200 rounded-2xl flex items-center justify-between transition text-xs font-black text-blue-900 shadow-sm"
+              >
+                <span className="flex items-center gap-2">
+                  <div className="p-1.5 bg-blue-600 text-white rounded-lg">
+                    <Users className="w-4 h-4" />
+                  </div>
+                  <span>Riding with friends? <strong>Split Fare via UPI</strong></span>
+                </span>
+                <span className="text-[11px] bg-blue-600 text-white px-2.5 py-1 rounded-full font-black shadow-sm">
+                  Split ₹{finalFare.toFixed(0)} →
+                </span>
+              </button>
+
               {/* PROMO CODE BOX */}
               <div className="space-y-1.5">
                 <div className="flex space-x-2">
@@ -496,6 +516,17 @@ export default function PaymentModal({
           )}
         </div>
       </div>
+
+      {/* Split Fare Modal */}
+      <SplitFareModal
+        isOpen={showSplitModal}
+        onClose={() => setShowSplitModal(false)}
+        bookingDetails={{
+          ...bookingDetails,
+          finalFare,
+          totalFare: finalFare
+        }}
+      />
     </div>
   );
 }

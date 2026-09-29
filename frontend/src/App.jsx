@@ -10,6 +10,7 @@ import MyRides from './MyRides';
 import SafetyCenter from './SafetyCenter';
 import AdminDashboard from './AdminDashboard';
 import DriverDashboard from './DriverDashboard';
+import SplitFareView from './SplitFareView';
 import I18nLoader from './I18nLoader';
 import FloatingHelp from './HelpAssistant';
 
@@ -133,6 +134,7 @@ function App() {
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/rides" element={<MyRides />} />
           <Route path="/safety" element={<SafetyCenter />} />
+          <Route path="/split/:splitId" element={<SplitFareView />} />
           <Route
             path="/route-lab"
             element={

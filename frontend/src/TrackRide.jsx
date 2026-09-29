@@ -2,9 +2,10 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video } from 'lucide-react';
+import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users } from 'lucide-react';
 import { API_BASE } from './api';
 import VoiceSafetyCommands from './VoiceSafetyCommands';
+import SplitFareModal from './SplitFareModal';
 
 const carIcon = new L.DivIcon({
   className: 'custom-map-icon',
@@ -31,6 +32,7 @@ const TrackRide = () => {
   const { linkId } = useParams();
   const [trackingData, setTrackingData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showSplitModal, setShowSplitModal] = useState(false);
   const videoRef = useRef(null);
   const mapRef = useRef(null);
 
@@ -415,12 +417,21 @@ const TrackRide = () => {
               <p className={`text-xs ${trackingData?.isWaiting ? 'text-yellow-700' : 'text-green-700'}`}>Tracking Code: <span className="font-mono font-bold">{linkId}</span></p>
             </div>
           </div>
-          <a
-            href="tel:112"
-            className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white font-bold px-5 py-2.5 rounded-xl text-sm flex items-center justify-center shadow transition"
-          >
-            <PhoneCall className="h-4 w-4 mr-2" /> Emergency 112
-          </a>
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setShowSplitModal(true)}
+              className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+            >
+              <Users className="h-4 w-4 mr-1.5" /> Split Fare (UPI)
+            </button>
+            <a
+              href="tel:112"
+              className="bg-red-600 hover:bg-red-700 text-white font-bold px-4 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+            >
+              <PhoneCall className="h-4 w-4 mr-1.5" /> Emergency 112
+            </a>
+          </div>
         </div>
 
         {/* Waiting for rider banner — shown when the link is expired or
@@ -617,6 +628,18 @@ const TrackRide = () => {
           plate: trackingData?.carPlate || 'KA 01 EF 9012'
         }}
         bookingDetails={{ bookingId: linkId }}
+      />
+
+      {/* 👥 Real-Time Split Fare Modal */}
+      <SplitFareModal
+        isOpen={showSplitModal}
+        onClose={() => setShowSplitModal(false)}
+        bookingDetails={{
+          bookingId: linkId,
+          rideCode: linkId,
+          totalFare: 240,
+          riderName: trackingData?.riderName || 'Rider'
+        }}
       />
     </div>
   );

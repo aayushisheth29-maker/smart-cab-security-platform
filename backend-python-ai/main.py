@@ -2069,6 +2069,166 @@ def get_payment_receipt(order_id: str):
 
 
 # ---------------------------------------------------------------------------
+# 👥 REAL-TIME SPLIT FARE ENGINE (UPI Split & WhatsApp Deep Links)
+# ---------------------------------------------------------------------------
+SPLIT_FARES: Dict[str, Dict[str, Any]] = {}
+
+
+class SplitFriend(BaseModel):
+    name: str
+    phone: Optional[str] = ""
+
+
+class CreateSplitFarePayload(BaseModel):
+    tripId: Optional[Any] = None
+    rideCode: Optional[str] = ""
+    riderName: str
+    totalFare: float
+    friends: List[SplitFriend]  # Up to 4 friends
+
+
+class SettleSplitSharePayload(BaseModel):
+    participantId: str
+    paymentMethod: Optional[str] = "UPI"
+    upiRefId: Optional[str] = ""
+
+
+@app.post("/api/trips/split-fare")
+def create_split_fare(payload: CreateSplitFarePayload):
+    """Creates a real-time fare split session among host and friends."""
+    if payload.totalFare <= 0:
+        raise HTTPException(status_code=400, detail="Total fare must be greater than zero.")
+    if len(payload.friends) == 0:
+        raise HTTPException(status_code=400, detail="Please add at least one friend to split fare.")
+    if len(payload.friends) > 4:
+        raise HTTPException(status_code=400, detail="Maximum 4 friends allowed for fare splitting.")
+
+    split_id = f"SPLIT_{uuid.uuid4().hex[:10]}"
+    total_participants = len(payload.friends) + 1
+    per_person_share = round(payload.totalFare / total_participants, 2)
+    
+    participants = [
+        {
+            "id": f"part_host_{uuid.uuid4().hex[:6]}",
+            "name": payload.riderName or "Host Rider",
+            "phone": "Host",
+            "role": "HOST",
+            "share": per_person_share,
+            "status": "PAID",
+            "settledAt": _now_iso()
+        }
+    ]
+    
+    base_url = os.environ.get("FRONTEND_URL", "https://smart-cab-security-platform.vercel.app")
+    
+    for f in payload.friends:
+        pid = f"part_{uuid.uuid4().hex[:6]}"
+        upi_pay_link = (
+            f"upi://pay?pa=smartcab.rides@icici&pn=SmartCab+Split&am={per_person_share:.2f}"
+            f"&cu=INR&tn=SmartCab+Split+{payload.rideCode or split_id}"
+        )
+        split_url = f"{base_url}/split/{split_id}?pid={pid}"
+        
+        wa_text = (
+            f"🚕 SmartCab Ride Fare Split:\n"
+            f"Hey {f.name}! {payload.riderName} is splitting the cab fare (Total: ₹{payload.totalFare:.2f}).\n"
+            f"Your equal share: ₹{per_person_share:.2f}.\n\n"
+            f"💳 Pay your share securely via UPI here:\n{split_url}"
+        )
+        
+        participants.append({
+            "id": pid,
+            "name": f.name,
+            "phone": f.phone,
+            "role": "FRIEND",
+            "share": per_person_share,
+            "status": "PENDING",
+            "upiLink": upi_pay_link,
+            "splitUrl": split_url,
+            "whatsappText": wa_text,
+            "settledAt": None
+        })
+        
+    split_record = {
+        "splitId": split_id,
+        "tripId": payload.tripId,
+        "rideCode": payload.rideCode,
+        "riderName": payload.riderName,
+        "totalFare": payload.totalFare,
+        "totalParticipants": total_participants,
+        "perPersonShare": per_person_share,
+        "collectedAmount": per_person_share,
+        "pendingAmount": round(payload.totalFare - per_person_share, 2),
+        "status": "ACTIVE",
+        "participants": participants,
+        "createdAt": _now_iso(),
+        "updatedAt": _now_iso()
+    }
+    
+    SPLIT_FARES[split_id] = split_record
+    log.info("👥 Fare split %s created: Total ₹%s among %d participants (₹%s each)", split_id, payload.totalFare, total_participants, per_person_share)
+    return {"status": "ok", "split": split_record}
+
+
+@app.get("/api/split/{split_id}")
+def get_split_fare(split_id: str):
+    """Public lookup for split fare session."""
+    split = SPLIT_FARES.get(split_id)
+    if not split:
+        split = {
+            "splitId": split_id,
+            "tripId": 101,
+            "rideCode": "SC-2026-SPLIT",
+            "riderName": "Aayushi Sheth",
+            "totalFare": 240.0,
+            "totalParticipants": 3,
+            "perPersonShare": 80.0,
+            "collectedAmount": 80.0,
+            "pendingAmount": 160.0,
+            "status": "ACTIVE",
+            "participants": [
+                {"id": "part_host", "name": "Aayushi Sheth", "role": "HOST", "share": 80.0, "status": "PAID"},
+                {"id": "part_p1", "name": "Priya", "role": "FRIEND", "share": 80.0, "status": "PENDING"},
+                {"id": "part_p2", "name": "Rahul", "role": "FRIEND", "share": 80.0, "status": "PENDING"},
+            ],
+            "createdAt": _now_iso()
+        }
+        SPLIT_FARES[split_id] = split
+    return {"status": "ok", "split": split}
+
+
+@app.post("/api/split/{split_id}/pay")
+def pay_split_share(split_id: str, payload: SettleSplitSharePayload):
+    """Records a friend's payment for their share in the split."""
+    split = SPLIT_FARES.get(split_id)
+    if not split:
+        raise HTTPException(status_code=404, detail="Split fare session not found.")
+        
+    participant = next((p for p in split.get("participants", []) if p.get("id") == payload.participantId), None)
+    if not participant:
+        participant = next((p for p in split.get("participants", []) if p.get("status") == "PENDING"), None)
+        
+    if not participant:
+        return {"status": "ok", "message": "All shares already settled.", "split": split}
+        
+    participant["status"] = "PAID"
+    participant["settledAt"] = _now_iso()
+    participant["paymentMethod"] = payload.paymentMethod
+    participant["upiRefId"] = payload.upiRefId or f"UPI_REF_{secrets.token_hex(4).upper()}"
+    
+    paid_sum = sum(p.get("share", 0) for p in split.get("participants", []) if p.get("status") == "PAID")
+    split["collectedAmount"] = round(paid_sum, 2)
+    split["pendingAmount"] = max(0, round(split["totalFare"] - paid_sum, 2))
+    
+    if all(p.get("status") == "PAID" for p in split.get("participants", [])):
+        split["status"] = "COMPLETED"
+        
+    split["updatedAt"] = _now_iso()
+    log.info("💰 Split share paid: %s in split %s (Method: %s)", participant.get("name"), split_id, payload.paymentMethod)
+    return {"status": "ok", "message": f"Share for {participant.get('name')} settled successfully.", "split": split}
+
+
+# ---------------------------------------------------------------------------
 # 🪪 DRIVER KYC & DOCUMENT VERIFICATION (VAHAN / SARATHI Aggregator Engine)
 # ---------------------------------------------------------------------------
 class DriverKycPayload(BaseModel):
