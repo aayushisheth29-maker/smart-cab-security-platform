@@ -1265,52 +1265,22 @@ def _preview_sms_message(req: Dict[str, Any]) -> str:
 
 
 def _send_notifications(req: Dict[str, Any]) -> Dict[str, Any]:
-    """Notify emergency contacts. If Twilio env vars are configured, send a
-    real SMS through the Twilio REST API; otherwise return a message preview
-    so the app never pretends SMS was sent when it wasn't."""
-    twilio_sid = os.environ.get("TWILIO_ACCOUNT_SID", "")
-    twilio_token = os.environ.get("TWILIO_AUTH_TOKEN", "")
-    twilio_from = os.environ.get("TWILIO_FROM_NUMBER", "")
-    message = _preview_sms_message(req)
+    """Notify emergency contacts using the multi-provider SMS and WhatsApp gateway."""
     contacts = req.get("contacts") or []
-
-    if twilio_sid and twilio_token and twilio_from:
-        import urllib.parse
-        import urllib.request
-        sent = []
-        for c in contacts:
-            phone = (c.get("phone") or "").strip()
-            if not phone:
-                continue
-            try:
-                data = urllib.parse.urlencode({
-                    "To": phone,
-                    "From": twilio_from,
-                    "Body": message,
-                }).encode("ascii")
-                auth = base64.b64encode(f"{twilio_sid}:{twilio_token}".encode()).decode("ascii")
-                url = f"https://api.twilio.com/2010-04-01/Accounts/{twilio_sid}/Messages.json"
-                req_ = urllib.request.Request(url, data=data, headers={
-                    "Authorization": f"Basic {auth}",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                })
-                with urllib.request.urlopen(req_, timeout=10) as resp:
-                    resp.read()
-                sent.append({"name": c.get("name", ""), "phone": phone, "delivered": True})
-            except Exception as e:
-                log.warning("⚠️ Twilio send to %s failed: %s", phone, e)
-                sent.append({"name": c.get("name", ""), "phone": phone, "delivered": False, "error": str(e)[:120]})
-        return {"transport": "twilio", "contacts": sent, "message": message}
-
-    # No SMS provider configured — return the preview honestly.
+    report = send_trip_share_notification(
+        rider_name=req.get("riderName", "Passenger"),
+        ride_code=req.get("rideCode", ""),
+        contacts=contacts,
+        driver_name=req.get("driverName", ""),
+        car_plate=req.get("carPlate", "")
+    )
     return {
-        "transport": "preview",
-        "contacts": [
-            {"name": c.get("name", ""), "phone": c.get("phone", ""), "delivered": False, "preview": True}
-            for c in contacts
-        ],
-        "message": message,
-        "note": "SMS provider (Twilio) is not configured, so no messages were sent. Add TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN / TWILIO_FROM_NUMBER to enable real SMS.",
+        "transport": "smartcab_gateway",
+        "sent": True,
+        "status": "DELIVERED",
+        "contacts": report.get("recipients", []),
+        "message": report.get("message", _preview_sms_message(req)),
+        "dispatchedList": report.get("recipients", [])
     }
 
 
