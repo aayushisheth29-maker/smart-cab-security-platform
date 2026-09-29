@@ -22,6 +22,7 @@ import RideOffersModal, { PROMO_OFFERS, calculateDiscount } from './RideOffersMo
 import RideOffersBanner from './RideOffersBanner';
 import HourlyRentalsModal from './HourlyRentalsModal';
 import OutstationModal from './OutstationModal';
+import AirportFastTrackModal from './AirportFastTrackModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -302,6 +303,7 @@ const BookRide = () => {
   const [showBusinessForm, setShowBusinessForm] = useState(false);
   const [showRentalsModal, setShowRentalsModal] = useState(false);
   const [showOutstationModal, setShowOutstationModal] = useState(false);
+  const [showAirportModal, setShowAirportModal] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
@@ -3836,6 +3838,13 @@ const BookRide = () => {
                 <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded font-black">Intercity</span>
               </button>
               <button 
+                onClick={() => setShowAirportModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-sky-800 hover:text-sky-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Plane className="w-4 h-4 text-sky-600" /> SVPI Airport Fast-Track
+                <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded font-black">AMD Flight Guard</span>
+              </button>
+              <button 
                 onClick={() => { setActiveTab('reserve'); setShowPrices(false); }} 
                 className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'reserve' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
               >
@@ -5603,6 +5612,23 @@ const BookRide = () => {
           setSelectedPaymentRide({
             ...booking,
             bookingId: booking.rideCode || `OUTSTATION-${booking.id}`,
+            finalFare: booking.fare,
+            pickup: booking.pickupLocation,
+            dropoff: booking.dropoffLocation
+          });
+          setShowPaymentModal(true);
+        }}
+      />
+
+      {/* ✈️ SVPI Airport Fast-Track Modal */}
+      <AirportFastTrackModal
+        isOpen={showAirportModal}
+        onClose={() => setShowAirportModal(false)}
+        defaultCityAddress={dropoff || pickup || 'SG Highway, Ahmedabad'}
+        onBookComplete={(booking) => {
+          setSelectedPaymentRide({
+            ...booking,
+            bookingId: booking.rideCode || `AIRPORT-${booking.id}`,
             finalFare: booking.fare,
             pickup: booking.pickupLocation,
             dropoff: booking.dropoffLocation
