@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   CreditCard,
   QrCode,
@@ -14,6 +14,7 @@ import {
   AlertCircle,
   Receipt
 } from 'lucide-react';
+import { calculateDiscount, PROMO_OFFERS } from './RideOffersModal';
 
 const PYTHON_API = import.meta.env.VITE_PYTHON_AI_URL ||
   (typeof window !== "undefined" && window.location.hostname.includes("vercel.app")
@@ -36,6 +37,18 @@ export default function PaymentModal({
   const [paymentDone, setPaymentDone] = useState(false);
   const [receiptData, setReceiptData] = useState(null);
 
+  useEffect(() => {
+    if (bookingDetails?.appliedPromo) {
+      setPromoCode(bookingDetails.appliedPromo);
+      setDiscount(Number(bookingDetails.discount || 0));
+      setPromoApplied(true);
+    } else {
+      setPromoCode('');
+      setDiscount(0);
+      setPromoApplied(false);
+    }
+  }, [bookingDetails]);
+
   if (!isOpen || !bookingDetails) return null;
 
   const baseFare = Number(bookingDetails.fare || 0);
@@ -44,14 +57,13 @@ export default function PaymentModal({
   const applyPromo = () => {
     setPromoError('');
     const code = promoCode.trim().toUpperCase();
-    if (code === 'SAFETYFIRST' || code === 'SMARTCAB50') {
-      setDiscount(50);
-      setPromoApplied(true);
-    } else if (code === 'FIRST100') {
-      setDiscount(100);
+    if (!code) return;
+    const res = calculateDiscount(code, baseFare);
+    if (res.offer && res.discount > 0) {
+      setDiscount(res.discount);
       setPromoApplied(true);
     } else {
-      setPromoError('Invalid coupon code. Try SAFETYFIRST or SMARTCAB50');
+      setPromoError('Invalid coupon code. Try FIRSTFREE, SMART50, or NIGHTSAFE');
     }
   };
 

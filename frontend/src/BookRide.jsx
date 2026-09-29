@@ -18,6 +18,8 @@ import PhoneOtpModal from './PhoneOtpModal';
 import DriverKycModal from './DriverKycModal';
 import DpdpPolicyModal from './DpdpPolicyModal';
 import VoiceSafetyCommands from './VoiceSafetyCommands';
+import RideOffersModal, { PROMO_OFFERS, calculateDiscount } from './RideOffersModal';
+import RideOffersBanner from './RideOffersBanner';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -525,6 +527,8 @@ const BookRide = () => {
   const [currentBookingId, setCurrentBookingId] = useState(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [pendingBookingDetails, setPendingBookingDetails] = useState(null);
+  const [appliedOffer, setAppliedOffer] = useState(null);
+  const [showOffersModal, setShowOffersModal] = useState(false);
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [showDriverKycModal, setShowDriverKycModal] = useState(false);
   const [showDpdpModal, setShowDpdpModal] = useState(false);
@@ -1482,15 +1486,21 @@ const BookRide = () => {
   };
 
   // Haversine distance between pickup and dropoff for the price cards.
-  // NOW surge-aware (peak 1.5x, late-night 1.2x) so the card price matches
-  // the price that is actually charged at booking time.
-  const displayFare = (base, perKm) => {
+  // NOW surge-aware (peak 1.5x, late-night 1.2x) and promo-discount-aware
+  const displayFareDetails = (base, perKm) => {
     let distKm = 0;
     if (pickupCoords && dropoffCoords) {
       distKm = haversineKm(pickupCoords, dropoffCoords);
     }
     const { surge } = currentSurge();
-    return Math.round((base + distKm * perKm) * surge);
+    const raw = Math.round((base + distKm * perKm) * surge);
+    if (!appliedOffer) return { original: raw, final: raw, discount: 0 };
+    const { discount, finalFare } = calculateDiscount(appliedOffer, raw);
+    return { original: raw, final: finalFare, discount };
+  };
+
+  const displayFare = (base, perKm) => {
+    return displayFareDetails(base, perKm).final;
   };
 
   // 🗺️ CITY-SCOPED GEOCODING
@@ -2024,11 +2034,19 @@ const BookRide = () => {
           ? ` (${estimate.surgeMultiplier}x — ${estimate.surgeReason || 'surge pricing'})`
           : '';
         
+        const promoCalc = calculateDiscount(appliedOffer, totalFare);
+        const finalBookingFare = promoCalc.finalFare;
+        const discountAmount = promoCalc.discount;
+
         // 💳 OPEN THE SECURE PAYMENT MODAL (UPI, Cards, Cash, Wallet)
         setPendingBookingDetails({
           bookingId: savedBooking?.id || localId,
           rideCode: savedBooking?.rideCode || null,
           fare: totalFare,
+          originalFare: totalFare,
+          discount: discountAmount,
+          finalFare: finalBookingFare,
+          appliedPromo: appliedOffer?.code || null,
           baseFare: estimate.baseFare,
           distanceFare: estimate.distanceFare,
           surgeMultiplier: estimate.surgeMultiplier,
@@ -2058,10 +2076,15 @@ const BookRide = () => {
             lat: pCoords[0], lng: pCoords[1],
           }));
         } catch (e) { /* storage may be unavailable */ }
+        const fallbackCalc = calculateDiscount(appliedOffer, totalFare);
         setPendingBookingDetails({
           bookingId: localId,
           rideCode: null,
           fare: totalFare,
+          originalFare: totalFare,
+          discount: fallbackCalc.discount,
+          finalFare: fallbackCalc.finalFare,
+          appliedPromo: appliedOffer?.code || null,
           distanceKm: distKm.toFixed(1),
           pickup,
           dropoff,
@@ -2278,6 +2301,15 @@ const BookRide = () => {
         onPaymentSuccess={(data) => {
           console.log("Payment Confirmed:", data);
         }}
+      />
+
+      {/* 🎁 UBER-STYLE EXCLUSIVE OFFERS & PROMO CODES MODAL */}
+      <RideOffersModal
+        isOpen={showOffersModal}
+        onClose={() => setShowOffersModal(false)}
+        currentFare={150}
+        appliedOfferCode={appliedOffer?.code || ''}
+        onApplyOffer={(offer) => setAppliedOffer(offer)}
       />
 
       {/* 🎙️ MULTILINGUAL HANDS-FREE VOICE SAFETY ASSISTANT (EN, HI, GU) */}
@@ -4247,7 +4279,7 @@ const BookRide = () => {
                         ].map((car) => {
                           const isSelected = selectedCar === car.id;
                           const CarIcon = car.icon;
-                          const fare = displayFare(car.base, car.perKm);
+                          const fareInfo = displayFareDetails(car.base, car.perKm);
                           return (
                             <div
                               key={car.id}
@@ -4291,14 +4323,65 @@ const BookRide = () => {
                                 </div>
                               </div>
                               <div className="text-right shrink-0 pl-2">
-                                <div className="font-extrabold text-xl tracking-tight">₹{fare}</div>
-                                <div className={`text-[10px] font-semibold ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
-                                  est. fare
-                                </div>
+                                {fareInfo.discount > 0 ? (
+                                  <div>
+                                    <div className="text-xs line-through text-slate-400">₹{fareInfo.original}</div>
+                                    <div className={`font-extrabold text-xl tracking-tight ${isSelected ? 'text-emerald-300' : 'text-emerald-600'}`}>₹{fareInfo.final}</div>
+                                    <div className="text-[9px] font-black bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded mt-0.5">
+                                      Save ₹{fareInfo.discount}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div>
+                                    <div className="font-extrabold text-xl tracking-tight">₹{fareInfo.final}</div>
+                                    <div className={`text-[10px] font-semibold ${isSelected ? 'text-slate-400' : 'text-slate-400'}`}>
+                                      est. fare
+                                    </div>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           );
                         })}
+                      </div>
+
+                      {/* 🏷️ UBER-STYLE PROMO & OFFERS BAR */}
+                      <div className="p-3 my-2 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300 dark:border-amber-500/30 rounded-2xl flex items-center justify-between">
+                        <div className="flex items-center space-x-2">
+                          <Tag className="w-4 h-4 text-amber-500" />
+                          {appliedOffer ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-black text-emerald-700 dark:text-emerald-400">
+                                {appliedOffer.code} Applied
+                              </span>
+                              <span className="text-[10px] font-bold text-emerald-600 bg-emerald-100 dark:bg-emerald-950 px-1.5 py-0.5 rounded">
+                                {appliedOffer.title}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                              Apply Coupon / First Ride Free
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                          {appliedOffer ? (
+                            <button
+                              type="button"
+                              onClick={() => setAppliedOffer(null)}
+                              className="text-[11px] font-bold text-rose-600 hover:underline px-1.5"
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setShowOffersModal(true)}
+                            className="text-xs font-black bg-slate-900 text-white px-3 py-1.5 rounded-xl hover:bg-slate-800 transition"
+                          >
+                            {appliedOffer ? "Offers (6)" : "View Offers"}
+                          </button>
+                        </div>
                       </div>
 
                       <div className="shrink-0 pt-3 border-t border-slate-100">
@@ -4327,11 +4410,21 @@ const BookRide = () => {
                         {activeTab === 'reserve' && "Reserve a ride in advance"}
                         {activeTab === 'explore' && "Explore your options"}
                       </h1>
-                      <button className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 w-max px-4 py-2.5 rounded-full font-bold text-sm mb-6 transition text-slate-700">
+                      <button className="flex items-center space-x-2 bg-slate-100 hover:bg-slate-200 w-max px-4 py-2.5 rounded-full font-bold text-sm mb-4 transition text-slate-700">
                         <Clock className="h-4 w-4" />
                         <span>{activeTab === 'reserve' ? 'Schedule for later' : 'Pickup now'}</span>
                         <ChevronDown className="h-4 w-4 text-slate-400" />
                       </button>
+
+                      {/* 🎁 UBER-STYLE PROMOTIONS & FREE RIDES CAROUSEL BANNER */}
+                      <RideOffersBanner
+                        currentFare={120}
+                        appliedOffer={appliedOffer}
+                        onApplyOffer={(offer) => setAppliedOffer(offer)}
+                        onRemoveOffer={() => setAppliedOffer(null)}
+                        onOpenOffersModal={() => setShowOffersModal(true)}
+                      />
+
                       <div className="relative flex flex-col space-y-2 w-full">
                         {renderLocationInput('pickup', "Pickup (e.g., Kalupur, Delhi, BLR)", pickup, setPickup)}
 
