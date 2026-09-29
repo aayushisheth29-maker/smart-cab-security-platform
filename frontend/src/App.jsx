@@ -76,17 +76,30 @@ class GlobalErrorBoundary extends React.Component {
             <p className="text-slate-400 text-sm mb-6">
               The page encountered a translation or rendering reload.
             </p>
-            <button
-              onClick={() => {
-                document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-                window.location.reload();
-              }}
-              className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-6 rounded-2xl transition"
-            >
-              Reload Page
-            </button>
+            <div className="space-y-2">
+              <button
+                onClick={() => {
+                  this.setState({ hasError: false, error: null });
+                }}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3.5 px-6 rounded-2xl transition"
+              >
+                Continue to Booking
+              </button>
+              <button
+                onClick={() => {
+                  document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+                  window.location.reload();
+                }}
+                className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 font-bold py-3 px-6 rounded-2xl transition text-xs"
+              >
+                Reload Page
+              </button>
+            </div>
             <a
               href="/"
+              onClick={() => {
+                this.setState({ hasError: false, error: null });
+              }}
               className="inline-block mt-4 text-xs font-bold text-slate-400 hover:text-white"
             >
               ← Return to Dashboard

@@ -5636,12 +5636,14 @@ const BookRide = () => {
         onClose={() => setShowRentalsModal(false)}
         defaultPickup={pickup || 'SG Highway, Ahmedabad'}
         onBookComplete={(booking) => {
-          setSelectedPaymentRide({
+          setPendingBookingDetails({
             ...booking,
             bookingId: booking.rideCode || `RENTAL-${booking.id}`,
-            finalFare: booking.fare,
+            fare: Number(booking.fare || booking.baseFare || 249),
+            finalFare: Number(booking.fare || 249),
             pickup: booking.pickupLocation,
-            dropoff: booking.dropoffLocation
+            dropoff: booking.dropoffLocation,
+            selectedCar: booking.selectedCar || 'SmartPro'
           });
           setShowPaymentModal(true);
         }}
@@ -5653,12 +5655,14 @@ const BookRide = () => {
         onClose={() => setShowOutstationModal(false)}
         defaultOrigin="Ahmedabad"
         onBookComplete={(booking) => {
-          setSelectedPaymentRide({
+          setPendingBookingDetails({
             ...booking,
             bookingId: booking.rideCode || `OUTSTATION-${booking.id}`,
-            finalFare: booking.fare,
+            fare: Number(booking.fare || booking.baseFare || 549),
+            finalFare: Number(booking.fare || 549),
             pickup: booking.pickupLocation,
-            dropoff: booking.dropoffLocation
+            dropoff: booking.dropoffLocation,
+            selectedCar: booking.selectedCar || 'SmartPro'
           });
           setShowPaymentModal(true);
         }}
@@ -5670,12 +5674,14 @@ const BookRide = () => {
         onClose={() => setShowAirportModal(false)}
         defaultCityAddress={dropoff || pickup || 'SG Highway, Ahmedabad'}
         onBookComplete={(booking) => {
-          setSelectedPaymentRide({
+          setPendingBookingDetails({
             ...booking,
             bookingId: booking.rideCode || `AIRPORT-${booking.id}`,
-            finalFare: booking.fare,
+            fare: Number(booking.fare || booking.baseFare || 249),
+            finalFare: Number(booking.fare || 249),
             pickup: booking.pickupLocation,
-            dropoff: booking.dropoffLocation
+            dropoff: booking.dropoffLocation,
+            selectedCar: booking.selectedCar || 'SmartPro'
           });
           setShowPaymentModal(true);
         }}
