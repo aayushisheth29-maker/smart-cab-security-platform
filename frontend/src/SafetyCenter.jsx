@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShieldCheck, ArrowLeft, Siren, MapPin, Users, Video, Loader2, Phone,
-  Copy, Check, Smartphone, AlertTriangle, Share2, Plus, Trash2, EyeOff, Volume2, FileText,
+  Copy, Check, CheckCircle2, Smartphone, AlertTriangle, Share2, Plus, Trash2, EyeOff, Volume2, FileText,
 } from 'lucide-react';
 import { apiFetch } from './api';
 
