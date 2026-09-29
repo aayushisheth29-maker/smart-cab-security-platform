@@ -29,8 +29,10 @@ const RENTAL_PACKAGES = [
     duration: 2,
     km: 20,
     popular: false,
+    badge: '🔥 ₹249 Starter Offer',
     desc: 'Quick shopping, clinic visits & errands',
-    fares: { SmartMini: 399, SmartPro: 449, SmartMax: 699, SmartEV: 499 }
+    fares: { SmartMini: 249, SmartPro: 289, SmartMax: 449, SmartEV: 299 },
+    originalFares: { SmartMini: 449, SmartPro: 499, SmartMax: 749, SmartEV: 549 }
   },
   {
     id: 'PKG_4HR_40KM',
@@ -38,8 +40,10 @@ const RENTAL_PACKAGES = [
     duration: 4,
     km: 40,
     popular: true,
+    badge: '⭐ Most Popular',
     desc: 'Half-day city meetings & client visits',
-    fares: { SmartMini: 720, SmartPro: 799, SmartMax: 1199, SmartEV: 899 }
+    fares: { SmartMini: 479, SmartPro: 529, SmartMax: 799, SmartEV: 549 },
+    originalFares: { SmartMini: 799, SmartPro: 899, SmartMax: 1299, SmartEV: 949 }
   },
   {
     id: 'PKG_8HR_80KM',
@@ -47,8 +51,10 @@ const RENTAL_PACKAGES = [
     duration: 8,
     km: 80,
     popular: false,
+    badge: '👑 Full Day Saver',
     desc: 'Full-day standby cab with private chauffeur',
-    fares: { SmartMini: 1349, SmartPro: 1499, SmartMax: 2199, SmartEV: 1699 }
+    fares: { SmartMini: 899, SmartPro: 999, SmartMax: 1499, SmartEV: 1049 },
+    originalFares: { SmartMini: 1499, SmartPro: 1699, SmartMax: 2399, SmartEV: 1799 }
   },
   {
     id: 'PKG_12HR_120KM',
@@ -56,8 +62,10 @@ const RENTAL_PACKAGES = [
     duration: 12,
     km: 120,
     popular: false,
+    badge: '🚀 Extended Day',
     desc: 'Extended day tour, wedding events & multi-city',
-    fares: { SmartMini: 1999, SmartPro: 2199, SmartMax: 3199, SmartEV: 2499 }
+    fares: { SmartMini: 1299, SmartPro: 1449, SmartMax: 2099, SmartEV: 1499 },
+    originalFares: { SmartMini: 2199, SmartPro: 2499, SmartMax: 3399, SmartEV: 2699 }
   }
 ];
 
@@ -191,6 +199,24 @@ export default function HourlyRentalsModal({
 
         {/* Content */}
         <div className="p-5 sm:p-6 overflow-y-auto space-y-5 flex-1">
+          {/* Introductory Launch Offer Banner */}
+          <div className="p-3.5 bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-amber-500/15 border border-amber-300/80 rounded-2xl flex items-center justify-between">
+            <div className="flex items-center space-x-2.5">
+              <span className="text-xl">🎉</span>
+              <div>
+                <div className="text-xs font-black text-amber-950 flex items-center gap-1.5">
+                  Introductory Launch Offer · Starts at ₹249 for 20 km!
+                </div>
+                <div className="text-[11px] text-amber-800 font-medium">
+                  Up to 44% OFF · Dedicated cab &amp; chauffeur on standby for you
+                </div>
+              </div>
+            </div>
+            <span className="text-[10px] font-black bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full uppercase shadow-sm">
+              Limited Period
+            </span>
+          </div>
+
           {/* Step 1: Package Selector */}
           <div className="space-y-2.5">
             <label className="text-xs font-black uppercase text-slate-700 tracking-wider block">
@@ -199,7 +225,9 @@ export default function HourlyRentalsModal({
             <div className="grid grid-cols-2 gap-2.5">
               {RENTAL_PACKAGES.map((pkg) => {
                 const isSelected = selectedPkgId === pkg.id;
-                const fare = pkg.fares[selectedCar] || 799;
+                const fare = pkg.fares[selectedCar] || 249;
+                const origFare = pkg.originalFares[selectedCar] || Math.round(fare * 1.6);
+                const discountPct = Math.round(((origFare - fare) / origFare) * 100);
                 return (
                   <button
                     key={pkg.id}
@@ -211,15 +239,19 @@ export default function HourlyRentalsModal({
                         : 'border-slate-200 bg-slate-50 hover:bg-slate-100'
                     }`}
                   >
-                    {pkg.popular && (
+                    {pkg.badge && (
                       <span className="absolute -top-2.5 right-3 text-[9px] font-black bg-amber-500 text-slate-950 px-2 py-0.5 rounded-full uppercase tracking-wider shadow-sm">
-                        Most Popular
+                        {pkg.badge}
                       </span>
                     )}
                     <div className="font-black text-sm text-slate-900">{pkg.name}</div>
                     <div className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">{pkg.desc}</div>
-                    <div className="text-base font-black text-slate-950 mt-2">
-                      ₹{fare}
+                    <div className="flex items-baseline space-x-1.5 mt-2">
+                      <span className="text-base font-black text-slate-950">₹{fare}</span>
+                      <span className="line-through text-slate-400 text-xs font-bold">₹{origFare}</span>
+                      <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-1 py-0.2 rounded">
+                        {discountPct}% OFF
+                      </span>
                     </div>
                   </button>
                 );

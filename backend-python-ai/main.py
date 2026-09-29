@@ -2651,12 +2651,13 @@ RENTAL_PACKAGES = [
         "durationHours": 2,
         "includedKm": 20,
         "popular": False,
+        "badge": "🔥 ₹249 Starter Deal",
         "description": "Ideal for quick shopping, doctor visits, and local errands.",
         "rates": {
-            "SmartMini": {"baseFare": 399.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
-            "SmartPro": {"baseFare": 449.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
-            "SmartMax": {"baseFare": 699.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
-            "SmartEV": {"baseFare": 499.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+            "SmartMini": {"baseFare": 249.0, "originalFare": 449.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
+            "SmartPro": {"baseFare": 289.0, "originalFare": 499.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
+            "SmartMax": {"baseFare": 449.0, "originalFare": 749.0, "extraKmRate": 14.0, "extraMinRate": 2.0},
+            "SmartEV": {"baseFare": 299.0, "originalFare": 549.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
         }
     },
     {
@@ -2665,12 +2666,13 @@ RENTAL_PACKAGES = [
         "durationHours": 4,
         "includedKm": 40,
         "popular": True,
+        "badge": "⭐ Most Popular",
         "description": "Perfect for half-day city business meetings and multi-stop client visits.",
         "rates": {
-            "SmartMini": {"baseFare": 720.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
-            "SmartPro": {"baseFare": 799.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
-            "SmartMax": {"baseFare": 1199.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
-            "SmartEV": {"baseFare": 899.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+            "SmartMini": {"baseFare": 479.0, "originalFare": 799.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
+            "SmartPro": {"baseFare": 529.0, "originalFare": 899.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
+            "SmartMax": {"baseFare": 799.0, "originalFare": 1299.0, "extraKmRate": 14.0, "extraMinRate": 2.0},
+            "SmartEV": {"baseFare": 549.0, "originalFare": 949.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
         }
     },
     {
@@ -2679,12 +2681,13 @@ RENTAL_PACKAGES = [
         "durationHours": 8,
         "includedKm": 80,
         "popular": False,
+        "badge": "👑 Full Day Saver",
         "description": "Complete full-day cab with private driver on standby throughout the day.",
         "rates": {
-            "SmartMini": {"baseFare": 1349.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
-            "SmartPro": {"baseFare": 1499.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
-            "SmartMax": {"baseFare": 2199.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
-            "SmartEV": {"baseFare": 1699.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+            "SmartMini": {"baseFare": 899.0, "originalFare": 1499.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
+            "SmartPro": {"baseFare": 999.0, "originalFare": 1699.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
+            "SmartMax": {"baseFare": 1499.0, "originalFare": 2399.0, "extraKmRate": 14.0, "extraMinRate": 2.0},
+            "SmartEV": {"baseFare": 1049.0, "originalFare": 1799.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
         }
     },
     {
@@ -2693,12 +2696,13 @@ RENTAL_PACKAGES = [
         "durationHours": 12,
         "includedKm": 120,
         "popular": False,
+        "badge": "🚀 Max Distance",
         "description": "Extended city tour, wedding guests, or all-day regional appointments.",
         "rates": {
-            "SmartMini": {"baseFare": 1999.0, "extraKmRate": 11.0, "extraMinRate": 2.0},
-            "SmartPro": {"baseFare": 2199.0, "extraKmRate": 12.0, "extraMinRate": 2.5},
-            "SmartMax": {"baseFare": 3199.0, "extraKmRate": 16.0, "extraMinRate": 3.0},
-            "SmartEV": {"baseFare": 2499.0, "extraKmRate": 13.0, "extraMinRate": 2.5},
+            "SmartMini": {"baseFare": 1299.0, "originalFare": 2199.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
+            "SmartPro": {"baseFare": 1449.0, "originalFare": 2499.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
+            "SmartMax": {"baseFare": 2099.0, "originalFare": 3399.0, "extraKmRate": 14.0, "extraMinRate": 2.0},
+            "SmartEV": {"baseFare": 1499.0, "originalFare": 2699.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
         }
     }
 ]

@@ -33,7 +33,7 @@ def test_book_hourly_rental():
     booking = res.json()["booking"]
     assert booking["category"] == "RENTAL_HOURLY"
     assert "4 Hours" in booking["packageName"]
-    assert booking["fare"] == 799.0
+    assert booking["fare"] == 529.0
 
 def test_book_outstation_round_trip():
     res = client.post("/api/trips/book-outstation", json={
