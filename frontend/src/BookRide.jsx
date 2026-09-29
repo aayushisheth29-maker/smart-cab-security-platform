@@ -6,7 +6,8 @@ import {
   User, Phone, Mail, Building, CheckCircle, CheckCircle2, ArrowLeft, Loader2,
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
   Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
-  FileWarning, ArrowUpDown, Sparkles, Luggage, Share2, Zap, Eye, EyeOff, Volume2, ShieldAlert, FileText, Activity
+  FileWarning, ArrowUpDown, Sparkles, Luggage, Share2, Zap, Eye, EyeOff, Volume2, ShieldAlert, FileText, Activity,
+  Tag
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
