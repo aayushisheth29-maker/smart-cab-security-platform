@@ -1975,6 +1975,9 @@ const BookRide = () => {
         estimate = localFareEstimate(distKm, selectedCar);
       }
       const totalFare = estimate.totalFare;
+      const promoCalc = calculateDiscount(appliedOffer, totalFare);
+      const finalBookingFare = promoCalc.finalFare;
+      const discountAmount = promoCalc.discount;
 
       try {
         const bookingData = {
@@ -2019,10 +2022,6 @@ const BookRide = () => {
         // 🏷️ Remember this ride (Ride ID, driver, route, coords) in local storage
         // so the Safety Center, My Rides, and Route Map show it instantly.
         try {
-          const promoCalc = calculateDiscount(appliedOffer, totalFare);
-          const finalBookingFare = promoCalc.finalFare;
-          const discountAmount = promoCalc.discount;
-
           const rideObj = {
             id: savedBooking?.id || localId,
             bookingId: savedBooking?.id || localId,
@@ -2055,13 +2054,6 @@ const BookRide = () => {
           const updatedList = [rideObj, ...existingList.filter(r => r.id !== rideObj.id)];
           localStorage.setItem('smartcab_my_rides', JSON.stringify(updatedList));
         } catch (e) { /* storage may be unavailable */ }
-        const surgeNote = estimate.surgeMultiplier > 1
-          ? ` (${estimate.surgeMultiplier}x — ${estimate.surgeReason || 'surge pricing'})`
-          : '';
-        
-        const promoCalc = calculateDiscount(appliedOffer, totalFare);
-        const finalBookingFare = promoCalc.finalFare;
-        const discountAmount = promoCalc.discount;
 
         // 💳 OPEN THE SECURE PAYMENT MODAL (UPI, Cards, Cash, Wallet)
         setPendingBookingDetails({
