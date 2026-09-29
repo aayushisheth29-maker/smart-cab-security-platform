@@ -2641,7 +2641,6 @@ def pricing_estimate(payload: PricingEstimateRequest):
     }
 
 
-# ---------------------------------------------------------------------------
 # ⏱️ HOURLY RENTAL PACKAGES & 🛣️ OUTSTATION PACKAGES ENGINE
 # ---------------------------------------------------------------------------
 RENTAL_PACKAGES = [
@@ -2654,6 +2653,7 @@ RENTAL_PACKAGES = [
         "badge": "🔥 ₹249 Starter Deal",
         "description": "Ideal for quick shopping, doctor visits, and local errands.",
         "rates": {
+            "SmartBike": {"baseFare": 149.0, "originalFare": 299.0, "extraKmRate": 6.0, "extraMinRate": 1.0},
             "SmartMini": {"baseFare": 249.0, "originalFare": 449.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
             "SmartPro": {"baseFare": 289.0, "originalFare": 499.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
             "SmartMax": {"baseFare": 449.0, "originalFare": 749.0, "extraKmRate": 14.0, "extraMinRate": 2.0},
@@ -2669,6 +2669,7 @@ RENTAL_PACKAGES = [
         "badge": "⭐ Most Popular",
         "description": "Perfect for half-day city business meetings and multi-stop client visits.",
         "rates": {
+            "SmartBike": {"baseFare": 299.0, "originalFare": 549.0, "extraKmRate": 6.0, "extraMinRate": 1.0},
             "SmartMini": {"baseFare": 479.0, "originalFare": 799.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
             "SmartPro": {"baseFare": 529.0, "originalFare": 899.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
             "SmartMax": {"baseFare": 799.0, "originalFare": 1299.0, "extraKmRate": 14.0, "extraMinRate": 2.0},
@@ -2684,6 +2685,7 @@ RENTAL_PACKAGES = [
         "badge": "👑 Full Day Saver",
         "description": "Complete full-day cab with private driver on standby throughout the day.",
         "rates": {
+            "SmartBike": {"baseFare": 549.0, "originalFare": 999.0, "extraKmRate": 6.0, "extraMinRate": 1.0},
             "SmartMini": {"baseFare": 899.0, "originalFare": 1499.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
             "SmartPro": {"baseFare": 999.0, "originalFare": 1699.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
             "SmartMax": {"baseFare": 1499.0, "originalFare": 2399.0, "extraKmRate": 14.0, "extraMinRate": 2.0},
@@ -2699,6 +2701,7 @@ RENTAL_PACKAGES = [
         "badge": "🚀 Max Distance",
         "description": "Extended city tour, wedding guests, or all-day regional appointments.",
         "rates": {
+            "SmartBike": {"baseFare": 799.0, "originalFare": 1399.0, "extraKmRate": 6.0, "extraMinRate": 1.0},
             "SmartMini": {"baseFare": 1299.0, "originalFare": 2199.0, "extraKmRate": 10.0, "extraMinRate": 1.5},
             "SmartPro": {"baseFare": 1449.0, "originalFare": 2499.0, "extraKmRate": 11.0, "extraMinRate": 1.5},
             "SmartMax": {"baseFare": 2099.0, "originalFare": 3399.0, "extraKmRate": 14.0, "extraMinRate": 2.0},

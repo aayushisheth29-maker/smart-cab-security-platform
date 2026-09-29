@@ -35,6 +35,7 @@ const QUICK_FLIGHTS = [
 ];
 
 const CAR_OPTIONS = [
+  { id: 'SmartBike', name: 'SmartBike', type: 'Solo Moto + Helmet', base: 249 },
   { id: 'SmartMini', name: 'SmartMini', type: 'Hatchback (2 Luggage)', base: 499 },
   { id: 'SmartPro', name: 'SmartPro', type: 'Executive Sedan (3 Luggage)', base: 599 },
   { id: 'SmartMax', name: 'SmartMax', type: 'Spacious SUV (5+ Luggage)', base: 899 },
@@ -349,7 +350,7 @@ export default function AirportFastTrackModal({
             <label className="text-xs font-black uppercase text-slate-700 tracking-wider block">
               Select Airport Vehicle
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
               {CAR_OPTIONS.map((car) => {
                 const isSelected = selectedCar === car.id;
                 return (

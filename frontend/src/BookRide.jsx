@@ -3819,9 +3819,16 @@ const BookRide = () => {
             <div className="flex overflow-x-auto w-full space-x-6 text-sm font-medium text-gray-500 pb-2 hide-scrollbar">
               <button 
                 onClick={() => { setActiveTab('request'); setShowPrices(false); }} 
-                className={`whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'request' ? 'border-black text-black font-extrabold' : 'border-transparent hover:text-black font-semibold'}`}
+                className={`whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'request' && selectedCar !== 'SmartBike' ? 'border-black text-black font-extrabold' : 'border-transparent hover:text-black font-semibold'}`}
               >
                 <Car className="w-4 h-4" /> Daily Cab
+              </button>
+              <button 
+                onClick={() => { setActiveTab('request'); setSelectedCar('SmartBike'); setShowPrices(false); }} 
+                className={`whitespace-nowrap pb-2 border-b-2 transition-colors flex items-center gap-1.5 ${activeTab === 'request' && selectedCar === 'SmartBike' ? 'border-emerald-600 text-emerald-800 font-extrabold' : 'border-transparent text-emerald-700 hover:text-emerald-900 font-bold'}`}
+              >
+                <Bike className="w-4 h-4 text-emerald-600" /> SmartBike Taxi
+                <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.2 rounded font-black">From ₹20</span>
               </button>
               <button 
                 onClick={() => setShowRentalsModal(true)} 

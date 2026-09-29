@@ -29,10 +29,10 @@ const RENTAL_PACKAGES = [
     duration: 2,
     km: 20,
     popular: false,
-    badge: '🔥 ₹249 Starter Offer',
+    badge: '🔥 ₹149 Moto / ₹249 Cab',
     desc: 'Quick shopping, clinic visits & errands',
-    fares: { SmartMini: 249, SmartPro: 289, SmartMax: 449, SmartEV: 299 },
-    originalFares: { SmartMini: 449, SmartPro: 499, SmartMax: 749, SmartEV: 549 }
+    fares: { SmartBike: 149, SmartMini: 249, SmartPro: 289, SmartMax: 449, SmartEV: 299 },
+    originalFares: { SmartBike: 299, SmartMini: 449, SmartPro: 499, SmartMax: 749, SmartEV: 549 }
   },
   {
     id: 'PKG_4HR_40KM',
@@ -42,8 +42,8 @@ const RENTAL_PACKAGES = [
     popular: true,
     badge: '⭐ Most Popular',
     desc: 'Half-day city meetings & client visits',
-    fares: { SmartMini: 479, SmartPro: 529, SmartMax: 799, SmartEV: 549 },
-    originalFares: { SmartMini: 799, SmartPro: 899, SmartMax: 1299, SmartEV: 949 }
+    fares: { SmartBike: 299, SmartMini: 479, SmartPro: 529, SmartMax: 799, SmartEV: 549 },
+    originalFares: { SmartBike: 549, SmartMini: 799, SmartPro: 899, SmartMax: 1299, SmartEV: 949 }
   },
   {
     id: 'PKG_8HR_80KM',
@@ -52,9 +52,9 @@ const RENTAL_PACKAGES = [
     km: 80,
     popular: false,
     badge: '👑 Full Day Saver',
-    desc: 'Full-day standby cab with private chauffeur',
-    fares: { SmartMini: 899, SmartPro: 999, SmartMax: 1499, SmartEV: 1049 },
-    originalFares: { SmartMini: 1499, SmartPro: 1699, SmartMax: 2399, SmartEV: 1799 }
+    desc: 'Full-day standby cab or bike with private chauffeur',
+    fares: { SmartBike: 549, SmartMini: 899, SmartPro: 999, SmartMax: 1499, SmartEV: 1049 },
+    originalFares: { SmartBike: 999, SmartMini: 1499, SmartPro: 1699, SmartMax: 2399, SmartEV: 1799 }
   },
   {
     id: 'PKG_12HR_120KM',
@@ -64,12 +64,13 @@ const RENTAL_PACKAGES = [
     popular: false,
     badge: '🚀 Extended Day',
     desc: 'Extended day tour, wedding events & multi-city',
-    fares: { SmartMini: 1299, SmartPro: 1449, SmartMax: 2099, SmartEV: 1499 },
-    originalFares: { SmartMini: 2199, SmartPro: 2499, SmartMax: 3399, SmartEV: 2699 }
+    fares: { SmartBike: 799, SmartMini: 1299, SmartPro: 1449, SmartMax: 2099, SmartEV: 1499 },
+    originalFares: { SmartBike: 1399, SmartMini: 2199, SmartPro: 2499, SmartMax: 3399, SmartEV: 2699 }
   }
 ];
 
 const CAR_TYPES = [
+  { id: 'SmartBike', name: 'SmartBike', desc: 'Moto Taxi (1 Rider)', icon: '🏍️' },
   { id: 'SmartMini', name: 'SmartMini', desc: 'Compact Hatchback (4 Seater)', icon: '🚗' },
   { id: 'SmartPro', name: 'SmartPro', desc: 'Comfort Sedan with AC (4 Seater)', icon: '🚘' },
   { id: 'SmartMax', name: 'SmartMax', desc: 'Spacious SUV (6 Seater)', icon: '🚙' },
@@ -264,7 +265,7 @@ export default function HourlyRentalsModal({
             <label className="text-xs font-black uppercase text-slate-700 tracking-wider block">
               2. Select Vehicle Category
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
               {CAR_TYPES.map((car) => {
                 const isSelected = selectedCar === car.id;
                 return (

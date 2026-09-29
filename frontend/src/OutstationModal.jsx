@@ -33,6 +33,7 @@ const POPULAR_OUTSTATION_ROUTES = [
 ];
 
 const CAR_OPTIONS = [
+  { id: 'SmartBike', name: 'SmartBike', type: 'Cruiser Moto (Solo)', multiplier: 0.55 },
   { id: 'SmartMini', name: 'SmartMini', type: 'Hatchback (4 Seater)', multiplier: 0.9 },
   { id: 'SmartPro', name: 'SmartPro', type: 'Sedan AC (4 Seater)', multiplier: 1.0 },
   { id: 'SmartMax', name: 'SmartMax', type: 'SUV (6-7 Seater)', multiplier: 1.5 },
@@ -267,7 +268,7 @@ export default function OutstationModal({
             <label className="text-xs font-black uppercase text-slate-700 tracking-wider block">
               Select Highway Vehicle
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2">
               {CAR_OPTIONS.map((car) => {
                 const isSelected = selectedCar === car.id;
                 return (
