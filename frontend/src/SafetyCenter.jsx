@@ -3,8 +3,10 @@ import { Link } from 'react-router-dom';
 import {
   ShieldCheck, ArrowLeft, Siren, MapPin, Users, Video, Loader2, Phone,
   Copy, Check, CheckCircle2, Smartphone, AlertTriangle, Share2, Plus, Trash2, EyeOff, Volume2, FileText,
+  HeartPulse, Hospital
 } from 'lucide-react';
 import { apiFetch } from './api';
+import EmergencyMedicalModal from './EmergencyMedicalModal';
 
 function readLastRide() {
   try {
@@ -72,6 +74,7 @@ export default function SafetyCenter() {
   const [notice, setNotice] = useState('');
   const [testSending, setTestSending] = useState(null);
   const [testResult, setTestResult] = useState(null);
+  const [showMedicalModal, setShowMedicalModal] = useState(false);
 
   const sendTestBroadcast = async (contact) => {
     setTestSending(contact.phone);
@@ -341,18 +344,19 @@ export default function SafetyCenter() {
               </div>
             </a>
 
-            <a
-              href="tel:108"
-              className="flex items-center gap-3 p-3 bg-amber-50 hover:bg-amber-100/80 border border-amber-200 rounded-2xl transition group"
+            <button
+              type="button"
+              onClick={() => setShowMedicalModal(true)}
+              className="flex items-center gap-3 p-3 bg-amber-50 hover:bg-amber-100/80 border border-amber-200 rounded-2xl transition group text-left cursor-pointer"
             >
               <div className="p-2.5 rounded-xl bg-amber-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
                 108
               </div>
               <div>
-                <div className="font-extrabold text-slate-900 text-xs">Ambulance</div>
-                <div className="text-[10px] text-amber-700 font-semibold">Medical Emergency</div>
+                <div className="font-extrabold text-slate-900 text-xs">Ambulance &amp; Hospitals</div>
+                <div className="text-[10px] text-amber-700 font-semibold">24/7 ER Locator &amp; SOS →</div>
               </div>
-            </a>
+            </button>
 
             <a
               href="tel:1091"
@@ -605,6 +609,17 @@ export default function SafetyCenter() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 🏥 24/7 Nearest Hospital & Emergency Medical Guide */}
+      {showMedicalModal && (
+        <EmergencyMedicalModal
+          isOpen={showMedicalModal}
+          onClose={() => setShowMedicalModal(false)}
+          currentLat={lastRide?.pickupLat || 23.0225}
+          currentLng={lastRide?.pickupLng || 72.5714}
+          tripId={lastRide?.bookingId || lastRide?.id}
+        />
       )}
     </div>
   );

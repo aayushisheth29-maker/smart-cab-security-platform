@@ -2,11 +2,12 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users, Star, Volume2, VolumeX, Bell } from 'lucide-react';
+import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users, Star, Volume2, VolumeX, Bell, HeartPulse } from 'lucide-react';
 import { API_BASE } from './api';
 import VoiceSafetyCommands from './VoiceSafetyCommands';
 import SplitFareModal from './SplitFareModal';
 import TripRatingModal from './TripRatingModal';
+import EmergencyMedicalModal from './EmergencyMedicalModal';
 import { Chimes, announceMilestone } from './ttsService';
 
 const carIcon = new L.DivIcon({
@@ -36,6 +37,7 @@ const TrackRide = () => {
   const [loading, setLoading] = useState(true);
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
+  const [showMedicalModal, setShowMedicalModal] = useState(false);
   const [audioAnnounceEnabled, setAudioAnnounceEnabled] = useState(true);
   const videoRef = useRef(null);
   const mapRef = useRef(null);
@@ -424,6 +426,13 @@ const TrackRide = () => {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
+              onClick={() => setShowMedicalModal(true)}
+              className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+            >
+              <HeartPulse className="h-4 w-4 mr-1.5" /> 108 Hospital ER
+            </button>
+            <button
+              type="button"
               onClick={() => setShowRatingModal(true)}
               className="bg-amber-500 hover:bg-amber-600 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
             >
@@ -720,6 +729,17 @@ const TrackRide = () => {
           riderName: trackingData?.riderName || 'Rider'
         }}
       />
+
+      {/* 🏥 24/7 Nearest Hospital & Emergency Medical Guide */}
+      {showMedicalModal && (
+        <EmergencyMedicalModal
+          isOpen={showMedicalModal}
+          onClose={() => setShowMedicalModal(false)}
+          currentLat={trackingData?.currentLat || 23.0225}
+          currentLng={trackingData?.currentLng || 72.5714}
+          tripId={linkId}
+        />
+      )}
     </div>
   );
 };

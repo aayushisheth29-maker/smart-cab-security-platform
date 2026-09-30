@@ -24,6 +24,7 @@ const dropoffMarkerIcon = new L.DivIcon({
 
 const STATUS_META = {
   REQUESTED: { label: 'Requested', color: 'bg-slate-100 text-slate-700' },
+  SCHEDULED: { label: 'Scheduled (Advance)', color: 'bg-purple-100 text-purple-700' },
   DRIVER_ASSIGNED: { label: 'Driver assigned', color: 'bg-blue-100 text-blue-700' },
   DRIVER_ACCEPTED: { label: 'Driver accepted', color: 'bg-blue-100 text-blue-700' },
   DRIVER_ARRIVING: { label: 'Driver arriving', color: 'bg-amber-100 text-amber-700' },
@@ -206,8 +207,16 @@ export default function MyRides() {
     let localRides = [];
     try {
       const stored = JSON.parse(localStorage.getItem('smartcab_my_rides') || '[]');
+      const scheduled = JSON.parse(localStorage.getItem('smartcab_scheduled_rides') || '[]');
       const lastRide = JSON.parse(localStorage.getItem('smartcab_last_ride') || 'null');
       localRides = Array.isArray(stored) ? stored : [];
+      if (Array.isArray(scheduled)) {
+        for (const s of scheduled) {
+          if (!localRides.some(r => r.id === s.id || r.rideCode === s.rideCode)) {
+            localRides.unshift(s);
+          }
+        }
+      }
       if (lastRide && !localRides.some((r) => r.id === lastRide.bookingId || r.id === lastRide.id)) {
         localRides.unshift({
           id: lastRide.bookingId || lastRide.id || 101,
@@ -267,7 +276,7 @@ export default function MyRides() {
 
   const groups = useMemo(() => {
     const active = rides.filter((r) => ACTIVE.includes(r.status));
-    const upcoming = rides.filter((r) => r.status === 'REQUESTED' || r.status === 'PENDING');
+    const upcoming = rides.filter((r) => r.status === 'REQUESTED' || r.status === 'PENDING' || r.status === 'SCHEDULED');
     const completed = rides.filter((r) => r.status === 'COMPLETED');
     const cancelled = rides.filter((r) => r.status === 'CANCELLED');
     return { active, upcoming, completed, cancelled };

@@ -7,7 +7,7 @@ import {
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
   Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
   FileWarning, ArrowUpDown, Sparkles, Luggage, Share2, Zap, Eye, EyeOff, Volume2, ShieldAlert, FileText, Activity,
-  Tag
+  Tag, HeartPulse, Hospital
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -24,6 +24,8 @@ import RideOffersBanner from './RideOffersBanner';
 import HourlyRentalsModal from './HourlyRentalsModal';
 import OutstationModal from './OutstationModal';
 import AirportFastTrackModal from './AirportFastTrackModal';
+import ScheduleRideModal from './ScheduleRideModal';
+import EmergencyMedicalModal from './EmergencyMedicalModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -305,6 +307,8 @@ const BookRide = () => {
   const [showRentalsModal, setShowRentalsModal] = useState(false);
   const [showOutstationModal, setShowOutstationModal] = useState(false);
   const [showAirportModal, setShowAirportModal] = useState(false);
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showMedicalModal, setShowMedicalModal] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
@@ -3896,10 +3900,40 @@ const BookRide = () => {
                 <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded font-black">AMD Flight Guard</span>
               </button>
               <button 
-                onClick={() => { setActiveTab('reserve'); setShowPrices(false); }} 
-                className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'reserve' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
+                onClick={() => setShowScheduleModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-purple-800 hover:text-purple-950 font-bold transition-colors flex items-center gap-1.5"
               >
-                Reserve a ride
+                <Calendar className="w-4 h-4 text-purple-600" /> Reserve Advance
+                <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded font-black">Zero Surge</span>
+              </button>
+              </button>
+              <button 
+                onClick={() => setShowRentalsModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-amber-800 hover:text-amber-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Clock className="w-4 h-4 text-amber-600" /> Hourly Rentals
+                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-black">2-12 Hrs</span>
+              </button>
+              <button 
+                onClick={() => setShowOutstationModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-indigo-800 hover:text-indigo-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Compass className="w-4 h-4 text-indigo-600" /> Outstation
+                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded font-black">Intercity</span>
+              </button>
+              <button 
+                onClick={() => setShowAirportModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-sky-800 hover:text-sky-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Plane className="w-4 h-4 text-sky-600" /> SVPI Airport Fast-Track
+                <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded font-black">AMD Flight Guard</span>
+              </button>
+              <button 
+                onClick={() => setShowScheduleModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-purple-800 hover:text-purple-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Calendar className="w-4 h-4 text-purple-600" /> Reserve Advance
+                <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded font-black">Zero Surge</span>
               </button>
               <button 
                 onClick={() => { setActiveTab('parcel'); setShowPrices(false); }} 
@@ -4139,7 +4173,7 @@ const BookRide = () => {
                             </div>
 
                             {/* Quick Action Toolbar */}
-                            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 pt-1">
+                            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5 pt-1">
                               <button
                                 onClick={() => setShowLiveGuardModal(true)}
                                 className="flex flex-col items-center justify-center p-3 rounded-2xl bg-gradient-to-b from-pink-50 to-pink-100/50 hover:from-pink-100 hover:to-pink-200/60 border border-pink-200 text-pink-800 font-bold text-xs transition shadow-sm hover:scale-[1.02] transform"
@@ -4156,6 +4190,15 @@ const BookRide = () => {
                                 <Siren className="h-5 w-5 text-red-600 mb-1 animate-pulse" />
                                 <span>Silent SOS</span>
                                 <span className="text-[10px] text-red-600 font-normal">Discreet Alert</span>
+                              </button>
+
+                              <button
+                                onClick={() => setShowMedicalModal(true)}
+                                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-gradient-to-b from-rose-50 to-rose-100/50 hover:from-rose-100 hover:to-rose-200/60 border border-rose-200 text-rose-800 font-bold text-xs transition shadow-sm hover:scale-[1.02] transform"
+                              >
+                                <HeartPulse className="h-5 w-5 text-rose-600 mb-1" />
+                                <span>108 Medical</span>
+                                <span className="text-[10px] text-rose-600 font-normal">Nearest ER</span>
                               </button>
 
                               <button
@@ -5709,6 +5752,39 @@ const BookRide = () => {
         />
       )}
 
+      {/* 📅 Scheduled Advance Booking Modal */}
+      {showScheduleModal && (
+        <ScheduleRideModal
+          isOpen={showScheduleModal}
+          onClose={() => setShowScheduleModal(false)}
+          defaultPickup={pickup || 'SG Highway, Ahmedabad'}
+          defaultDropoff={dropoff || 'Kalupur Railway Station, Ahmedabad'}
+          onScheduleComplete={(booking) => {
+            console.log('Advance Booking Scheduled:', booking);
+            try {
+              const existingList = JSON.parse(localStorage.getItem('smartcab_scheduled_rides') || '[]');
+              localStorage.setItem('smartcab_scheduled_rides', JSON.stringify([booking, ...existingList]));
+            } catch (e) {}
+          }}
+        />
+      )}
+
+      {/* 🏥 24/7 Emergency Medical & Hospital Quick-Guide Modal */}
+      {showMedicalModal && (
+        <EmergencyMedicalModal
+          isOpen={showMedicalModal}
+          onClose={() => setShowMedicalModal(false)}
+          currentLat={pickupCoords ? pickupCoords[0] : 23.0225}
+          currentLng={pickupCoords ? pickupCoords[1] : 72.5714}
+          tripId={currentBookingId}
+          onRerouteHospital={(hosp) => {
+            setDropoff(hosp.name + ', ' + hosp.city);
+            if (hosp.lat && hosp.lng) {
+              setDropoffCoords([hosp.lat, hosp.lng]);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

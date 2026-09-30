@@ -56,6 +56,7 @@ import secrets
 import threading
 import asyncio
 import unicodedata
+import urllib.parse
 
 from notification_service import (
     dispatch_emergency_broadcast,
@@ -3046,6 +3047,320 @@ def book_airport_fasttrack(payload: AirportFastTrackPayload):
     TRIPS.append(booking_record)
     log.info("✈️ Airport Fast-Track Booked: #%s (Flight %s, %s, ₹%s)", ride_code, payload.flightNumber, payload.terminal, final_fare)
     return {"status": "ok", "booking": booking_record}
+
+
+# ---------------------------------------------------------------------------
+# 📅 STEP 2: Scheduled Advance Bookings & Calendar Reminder System
+# ---------------------------------------------------------------------------
+
+SCHEDULED_TRIPS: List[Dict[str, Any]] = []
+
+class ScheduleTripPayload(BaseModel):
+    riderName: str
+    phone: Optional[str] = "+91 98765 00000"
+    pickupLocation: str
+    dropoffLocation: str
+    pickupDateTime: str  # e.g., "2026-10-02 05:30" or ISO
+    selectedCar: Optional[str] = "SmartPro"
+    fare: Optional[float] = 249.0
+    notes: Optional[str] = None
+    flightTrainNumber: Optional[str] = None
+    appliedPromo: Optional[str] = None
+    discount: Optional[float] = 0.0
+
+@app.post("/api/trips/schedule")
+def schedule_advance_trip(payload: ScheduleTripPayload):
+    """Creates a confirmed advance scheduled booking with calendar synchronization."""
+    trip_id = _next_id["trip"]
+    _next_id["trip"] += 1
+    ride_code = f"SCHED-{secrets.token_hex(3).upper()}"
+    
+    # Generate Google Calendar link & ICS invite data
+    google_cal_url = (
+        f"https://calendar.google.com/calendar/render?action=TEMPLATE"
+        f"&text={urllib.parse.quote('SmartCab Ride: ' + payload.pickupLocation + ' to ' + payload.dropoffLocation)}"
+        f"&details={urllib.parse.quote('Ride Ref: ' + ride_code + ' | Cab: ' + str(payload.selectedCar) + ' | Driver dispatch starts 20 mins prior.')}"
+        f"&location={urllib.parse.quote(payload.pickupLocation)}"
+    )
+
+    ics_content = (
+        "BEGIN:VCALENDAR\r\n"
+        "VERSION:2.0\r\n"
+        "PRODID:-//SmartCab Security Platform//Ride Schedule//EN\r\n"
+        "BEGIN:VEVENT\r\n"
+        f"SUMMARY:SmartCab Ride ({ride_code})\r\n"
+        f"DESCRIPTION:SmartCab Advance Booking\\nRef: {ride_code}\\nPickup: {payload.pickupLocation}\\nDropoff: {payload.dropoffLocation}\\nVehicle: {payload.selectedCar}\\nFare: Rs.{payload.fare}\r\n"
+        f"LOCATION:{payload.pickupLocation}\r\n"
+        "STATUS:CONFIRMED\r\n"
+        "END:VEVENT\r\n"
+        "END:VCALENDAR\r\n"
+    )
+
+    booking_record = {
+        "id": trip_id,
+        "bookingId": trip_id,
+        "rideCode": ride_code,
+        "category": "SCHEDULED_ADVANCE",
+        "riderName": payload.riderName,
+        "phone": payload.phone,
+        "pickupLocation": payload.pickupLocation,
+        "dropoffLocation": payload.dropoffLocation,
+        "pickup": payload.pickupLocation,
+        "dropoff": payload.dropoffLocation,
+        "scheduledDateTime": payload.pickupDateTime,
+        "selectedCar": payload.selectedCar,
+        "fare": payload.fare,
+        "discount": payload.discount or 0.0,
+        "appliedPromo": payload.appliedPromo,
+        "notes": payload.notes,
+        "flightTrainNumber": payload.flightTrainNumber,
+        "status": "SCHEDULED",
+        "dispatchBufferMinutes": 20,
+        "googleCalendarUrl": google_cal_url,
+        "icsContent": ics_content,
+        "createdAt": _now_iso(),
+        "driver": {
+            "name": "Reserved Fleet Driver",
+            "phone": "+91 98765 43210",
+            "plate": "GJ 01 SC 9988",
+            "carModel": f"Smart {payload.selectedCar}",
+            "rating": 4.95
+        }
+    }
+
+    SCHEDULED_TRIPS.insert(0, booking_record)
+    TRIPS.append(booking_record)
+    log.info("📅 Advance Ride Scheduled: #%s for %s (%s -> %s)", ride_code, payload.pickupDateTime, payload.pickupLocation, payload.dropoffLocation)
+    return {
+        "status": "ok",
+        "booking": booking_record,
+        "message": f"Ride scheduled for {payload.pickupDateTime}. Driver dispatch will start 20 minutes prior."
+    }
+
+@app.get("/api/trips/scheduled")
+def list_scheduled_trips():
+    return {"status": "ok", "scheduledTrips": SCHEDULED_TRIPS}
+
+@app.post("/api/trips/scheduled/{trip_id}/cancel")
+def cancel_scheduled_trip(trip_id: int):
+    for st in SCHEDULED_TRIPS:
+        if st.get("id") == trip_id or str(st.get("id")) == str(trip_id):
+            st["status"] = "CANCELLED"
+            return {"status": "ok", "message": f"Scheduled ride #{st.get('rideCode')} cancelled successfully."}
+    return {"status": "ok", "message": "Trip marked as cancelled."}
+
+
+# ---------------------------------------------------------------------------
+# 🏥 STEP 3: Emergency Medical & Nearest Hospital Quick-Guide
+# ---------------------------------------------------------------------------
+
+HOSPITALS_DIRECTORY = [
+    {
+        "id": "HOSP-01",
+        "name": "Apollo Hospitals International",
+        "city": "Ahmedabad",
+        "address": "Plot No. 1A, Bhat GIDC Estate, Gandhinagar / SG Highway, Ahmedabad",
+        "lat": 23.1168,
+        "lng": 72.5937,
+        "emergencyPhone": "+91 79 6670 1800",
+        "speciality": "Level-1 Trauma & 24/7 Cardiac Emergency",
+        "open24x7": True,
+        "ambulanceAvailable": True,
+        "bloodBank": True,
+        "icuBeds": 120
+    },
+    {
+        "id": "HOSP-02",
+        "name": "Civil Hospital Trauma Center (108 Hub)",
+        "city": "Ahmedabad",
+        "address": "Asarwa, Near B.J. Medical College, Ahmedabad",
+        "lat": 23.0525,
+        "lng": 72.6028,
+        "emergencyPhone": "108",
+        "speciality": "Asia's Largest Apex Govt Trauma & Burns Center",
+        "open24x7": True,
+        "ambulanceAvailable": True,
+        "bloodBank": True,
+        "icuBeds": 350
+    },
+    {
+        "id": "HOSP-03",
+        "name": "KD Hospital (Kusum Dhirajlal)",
+        "city": "Ahmedabad",
+        "address": "Vaishnodevi Circle, SG Highway, Ahmedabad",
+        "lat": 23.1362,
+        "lng": 72.5484,
+        "emergencyPhone": "+91 79 6777 0000",
+        "speciality": "24/7 Multi-Super Speciality Emergency & Stroke Unit",
+        "open24x7": True,
+        "ambulanceAvailable": True,
+        "bloodBank": True,
+        "icuBeds": 95
+    },
+    {
+        "id": "HOSP-04",
+        "name": "Sterling Hospital",
+        "city": "Ahmedabad",
+        "address": "Sterling Hospital Road, Memnagar, Ahmedabad",
+        "lat": 23.0501,
+        "lng": 72.5298,
+        "emergencyPhone": "+91 79 4001 1111",
+        "speciality": "Comprehensive Emergency Care & Neuro Trauma",
+        "open24x7": True,
+        "ambulanceAvailable": True,
+        "bloodBank": True,
+        "icuBeds": 80
+    },
+    {
+        "id": "HOSP-05",
+        "name": "Zydus Hospital",
+        "city": "Ahmedabad",
+        "address": "Zydus Hospitals Road, Thaltej, SG Highway, Ahmedabad",
+        "lat": 23.0645,
+        "lng": 72.5186,
+        "emergencyPhone": "+91 79 6619 0201",
+        "speciality": "Advanced Critical Care & Emergency Response",
+        "open24x7": True,
+        "ambulanceAvailable": True,
+        "bloodBank": True,
+        "icuBeds": 110
+    },
+    {
+        "id": "HOSP-06",
+        "name": "UN Mehta Institute of Cardiology",
+        "city": "Ahmedabad",
+        "address": "Civil Hospital Campus, Asarwa, Ahmedabad",
+        "lat": 23.0538,
+        "lng": 72.6041,
+        "emergencyPhone": "+91 79 2268 4200",
+        "speciality": "24/7 Cardiac Emergency & Cath Lab Emergency",
+        "open24x7": True,
+        "ambulanceAvailable": True,
+        "bloodBank": True,
+        "icuBeds": 150
+    },
+    {
+        "id": "HOSP-07",
+        "name": "Sardar Vallabhbhai Patel (SVP) Hospital",
+        "city": "Ahmedabad",
+        "address": "Ellisbridge, Sabarmati Riverfront, Ahmedabad",
+        "lat": 23.0210,
+        "lng": 72.5714,
+        "emergencyPhone": "+91 79 2657 7621",
+        "speciality": "Modern 1500-Bed Multi-Speciality Municipal Emergency",
+        "open24x7": True,
+        "ambulanceAvailable": True,
+        "bloodBank": True,
+        "icuBeds": 180
+    }
+]
+
+PASSENGER_MEDICAL_PROFILES: Dict[str, Any] = {
+    "default": {
+        "bloodGroup": "O+",
+        "allergies": "No known drug allergies (NKDA)",
+        "medicalConditions": "None",
+        "emergencyDoctorPhone": "+91 98765 10800",
+        "organDonor": True
+    }
+}
+
+class MedicalProfilePayload(BaseModel):
+    userId: Optional[str] = "default"
+    riderName: Optional[str] = "Passenger"
+    bloodGroup: str = "O+"
+    allergies: Optional[str] = "None"
+    medicalConditions: Optional[str] = "None"
+    emergencyDoctorPhone: Optional[str] = None
+    emergencyNotes: Optional[str] = None
+    organDonor: Optional[bool] = False
+
+class MedicalDispatchPayload(BaseModel):
+    tripId: Optional[Any] = None
+    lat: float
+    lng: float
+    hospitalId: Optional[str] = None
+    riderName: Optional[str] = "Passenger"
+    phone: Optional[str] = None
+    bloodGroup: Optional[str] = "O+"
+    emergencyType: Optional[str] = "GENERAL_TRAUMA"
+    medicalNotes: Optional[str] = None
+
+@app.get("/api/medical/nearest-hospitals")
+def get_nearest_hospitals(lat: Optional[float] = 23.0225, lng: Optional[float] = 72.5714, city: Optional[str] = "Ahmedabad"):
+    user_lat = lat or 23.0225
+    user_lng = lng or 72.5714
+    
+    results = []
+    for h in HOSPITALS_DIRECTORY:
+        dlat = (h["lat"] - user_lat) * 111.0
+        dlng = (h["lng"] - user_lng) * 111.0 * 0.92
+        dist_km = round((dlat**2 + dlng**2)**0.5, 2)
+        eta_min = max(2, int(dist_km * 2.2))
+        
+        results.append({
+            **h,
+            "distanceKm": dist_km,
+            "etaMinutes": eta_min,
+            "directionsUrl": f"https://www.google.com/maps/dir/?api=1&destination={h['lat']},{h['lng']}"
+        })
+        
+    results.sort(key=lambda x: x["distanceKm"])
+    return {
+        "status": "ok",
+        "city": city,
+        "hospitalsCount": len(results),
+        "hospitals": results
+    }
+
+@app.get("/api/medical/profile")
+def get_medical_profile(user_id: Optional[str] = "default"):
+    profile = PASSENGER_MEDICAL_PROFILES.get(user_id or "default", PASSENGER_MEDICAL_PROFILES["default"])
+    return {"status": "ok", "profile": profile}
+
+@app.post("/api/medical/profile")
+def save_medical_profile(payload: MedicalProfilePayload):
+    user_key = payload.userId or "default"
+    record = {
+        "bloodGroup": payload.bloodGroup,
+        "allergies": payload.allergies or "None",
+        "medicalConditions": payload.medicalConditions or "None",
+        "emergencyDoctorPhone": payload.emergencyDoctorPhone,
+        "emergencyNotes": payload.emergencyNotes,
+        "organDonor": payload.organDonor,
+        "updatedAt": _now_iso()
+    }
+    PASSENGER_MEDICAL_PROFILES[user_key] = record
+    log.info("🏥 Medical Profile updated for %s (Blood: %s)", user_key, payload.bloodGroup)
+    return {"status": "ok", "profile": record, "message": "Medical ID profile saved securely."}
+
+@app.post("/api/medical/dispatch-alert")
+def dispatch_medical_alert(payload: MedicalDispatchPayload):
+    alert_id = f"MED-ALERT-{secrets.token_hex(3).upper()}"
+    hosp = next((h for h in HOSPITALS_DIRECTORY if h["id"] == payload.hospitalId), HOSPITALS_DIRECTORY[0])
+    
+    alert_record = {
+        "alertId": alert_id,
+        "timestamp": _now_iso(),
+        "tripId": payload.tripId,
+        "coordinates": {"lat": payload.lat, "lng": payload.lng},
+        "targetHospital": hosp["name"],
+        "hospitalEmergencyPhone": hosp["emergencyPhone"],
+        "ambulanceDispatched": True,
+        "patient": {
+            "name": payload.riderName,
+            "bloodGroup": payload.bloodGroup,
+            "emergencyType": payload.emergencyType,
+            "medicalNotes": payload.medicalNotes
+        },
+        "status": "DISPATCHED"
+    }
+    log.warning("🚨 MEDICAL SOS DISPATCHED: %s -> Target Hospital: %s (Phone: %s)", alert_id, hosp["name"], hosp["emergencyPhone"])
+    return {
+        "status": "ok",
+        "alert": alert_record,
+        "message": f"108 Medical Emergency Protocol Activated. Nearest Hospital: {hosp['name']} (Hotline: {hosp['emergencyPhone']})."
+    }
 
 
 # ---------------------------------------------------------------------------
