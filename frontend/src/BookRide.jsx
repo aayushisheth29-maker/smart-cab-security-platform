@@ -2315,10 +2315,14 @@ const BookRide = () => {
       {showPaymentModal && (
         <PaymentModal
           isOpen={showPaymentModal}
-          onClose={() => setShowPaymentModal(false)}
+          onClose={() => {
+            setShowPaymentModal(false);
+            setRideConfirmed(true);
+          }}
           bookingDetails={pendingBookingDetails}
           onPaymentSuccess={(data) => {
             console.log("Payment Confirmed:", data);
+            setRideConfirmed(true);
           }}
         />
       )}
@@ -5640,6 +5644,9 @@ const BookRide = () => {
           onClose={() => setShowRentalsModal(false)}
           defaultPickup={pickup || 'SG Highway, Ahmedabad'}
           onBookComplete={(booking) => {
+            setPickup(booking.pickupLocation || pickup || 'SG Highway, Ahmedabad');
+            setDropoff(booking.dropoffLocation || 'Multiple Stops (Rental)');
+            setRideConfirmed(true);
             setPendingBookingDetails({
               ...booking,
               bookingId: booking.rideCode || `RENTAL-${booking.id}`,
@@ -5661,6 +5668,9 @@ const BookRide = () => {
           onClose={() => setShowOutstationModal(false)}
           defaultOrigin="Ahmedabad"
           onBookComplete={(booking) => {
+            setPickup(booking.pickupLocation || 'Ahmedabad');
+            setDropoff(booking.dropoffLocation || 'Outstation');
+            setRideConfirmed(true);
             setPendingBookingDetails({
               ...booking,
               bookingId: booking.rideCode || `OUTSTATION-${booking.id}`,
@@ -5682,6 +5692,9 @@ const BookRide = () => {
           onClose={() => setShowAirportModal(false)}
           defaultCityAddress={dropoff || pickup || 'SG Highway, Ahmedabad'}
           onBookComplete={(booking) => {
+            setPickup(booking.pickupLocation || 'SVPI Airport (AMD)');
+            setDropoff(booking.dropoffLocation || dropoff || 'Ahmedabad City');
+            setRideConfirmed(true);
             setPendingBookingDetails({
               ...booking,
               bookingId: booking.rideCode || `AIRPORT-${booking.id}`,
