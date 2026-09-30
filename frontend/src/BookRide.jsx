@@ -3906,35 +3906,6 @@ const BookRide = () => {
                 <Calendar className="w-4 h-4 text-purple-600" /> Reserve Advance
                 <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded font-black">Zero Surge</span>
               </button>
-              </button>
-              <button 
-                onClick={() => setShowRentalsModal(true)} 
-                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-amber-800 hover:text-amber-950 font-bold transition-colors flex items-center gap-1.5"
-              >
-                <Clock className="w-4 h-4 text-amber-600" /> Hourly Rentals
-                <span className="text-[10px] bg-amber-100 text-amber-800 px-1.5 py-0.2 rounded font-black">2-12 Hrs</span>
-              </button>
-              <button 
-                onClick={() => setShowOutstationModal(true)} 
-                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-indigo-800 hover:text-indigo-950 font-bold transition-colors flex items-center gap-1.5"
-              >
-                <Compass className="w-4 h-4 text-indigo-600" /> Outstation
-                <span className="text-[10px] bg-indigo-100 text-indigo-800 px-1.5 py-0.2 rounded font-black">Intercity</span>
-              </button>
-              <button 
-                onClick={() => setShowAirportModal(true)} 
-                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-sky-800 hover:text-sky-950 font-bold transition-colors flex items-center gap-1.5"
-              >
-                <Plane className="w-4 h-4 text-sky-600" /> SVPI Airport Fast-Track
-                <span className="text-[10px] bg-sky-100 text-sky-800 px-1.5 py-0.2 rounded font-black">AMD Flight Guard</span>
-              </button>
-              <button 
-                onClick={() => setShowScheduleModal(true)} 
-                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-purple-800 hover:text-purple-950 font-bold transition-colors flex items-center gap-1.5"
-              >
-                <Calendar className="w-4 h-4 text-purple-600" /> Reserve Advance
-                <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded font-black">Zero Surge</span>
-              </button>
               <button 
                 onClick={() => { setActiveTab('parcel'); setShowPrices(false); }} 
                 className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'parcel' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
