@@ -26,6 +26,7 @@ import OutstationModal from './OutstationModal';
 import AirportFastTrackModal from './AirportFastTrackModal';
 import ScheduleRideModal from './ScheduleRideModal';
 import EmergencyMedicalModal from './EmergencyMedicalModal';
+import CorporateBillingModal from './CorporateBillingModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -309,6 +310,7 @@ const BookRide = () => {
   const [showAirportModal, setShowAirportModal] = useState(false);
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showMedicalModal, setShowMedicalModal] = useState(false);
+  const [showCorporateModal, setShowCorporateModal] = useState(false);
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
@@ -3907,6 +3909,13 @@ const BookRide = () => {
                 <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded font-black">Zero Surge</span>
               </button>
               <button 
+                onClick={() => setShowCorporateModal(true)} 
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-slate-800 hover:text-slate-950 font-bold transition-colors flex items-center gap-1.5"
+              >
+                <Building className="w-4 h-4 text-slate-700" /> Corporate &amp; GST
+                <span className="text-[10px] bg-slate-200 text-slate-800 px-1.5 py-0.2 rounded font-black">SAC 9964</span>
+              </button>
+              <button 
                 onClick={() => { setActiveTab('parcel'); setShowPrices(false); }} 
                 className={`whitespace-nowrap pb-2 border-b-2 transition-colors ${activeTab === 'parcel' ? 'border-black text-black font-bold' : 'border-transparent hover:text-black'}`}
               >
@@ -4971,10 +4980,11 @@ const BookRide = () => {
               A premium, secure travel solution for your employees. Corporate billing and a real-time safety dashboard.
             </p>
             <button 
-              onClick={() => { closeAllForms(); setShowBusinessForm(true); }} 
-              className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform"
+              onClick={() => { closeAllForms(); setShowCorporateModal(true); }} 
+              className="bg-black text-white text-lg font-bold py-4 px-8 rounded-lg w-max hover:bg-gray-800 transition shadow-lg hover:scale-105 transform flex items-center gap-2"
             >
-              Set up your company →
+              <Building className="h-5 w-5" />
+              <span>Open Corporate &amp; GST Hub →</span>
             </button>
           </div>
           <div className="w-full md:w-1/2">
@@ -5754,6 +5764,14 @@ const BookRide = () => {
               setDropoffCoords([hosp.lat, hosp.lng]);
             }
           }}
+        />
+      )}
+
+      {/* 🏢 Corporate B2B GST Billing & Tax Invoices Modal */}
+      {showCorporateModal && (
+        <CorporateBillingModal
+          isOpen={showCorporateModal}
+          onClose={() => setShowCorporateModal(false)}
         />
       )}
     </div>

@@ -1,6 +1,6 @@
 import React, { lazy, Suspense } from 'react';
 import TrackRide from './TrackRide';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useNavigate } from 'react-router-dom';
 import Dashboard from './Dashboard';
 import Login from './Login';
 import Signup from './Signup';
@@ -11,8 +11,21 @@ import SafetyCenter from './SafetyCenter';
 import AdminDashboard from './AdminDashboard';
 import DriverDashboard from './DriverDashboard';
 import SplitFareView from './SplitFareView';
+import CorporateBillingModal from './CorporateBillingModal';
 import I18nLoader from './I18nLoader';
 import FloatingHelp from './HelpAssistant';
+
+function CorporateRouteWrapper() {
+  const navigate = useNavigate();
+  return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+      <CorporateBillingModal
+        isOpen={true}
+        onClose={() => navigate('/')}
+      />
+    </div>
+  );
+}
 
 const RouteLabApp = lazy(() => import('../route-preview/App'));
 
@@ -177,6 +190,7 @@ function App() {
           <Route path="/owner" element={<AdminDashboard />} />
           <Route path="/admin" element={<AdminDashboard />} />
           <Route path="/driver" element={<DriverDashboard />} />
+          <Route path="/corporate" element={<CorporateRouteWrapper />} />
         </Routes>
         <FloatingHelp />
       </Router>

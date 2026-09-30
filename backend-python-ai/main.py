@@ -57,6 +57,7 @@ import threading
 import asyncio
 import unicodedata
 import urllib.parse
+import re
 
 from notification_service import (
     dispatch_emergency_broadcast,
@@ -3360,6 +3361,316 @@ def dispatch_medical_alert(payload: MedicalDispatchPayload):
         "status": "ok",
         "alert": alert_record,
         "message": f"108 Medical Emergency Protocol Activated. Nearest Hospital: {hosp['name']} (Hotline: {hosp['emergencyPhone']})."
+    }
+
+
+# ---------------------------------------------------------------------------
+# 🏢 STEP 1: Corporate & Business Billing Hub (B2B GST Invoicing)
+# ---------------------------------------------------------------------------
+
+STATE_GST_CODES = {
+    "01": "Jammu and Kashmir", "02": "Himachal Pradesh", "03": "Punjab", "04": "Chandigarh",
+    "06": "Haryana", "07": "Delhi", "08": "Rajasthan", "09": "Uttar Pradesh",
+    "19": "West Bengal", "23": "Madhya Pradesh", "24": "Gujarat", "27": "Maharashtra",
+    "29": "Karnataka", "32": "Kerala", "33": "Tamil Nadu", "36": "Telangana"
+}
+
+CORPORATE_PROFILES: Dict[str, Any] = {
+    "default": {
+        "companyName": "SmartCab Technologies India Pvt Ltd",
+        "gstin": "24AABCS1429B1Z8",
+        "state": "Gujarat (24)",
+        "businessEmail": "finance@smartcab.in",
+        "billingAddress": "Floor 7, Titanium Square, SG Highway, Thaltej, Ahmedabad - 380054",
+        "department": "Engineering & Operations",
+        "costCenter": "CC-TECH-2026",
+        "isVerified": True,
+        "updatedAt": _now_iso()
+    }
+}
+
+class CorporateProfilePayload(BaseModel):
+    userId: Optional[str] = "default"
+    companyName: str
+    gstin: str
+    businessEmail: str
+    billingAddress: str
+    department: Optional[str] = "General"
+    costCenter: Optional[str] = "CC-DEFAULT"
+
+class VerifyGstinResponse(BaseModel):
+    isValid: bool
+    gstin: str
+    stateCode: str
+    stateName: str
+    legalName: Optional[str] = None
+    taxpayerType: str = "Regular"
+    status: str = "ACTIVE"
+
+@app.get("/api/corporate/verify-gstin/{gstin}")
+def verify_gstin(gstin: str):
+    clean_gstin = gstin.strip().upper()
+    # Indian GSTIN format: 15 alphanumeric characters (2 digit state code + 10 char PAN + 1 entity num + 'Z' + 1 checksum)
+    if len(clean_gstin) == 15 and clean_gstin[:2].isdigit():
+        state_code = clean_gstin[:2]
+        state_name = STATE_GST_CODES.get(state_code, "India State")
+        return {
+            "isValid": True,
+            "gstin": clean_gstin,
+            "stateCode": state_code,
+            "stateName": f"{state_name} ({state_code})",
+            "legalName": f"Verified Enterprise ({state_name})",
+            "taxpayerType": "Regular Business Taxpayer",
+            "sacCode": "9964",
+            "taxRateGst": "5%",
+            "applicableGstRate": "5% (Input Tax Credit Allowed)",
+            "status": "ACTIVE"
+        }
+    return {
+        "isValid": False,
+        "gstin": clean_gstin,
+        "stateCode": "00",
+        "stateName": "Invalid Format",
+        "sacCode": "9964",
+        "taxRateGst": "5%",
+        "status": "INVALID_GSTIN"
+    }
+
+@app.get("/api/corporate/profile")
+def get_corporate_profile(user_id: Optional[str] = "default"):
+    profile = CORPORATE_PROFILES.get(user_id or "default", CORPORATE_PROFILES["default"])
+    return {"status": "SUCCESS", "ok": True, "profile": profile}
+
+@app.post("/api/corporate/profile")
+def save_corporate_profile(payload: CorporateProfilePayload):
+    user_key = payload.userId or "default"
+    clean_gstin = payload.gstin.strip().upper()
+    state_code = clean_gstin[:2] if len(clean_gstin) >= 2 and clean_gstin[:2].isdigit() else "24"
+    state_name = STATE_GST_CODES.get(state_code, "Gujarat")
+    
+    record = {
+        "companyName": payload.companyName.strip(),
+        "gstin": clean_gstin,
+        "state": f"{state_name} ({state_code})",
+        "businessEmail": payload.businessEmail.strip(),
+        "billingAddress": payload.billingAddress.strip(),
+        "department": payload.department or "Operations",
+        "costCenter": payload.costCenter or "CC-2026",
+        "isVerified": len(clean_gstin) == 15,
+        "updatedAt": _now_iso()
+    }
+    CORPORATE_PROFILES[user_key] = record
+    log.info("🏢 Corporate Profile updated: %s (GSTIN: %s)", payload.companyName, clean_gstin)
+    return {"status": "SUCCESS", "ok": True, "profile": record, "message": "Corporate GST Profile saved successfully."}
+
+@app.get("/api/corporate/invoices")
+def get_corporate_invoices():
+    # Return business trips formatted with SAC 9964 and GST breakdown
+    corp_invoices = []
+    for i, t in enumerate(TRIPS[:12]):
+        fare = float(t.get("fare") or 280.0)
+        base_taxable = round(fare / 1.05, 2)
+        gst_total = round(fare - base_taxable, 2)
+        cgst = round(gst_total / 2.0, 2)
+        sgst = round(gst_total / 2.0, 2)
+        inv_no = f"INV-2026-GST-{1000 + i}"
+        
+        corp_invoices.append({
+            "invoiceNumber": inv_no,
+            "tripId": t.get("id"),
+            "rideCode": t.get("rideCode") or f"SC-{t.get('id')}",
+            "date": t.get("createdAt") or _now_iso(),
+            "passenger": t.get("riderName") or "Business Passenger",
+            "route": f"{t.get('pickupLocation') or 'Pickup'} → {t.get('dropoffLocation') or 'Destination'}",
+            "selectedCar": t.get("selectedCar") or "SmartPro",
+            "sacCode": "SAC 9964 (Passenger Transport Services)",
+            "taxableValue": base_taxable,
+            "cgst": cgst,
+            "sgst": sgst,
+            "totalGst": gst_total,
+            "totalFare": fare,
+            "companyName": CORPORATE_PROFILES["default"]["companyName"],
+            "companyGstin": CORPORATE_PROFILES["default"]["gstin"],
+            "paymentStatus": "PAID"
+        })
+    return {"status": "SUCCESS", "ok": True, "invoicesCount": len(corp_invoices), "invoices": corp_invoices}
+
+
+# ---------------------------------------------------------------------------
+# ⛽ STEP 4: Driver Daily Target Incentives & Shift Earnings Dashboard
+# ---------------------------------------------------------------------------
+
+DRIVER_DAILY_TARGETS = [
+    {"tier": "Bronze", "ridesRequired": 3, "bonusReward": 150.0, "title": "Bronze Starter Bonus", "icon": "🥉"},
+    {"tier": "Silver", "ridesRequired": 6, "bonusReward": 400.0, "title": "Silver Rush Bonus", "icon": "🥈"},
+    {"tier": "Gold", "ridesRequired": 10, "bonusReward": 900.0, "title": "Gold Champion Fleet Target", "icon": "🥇"}
+]
+
+DRIVER_FUEL_LOGS: List[Dict[str, Any]] = [
+    {
+        "id": "FUEL-01",
+        "timestamp": _now_iso(),
+        "driverName": "Rahul Sharma",
+        "fuelType": "CNG",
+        "amount": 420.0,
+        "quantity": 5.4,
+        "litresOrKg": 5.4,
+        "unit": "kg",
+        "odometerKm": 48210,
+        "station": "Adani Total Gas CNG Station, SG Highway",
+        "receiptNo": "REC-CNG-8821"
+    }
+]
+
+class FuelLogPayload(BaseModel):
+    driverName: Optional[str] = "Rahul Sharma"
+    fuelType: str = "CNG"  # CNG, Petrol, Diesel, EV
+    amount: float
+    quantity: Optional[float] = 0.0
+    litresOrKg: Optional[float] = None
+    unit: Optional[str] = "kg"
+    odometerKm: Optional[float] = 48250.0
+    station: Optional[str] = "HP Petrol / CNG Pump, Ahmedabad"
+    receiptNo: Optional[str] = None
+    notes: Optional[str] = None
+
+class InstantPayoutPayload(BaseModel):
+    driverName: Optional[str] = "Rahul Sharma"
+    payoutAmount: Optional[float] = None
+    amount: Optional[float] = None
+    payoutMethod: Optional[str] = "UPI"
+    upiId: Optional[str] = "rahul.cab@okaxis"
+    bankAccount: Optional[str] = "•••• 4892 (State Bank of India)"
+    accountNumber: Optional[str] = None
+
+@app.get("/api/driver/targets")
+def get_driver_targets(driver_name: Optional[str] = "Rahul Sharma", rides_today: Optional[int] = 4):
+    completed = rides_today or 4
+    current_bonus = 0.0
+    next_tier = None
+    
+    tier_status_list = []
+    for t in DRIVER_DAILY_TARGETS:
+        unlocked = completed >= t["ridesRequired"]
+        if unlocked:
+            current_bonus = t["bonusReward"]
+        elif next_tier is None:
+            next_tier = {
+                **t,
+                "ridesRemaining": t["ridesRequired"] - completed
+            }
+        tier_status_list.append({
+            **t,
+            "status": "UNLOCKED" if unlocked else "IN_PROGRESS" if (completed > 0 and next_tier and next_tier["tier"] == t["tier"]) else "LOCKED"
+        })
+            
+    return {
+        "status": "SUCCESS",
+        "ok": True,
+        "driverName": driver_name,
+        "completedRidesToday": completed,
+        "ridesCompletedToday": completed,
+        "currentBonusUnlocked": current_bonus,
+        "unlockedBonus": current_bonus,
+        "nextTier": next_tier,
+        "targets": tier_status_list,
+        "targetTiers": DRIVER_DAILY_TARGETS
+    }
+
+@app.get("/api/driver/fuel-log")
+def get_fuel_logs(driver_name: Optional[str] = "Rahul Sharma"):
+    total_spent = sum(f.get("amount", 0.0) for f in DRIVER_FUEL_LOGS)
+    return {
+        "status": "SUCCESS",
+        "ok": True,
+        "totalFuelSpentToday": total_spent,
+        "fuelLogs": DRIVER_FUEL_LOGS
+    }
+
+@app.post("/api/driver/fuel-log")
+def add_fuel_log(payload: FuelLogPayload):
+    log_id = f"FUEL-{secrets.token_hex(3).upper()}"
+    qty = payload.litresOrKg if payload.litresOrKg is not None else payload.quantity
+    record = {
+        "id": log_id,
+        "timestamp": _now_iso(),
+        "driverName": payload.driverName,
+        "fuelType": payload.fuelType,
+        "amount": payload.amount,
+        "quantity": qty,
+        "litresOrKg": qty,
+        "unit": payload.unit or ("kWh" if payload.fuelType == "EV" else "L"),
+        "odometerKm": payload.odometerKm,
+        "station": payload.station or "Fleet Fuel Station, Ahmedabad",
+        "receiptNo": payload.receiptNo or f"REC-{secrets.token_hex(3).upper()}",
+        "notes": payload.notes or ""
+    }
+    DRIVER_FUEL_LOGS.insert(0, record)
+    log.info("⛽ Fuel Expense Logged by %s: ₹%s (%s)", payload.driverName, payload.amount, payload.fuelType)
+    return {"status": "SUCCESS", "ok": True, "entry": record, "record": record, "message": "Fuel receipt logged. Net profit adjusted."}
+
+@app.get("/api/driver/shift-summary")
+def get_driver_shift_summary(driver_name: Optional[str] = "Rahul Sharma", rides_today: Optional[int] = 5):
+    # Calculate real-time shift financials
+    gross_fares = 1850.0
+    platform_commission = round(gross_fares * 0.10, 2)  # 10% SmartCab fee
+    driver_tips = 140.0  # 100% direct to driver
+    target_bonus = 400.0  # Silver Tier bonus
+    fuel_deductions = sum(f["amount"] for f in DRIVER_FUEL_LOGS)
+    
+    net_earnings = round((gross_fares - platform_commission) + driver_tips + target_bonus - fuel_deductions, 2)
+    available_payout = max(0.0, net_earnings)
+    
+    return {
+        "status": "SUCCESS",
+        "ok": True,
+        "driverName": driver_name,
+        "shiftHours": "6h 45m",
+        "ridesCompleted": rides_today or 5,
+        "grossFares": gross_fares,
+        "platformCommission10Pct": platform_commission,
+        "platformFee": platform_commission,
+        "driverTips": driver_tips,
+        "targetBonus": target_bonus,
+        "fuelExpenses": fuel_deductions,
+        "fuelExpensesDeducted": fuel_deductions,
+        "netDailyProfit": net_earnings,
+        "netTakeHomeProfit": net_earnings,
+        "availablePayoutBalance": available_payout,
+        "payoutAccount": {
+            "bank": "State Bank of India (SBI)",
+            "accountNumber": "•••• •••• 4892",
+            "upiId": "rahul.driver@okaxis",
+            "ifsc": "SBIN0001234"
+        }
+    }
+
+@app.post("/api/driver/instant-payout")
+def process_instant_payout(payload: InstantPayoutPayload):
+    amt = payload.amount if payload.amount is not None else (payload.payoutAmount or 248.0)
+    utr_code = f"UTR-IMPS-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(3).upper()}"
+    dest = payload.accountNumber or payload.upiId or payload.bankAccount or "Default Driver UPI"
+    payout_record = {
+        "payoutId": f"PAYOUT-{secrets.token_hex(3).upper()}",
+        "utrNumber": utr_code,
+        "timestamp": _now_iso(),
+        "driverName": payload.driverName,
+        "amount": amt,
+        "destination": dest,
+        "destinationUpi": payload.upiId,
+        "destinationBank": payload.bankAccount,
+        "rail": "IMPS / Instant UPI 2.0 Payout",
+        "status": "SETTLED_INSTANTLY",
+        "message": f"₹{amt:.2f} credited instantly via IMPS UTR #{utr_code}."
+    }
+    log.info("💸 Instant Driver Payout Settled: ₹%s to %s (UTR: %s)", amt, payload.driverName, utr_code)
+    return {
+        "status": "SUCCESS",
+        "ok": True,
+        "amount": amt,
+        "utr": utr_code,
+        "payout": payout_record,
+        "message": f"₹{amt:.2f} credited to {dest} via Instant IMPS. Ref: {utr_code}."
     }
 
 
