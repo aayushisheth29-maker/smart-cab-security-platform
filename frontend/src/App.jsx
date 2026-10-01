@@ -138,6 +138,13 @@ class GlobalErrorBoundary extends React.Component {
 // Same backend, same admin key — just a private door.
 const OWNER_MODE = import.meta.env.VITE_OWNER_MODE === 'true';
 
+// 🚖 DRIVER PORTAL MODE — used by the THIRD, dedicated Driver Partner Vercel project
+// (e.g. https://driver.smart-security-cab.com or smart-cab-driver-portal.vercel.app).
+// That project sets VITE_DRIVER_MODE=true → the app renders ONLY the Driver Partner Portal
+// (KYC Onboarding, Shift Console, Live Ride Progression, Earnings Wallet, Fuel Logger, Instant Payouts).
+// Also packages into the standalone Driver Android APK.
+const DRIVER_MODE = import.meta.env.VITE_DRIVER_MODE === 'true';
+
 function App() {
   if (OWNER_MODE) {
     // AdminDashboard uses React Router (Link), so it must stay INSIDE the
@@ -148,6 +155,18 @@ function App() {
           <I18nLoader />
           <Routes>
             <Route path="/*" element={<AdminDashboard />} />
+          </Routes>
+        </Router>
+      </GlobalErrorBoundary>
+    );
+  }
+  if (DRIVER_MODE) {
+    return (
+      <GlobalErrorBoundary>
+        <Router>
+          <I18nLoader />
+          <Routes>
+            <Route path="/*" element={<DriverDashboard />} />
           </Routes>
         </Router>
       </GlobalErrorBoundary>

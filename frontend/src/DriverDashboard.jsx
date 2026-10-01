@@ -32,6 +32,7 @@ import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import { API_BASE, apiFetch } from './api';
 import { LanguageSwitcher, useLanguage } from './i18n';
+import DriverKycModal from './DriverKycModal';
 
 // Custom icons for driver map
 const driverIcon = L.divIcon({
@@ -70,6 +71,7 @@ export default function DriverDashboard() {
   const [showReportModal, setShowReportModal] = useState(false);
   const [showFuelModal, setShowFuelModal] = useState(false);
   const [showPayoutModal, setShowPayoutModal] = useState(false);
+  const [showKycModal, setShowKycModal] = useState(false);
   
   const [reportReason, setReportReason] = useState('Suspicious / Contraband Concern');
   const [reportNotes, setReportNotes] = useState('');
@@ -333,6 +335,15 @@ export default function DriverDashboard() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowKycModal(true)}
+              className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 transition flex items-center gap-1.5"
+            >
+              <ShieldCheck className="h-3.5 w-3.5 text-amber-400" />
+              <span>KYC Status</span>
+            </button>
+
             <LanguageSwitcher />
             
             {/* ONLINE / OFFLINE SWITCH */}
@@ -905,6 +916,17 @@ export default function DriverDashboard() {
             </form>
           </div>
         </div>
+      )}
+
+      {/* 🪪 DRIVER GOVERNMENT KYC & ONBOARDING MODAL */}
+      {showKycModal && (
+        <DriverKycModal
+          isOpen={showKycModal}
+          onClose={() => setShowKycModal(false)}
+          onKycSuccess={() => {
+            fetchDriverData();
+          }}
+        />
       )}
     </div>
   );

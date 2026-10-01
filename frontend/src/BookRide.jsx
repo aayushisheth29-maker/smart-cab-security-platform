@@ -3397,25 +3397,11 @@ const BookRide = () => {
               🧭 Route Lab
             </button>
             <button
-              onClick={() => setShowDriverKycModal(true)}
-              className="px-3 py-2 rounded-full transition flex items-center hover:bg-gray-800 text-yellow-300"
-              title="Government Verified Driver KYC & Onboarding"
-            >
-              🪪 Driver KYC
-            </button>
-            <button
               onClick={() => setShowDpdpModal(true)}
               className="px-3 py-2 rounded-full transition flex items-center hover:bg-gray-800 text-blue-300"
               title="DPDP Act 2023 Compliance & Data Protection"
             >
               ⚖️ DPDP Privacy
-            </button>
-            <button
-              onClick={() => { window.location.href = '/driver'; }}
-              className="px-3 py-2 rounded-full transition flex items-center bg-emerald-600/20 text-emerald-300 hover:bg-emerald-600/30 border border-emerald-500/30 font-bold"
-              title="Driver Companion & Shift Console"
-            >
-              🚖 Driver App
             </button>
           </div>
         </div>
