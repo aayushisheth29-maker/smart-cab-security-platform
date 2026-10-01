@@ -36,14 +36,14 @@ def test_lost_property_reporting_and_registry():
     assert get_json["count"] >= 1
 
 def test_ride_insurance_policy_certificate():
-    """Test fetching complimentary ₹5,00,000 accidental & medical insurance certificate."""
+    """Test fetching complimentary ₹50,000 accidental & medical insurance certificate."""
     trip_id = "SC-2026-000549"
     response = client.get(f"/api/insurance/policy/{trip_id}")
     assert response.status_code == 200
     data = response.json()
     assert data["status"] == "SUCCESS"
     assert data["coverageActive"] is True
-    assert data["totalSumInsured"] == "₹5,00,000"
+    assert data["totalSumInsured"] == "₹50,000"
     assert len(data["benefits"]) >= 4
     assert any("Medical" in b["cover"] for b in data["benefits"])
 

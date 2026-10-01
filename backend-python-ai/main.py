@@ -3501,9 +3501,9 @@ def get_corporate_invoices():
 # ---------------------------------------------------------------------------
 
 DRIVER_DAILY_TARGETS = [
-    {"tier": "Bronze", "ridesRequired": 3, "bonusReward": 150.0, "title": "Bronze Starter Bonus", "icon": "🥉"},
-    {"tier": "Silver", "ridesRequired": 6, "bonusReward": 400.0, "title": "Silver Rush Bonus", "icon": "🥈"},
-    {"tier": "Gold", "ridesRequired": 10, "bonusReward": 900.0, "title": "Gold Champion Fleet Target", "icon": "🥇"}
+    {"tier": "Bronze", "ridesRequired": 3, "bonusReward": 40.0, "title": "Bronze Starter Bonus", "icon": "🥉"},
+    {"tier": "Silver", "ridesRequired": 6, "bonusReward": 100.0, "title": "Silver Rush Bonus", "icon": "🥈"},
+    {"tier": "Gold", "ridesRequired": 10, "bonusReward": 200.0, "title": "Gold Champion Fleet Target", "icon": "🥇"}
 ]
 
 DRIVER_FUEL_LOGS: List[Dict[str, Any]] = [
@@ -3745,7 +3745,7 @@ def report_lost_item(payload: LostItemReportPayload):
 
 
 # ---------------------------------------------------------------------------
-# 🛡️ STEP 6: Complimentary ₹5 Lakh Ride Safety & Medical Insurance Shield
+# 🛡️ STEP 6: Complimentary ₹50,000 Starter Ride Safety & Medical Insurance Shield
 # ---------------------------------------------------------------------------
 
 @app.get("/api/insurance/policy/{trip_id}")
@@ -3756,14 +3756,14 @@ def get_trip_insurance_policy(trip_id: str):
         "ok": True,
         "policyNumber": policy_no,
         "tripId": trip_id,
-        "underwriter": "ICICI Lombard / SmartCab Safety Shield",
+        "underwriter": "SmartCab Community Safety Shield",
         "coverageActive": True,
-        "totalSumInsured": "₹5,00,000",
+        "totalSumInsured": "₹50,000",
         "benefits": [
-            {"cover": "Emergency Accidental Medical Expenses", "sumInsured": "₹2,00,000", "cashlessHospitalNetwork": "All Major Hospitals (108 Hub, Apollo, SVP, KD)"},
-            {"cover": "Accidental Death & Permanent Total Disability", "sumInsured": "₹5,00,000", "payout": "100% Direct Family Nominee"},
-            {"cover": "Loss of Personal Baggage / Laptop in Transit", "sumInsured": "₹15,000", "payout": "Immediate Reimbursement"},
-            {"cover": "Emergency Ambulance & Trauma Care Assist", "sumInsured": "₹25,000", "payout": "100% Covered"}
+            {"cover": "Emergency Medical & First-Aid Expenses", "sumInsured": "₹15,000", "cashlessHospitalNetwork": "All Major Clinics & Hospitals in Ahmedabad (108 Hub, SVP, Civil, KD)"},
+            {"cover": "Accidental Road Safety Protection", "sumInsured": "₹50,000", "payout": "100% Direct Family Nominee"},
+            {"cover": "Transit Baggage & Phone In-Transit Assist", "sumInsured": "₹5,000", "payout": "Quick Reimbursement"},
+            {"cover": "Emergency 108 Ambulance Dispatch Assist", "sumInsured": "₹5,000", "payout": "100% Covered"}
         ],
         "helpline": "1800-2666 / 108 Emergency",
         "certificateIssueDate": _now_iso()
@@ -3775,12 +3775,12 @@ def get_trip_insurance_policy(trip_id: str):
 # ---------------------------------------------------------------------------
 
 AHMEDABAD_HOTSPOTS = [
-    {"name": "SG Highway Tech Corridor", "lat": 23.0728, "lng": 72.5165, "demandLevel": "VERY HIGH", "surgeMultiplier": "1.8x", "activeRidersWaiting": 28, "bonusPerRide": "+₹80"},
-    {"name": "SVPI Airport Terminal 1 & 2", "lat": 23.0772, "lng": 72.6347, "demandLevel": "EXTREME", "surgeMultiplier": "2.2x", "activeRidersWaiting": 45, "bonusPerRide": "+₹150"},
-    {"name": "GIFT City Financial Zone", "lat": 23.1601, "lng": 72.6841, "demandLevel": "HIGH", "surgeMultiplier": "1.6x", "activeRidersWaiting": 22, "bonusPerRide": "+₹60"},
-    {"name": "Sindhu Bhavan Road Night Hub", "lat": 23.0450, "lng": 72.5020, "demandLevel": "VERY HIGH", "surgeMultiplier": "1.9x", "activeRidersWaiting": 34, "bonusPerRide": "+₹90"},
-    {"name": "Kalupur Railway Station", "lat": 23.0253, "lng": 72.6012, "demandLevel": "HIGH", "surgeMultiplier": "1.5x", "activeRidersWaiting": 19, "bonusPerRide": "+₹50"},
-    {"name": "Prahlad Nagar Corporate Road", "lat": 23.0118, "lng": 72.5085, "demandLevel": "HIGH", "surgeMultiplier": "1.4x", "activeRidersWaiting": 16, "bonusPerRide": "+₹40"}
+    {"name": "SG Highway Tech Corridor", "lat": 23.0728, "lng": 72.5165, "demandLevel": "HIGH", "surgeMultiplier": "1.2x", "activeRidersWaiting": 14, "bonusPerRide": "+₹20"},
+    {"name": "SVPI Airport Terminal 1 & 2", "lat": 23.0772, "lng": 72.6347, "demandLevel": "VERY HIGH", "surgeMultiplier": "1.4x", "activeRidersWaiting": 26, "bonusPerRide": "+₹40"},
+    {"name": "GIFT City Financial Zone", "lat": 23.1601, "lng": 72.6841, "demandLevel": "MODERATE", "surgeMultiplier": "1.25x", "activeRidersWaiting": 11, "bonusPerRide": "+₹25"},
+    {"name": "Sindhu Bhavan Road Hub", "lat": 23.0450, "lng": 72.5020, "demandLevel": "HIGH", "surgeMultiplier": "1.3x", "activeRidersWaiting": 18, "bonusPerRide": "+₹30"},
+    {"name": "Kalupur Railway Station", "lat": 23.0253, "lng": 72.6012, "demandLevel": "MODERATE", "surgeMultiplier": "1.15x", "activeRidersWaiting": 9, "bonusPerRide": "+₹15"},
+    {"name": "Prahlad Nagar Corporate Road", "lat": 23.0118, "lng": 72.5085, "demandLevel": "MODERATE", "surgeMultiplier": "1.15x", "activeRidersWaiting": 8, "bonusPerRide": "+₹15"}
 ]
 
 @app.get("/api/driver/hotspots")

@@ -94,11 +94,11 @@ export default function DriverDashboard() {
   // Daily target incentive state
   const [targetData, setTargetData] = useState({
     completedRidesToday: 4,
-    currentBonusUnlocked: 150,
+    currentBonusUnlocked: 40,
     targets: [
-      { tier: 'Bronze', ridesRequired: 3, bonusReward: 150, status: 'UNLOCKED' },
-      { tier: 'Silver', ridesRequired: 6, bonusReward: 400, status: 'IN_PROGRESS' },
-      { tier: 'Gold', ridesRequired: 10, bonusReward: 900, status: 'LOCKED' }
+      { tier: 'Bronze', ridesRequired: 3, bonusReward: 40, status: 'UNLOCKED' },
+      { tier: 'Silver', ridesRequired: 6, bonusReward: 100, status: 'IN_PROGRESS' },
+      { tier: 'Gold', ridesRequired: 10, bonusReward: 200, status: 'LOCKED' }
     ]
   });
 
@@ -412,7 +412,7 @@ export default function DriverDashboard() {
             </div>
             <div className="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/80">
               <span className="text-[10px] text-emerald-400 font-bold block">TARGET BONUS</span>
-              <span className="text-base font-black text-emerald-400">+₹{targetData.currentBonusUnlocked || 150}</span>
+              <span className="text-base font-black text-emerald-400">+₹{targetData.currentBonusUnlocked || 40}</span>
             </div>
             <div className="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/80">
               <span className="text-[10px] text-amber-400 font-bold block">DRIVER RATING</span>

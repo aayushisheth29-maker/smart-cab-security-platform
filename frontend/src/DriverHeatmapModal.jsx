@@ -11,12 +11,12 @@ export default function DriverHeatmapModal({
   onNavigateHotspot = null
 }) {
   const [hotspots, setHotspots] = useState([
-    { name: "SG Highway Tech Corridor", lat: 23.0728, lng: 72.5165, demandLevel: "VERY HIGH", surgeMultiplier: "1.8x", activeRidersWaiting: 28, bonusPerRide: "+₹80" },
-    { name: "SVPI Airport Terminal 1 & 2", lat: 23.0772, lng: 72.6347, demandLevel: "EXTREME", surgeMultiplier: "2.2x", activeRidersWaiting: 45, bonusPerRide: "+₹150" },
-    { name: "GIFT City Financial Zone", lat: 23.1601, lng: 72.6841, demandLevel: "HIGH", surgeMultiplier: "1.6x", activeRidersWaiting: 22, bonusPerRide: "+₹60" },
-    { name: "Sindhu Bhavan Road Night Hub", lat: 23.0450, lng: 72.5020, demandLevel: "VERY HIGH", surgeMultiplier: "1.9x", activeRidersWaiting: 34, bonusPerRide: "+₹90" },
-    { name: "Kalupur Railway Station", lat: 23.0253, lng: 72.6012, demandLevel: "HIGH", surgeMultiplier: "1.5x", activeRidersWaiting: 19, bonusPerRide: "+₹50" },
-    { name: "Prahlad Nagar Corporate Road", lat: 23.0118, lng: 72.5085, demandLevel: "HIGH", surgeMultiplier: "1.4x", activeRidersWaiting: 16, bonusPerRide: "+₹40" }
+    { name: "SG Highway Tech Corridor", lat: 23.0728, lng: 72.5165, demandLevel: "HIGH", surgeMultiplier: "1.2x", activeRidersWaiting: 14, bonusPerRide: "+₹20" },
+    { name: "SVPI Airport Terminal 1 & 2", lat: 23.0772, lng: 72.6347, demandLevel: "VERY HIGH", surgeMultiplier: "1.4x", activeRidersWaiting: 26, bonusPerRide: "+₹40" },
+    { name: "GIFT City Financial Zone", lat: 23.1601, lng: 72.6841, demandLevel: "MODERATE", surgeMultiplier: "1.25x", activeRidersWaiting: 11, bonusPerRide: "+₹25" },
+    { name: "Sindhu Bhavan Road Hub", lat: 23.0450, lng: 72.5020, demandLevel: "HIGH", surgeMultiplier: "1.3x", activeRidersWaiting: 18, bonusPerRide: "+₹30" },
+    { name: "Kalupur Railway Station", lat: 23.0253, lng: 72.6012, demandLevel: "MODERATE", surgeMultiplier: "1.15x", activeRidersWaiting: 9, bonusPerRide: "+₹15" },
+    { name: "Prahlad Nagar Corporate Road", lat: 23.0118, lng: 72.5085, demandLevel: "MODERATE", surgeMultiplier: "1.15x", activeRidersWaiting: 8, bonusPerRide: "+₹15" }
   ]);
   const [loading, setLoading] = useState(false);
 

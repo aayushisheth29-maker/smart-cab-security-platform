@@ -18,28 +18,28 @@ export default function RideInsuranceModal({
 
   const coverageItems = [
     {
-      title: 'Emergency Medical Hospitalization',
-      amount: '₹2,00,000',
-      desc: '100% Cashless emergency hospitalization across all network hospitals in Ahmedabad (Apollo, SVP, KD, 108 Hub).',
-      badge: 'CASHLESS NETWORK'
-    },
-    {
-      title: 'Accidental Death & Permanent Disability',
-      amount: '₹5,00,000',
-      desc: 'Full family nominee compensation protection for any in-transit road accidents.',
-      badge: '100% NOMINEE PAYOUT'
-    },
-    {
-      title: 'Transit Baggage & Laptop Protection',
+      title: 'Emergency Medical & First-Aid Expenses',
       amount: '₹15,000',
-      desc: 'Immediate reimbursement for damaged or lost personal electronics/baggage during trip.',
-      badge: 'INSTANT REIMBURSEMENT'
+      desc: 'Immediate reimbursement for emergency outpatient care, wound dressing, X-ray, and medication at any clinic/ER in Ahmedabad.',
+      badge: 'QUICK REIMBURSEMENT'
     },
     {
       title: 'Emergency 108 Ambulance Dispatch',
-      amount: '₹25,000',
-      desc: 'Guaranteed emergency trauma ambulance transport costs covered.',
+      amount: '₹5,000',
+      desc: '100% emergency trauma ambulance and paramedic transit expenses covered.',
       badge: '100% COVERED'
+    },
+    {
+      title: 'Transit Belongings & Bag Assistance',
+      amount: '₹5,00,0',
+      desc: 'Assistance for transit accidental damage to personal belongings or mobile phone during the trip.',
+      badge: 'STARTER SHIELD'
+    },
+    {
+      title: 'Accidental Road Safety Protection',
+      amount: '₹50,000',
+      desc: 'Starter accidental medical compensation protection for the passenger.',
+      badge: 'DIRECT NOMINEE'
     }
   ];
 
@@ -57,13 +57,13 @@ export default function RideInsuranceModal({
           </button>
           <div className="flex items-center space-x-2 text-indigo-400 text-xs font-bold uppercase tracking-wider mb-2">
             <Umbrella className="h-4 w-4" />
-            <span>Complimentary SmartCab Ride Insurance Shield</span>
+            <span>SmartCab Starter Ride Micro-Protection</span>
           </div>
           <h2 className="text-2xl font-black">
-            ₹5,00,000 Ride Safety Policy
+            ₹50,000 Ride Safety Shield
           </h2>
           <p className="text-slate-300 text-xs mt-1">
-            Policy #{policyNumber} · Underwritten with 108 &amp; Cashless Hospital Network
+            Policy #{policyNumber} · Complimentary Micro-Coverage for Every Active Ride
           </p>
         </div>
 
@@ -73,25 +73,25 @@ export default function RideInsuranceModal({
           <div className="p-4 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-2xl flex items-center justify-between">
             <div className="space-y-0.5">
               <span className="text-[10px] font-black uppercase text-indigo-800 tracking-wider">
-                Active Ride Protection
+                Active Ride Micro-Cover
               </span>
               <p className="text-xs text-indigo-950 font-bold">
                 Insured Passenger: {passengerName}
               </p>
               <p className="text-[11px] text-indigo-700">
-                Ride Ref: <strong>{tripId}</strong> · Zero Extra Cost (Complimentary)
+                Ride Ref: <strong>{tripId}</strong> · ₹0 Extra Cost (Included in Every Trip)
               </p>
             </div>
             <div className="text-right">
-              <span className="text-[10px] text-slate-500 font-semibold block">Total Sum Insured</span>
-              <span className="text-2xl font-black text-indigo-900">₹5,00,000</span>
+              <span className="text-[10px] text-slate-500 font-semibold block">Total Micro-Sum</span>
+              <span className="text-2xl font-black text-indigo-900">₹50,000</span>
             </div>
           </div>
 
           {/* COVERAGE LIST */}
           <div className="space-y-2.5">
             <h4 className="text-xs font-black uppercase text-slate-500 tracking-wider">
-              Policy Benefits &amp; Sum Insured
+              Starter Micro-Benefits &amp; Support
             </h4>
             {coverageItems.map((item, idx) => (
               <div
@@ -114,26 +114,26 @@ export default function RideInsuranceModal({
             ))}
           </div>
 
-          {/* 24/7 TPA HELPLINE & CLAIMS */}
+          {/* 24/7 SUPPORT & CLAIMS */}
           <div className="p-4 bg-slate-950 text-white rounded-2xl flex flex-wrap items-center justify-between gap-3">
             <div>
               <span className="text-[10px] text-emerald-400 font-black uppercase tracking-wider block">
-                24/7 TPA Emergency Claims Desk
+                24/7 SmartCab Safety Desk
               </span>
               <p className="text-xs text-slate-300 font-semibold mt-0.5">
-                Toll-Free Hospital Cashless Helpline: <strong>1800-2666 / 108</strong>
+                Helpline &amp; First-Aid Assistance: <strong>1800-2666 / 108</strong>
               </p>
             </div>
             <button
               type="button"
               onClick={() => {
                 setClaimSubmitted(true);
-                alert(`🏥 Emergency Cashless Insurance Claim initiated for Policy #${policyNumber}. TPA Dispatch notified.`);
+                alert(`🏥 Emergency Micro-Claim registered for Policy #${policyNumber}. SmartCab safety team notified.`);
               }}
               className="bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs px-4 py-2.5 rounded-xl transition shadow flex items-center gap-1.5"
             >
               <HeartPulse className="h-4 w-4" />
-              <span>{claimSubmitted ? 'Claim In Process' : 'File Emergency Claim'}</span>
+              <span>{claimSubmitted ? 'Claim Registered' : 'File First-Aid Claim'}</span>
             </button>
           </div>
         </div>
@@ -141,14 +141,14 @@ export default function RideInsuranceModal({
         {/* FOOTER */}
         <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between">
           <p className="text-[10px] text-slate-400">
-            Terms governed under IRDAI Motor Passenger Guidelines.
+            Starter safety assistance policy for city rides.
           </p>
           <button
             type="button"
             onClick={onClose}
             className="bg-slate-900 hover:bg-black text-white font-bold text-xs px-5 py-2.5 rounded-xl transition"
           >
-            Close Certificate
+            Close Shield
           </button>
         </div>
       </div>
