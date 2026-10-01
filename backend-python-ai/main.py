@@ -3675,6 +3675,127 @@ def process_instant_payout(payload: InstantPayoutPayload):
 
 
 # ---------------------------------------------------------------------------
+# 🧳 STEP 5: Lost & Found Automated Property Retrieval Hub
+# ---------------------------------------------------------------------------
+
+LOST_ITEMS_REGISTRY: List[Dict[str, Any]] = [
+    {
+        "id": "LOST-2026-001",
+        "tripId": 1,
+        "rideCode": "SC-2026-000549",
+        "itemCategory": "Mobile Phone / Electronics",
+        "itemDescription": "iPhone 15 Pro with midnight blue case",
+        "passengerName": "Aayushi Sheth",
+        "passengerPhone": "+91 98765 43210",
+        "driverName": "Rahul Sharma",
+        "driverPhone": "+91 98250 12345",
+        "status": "FOUND_SAFE",
+        "handoverPin": "7482",
+        "reportedAt": _now_iso(),
+        "returnDeliveryAddress": "Silver Star, Chandlodia, Ahmedabad"
+    }
+]
+
+class LostItemReportPayload(BaseModel):
+    tripId: Optional[Union[int, str]] = 1
+    rideCode: Optional[str] = "SC-2026-000549"
+    itemCategory: str = "Electronics"  # Electronics, Wallet/Cards, Keys, Luggage/Bag, Eyewear/Accessories
+    itemDescription: str
+    passengerName: Optional[str] = "Rider"
+    passengerPhone: Optional[str] = "+91 98765 43210"
+    returnDeliveryAddress: Optional[str] = "Chandlodia, Ahmedabad"
+    preferredContactMethod: Optional[str] = "WhatsApp & Phone"
+
+@app.get("/api/lost-items")
+def get_lost_items(rider_phone: Optional[str] = None):
+    items = LOST_ITEMS_REGISTRY
+    if rider_phone:
+        items = [i for i in items if i.get("passengerPhone") == rider_phone]
+    return {"status": "SUCCESS", "ok": True, "items": items, "count": len(items)}
+
+@app.post("/api/lost-items/report")
+def report_lost_item(payload: LostItemReportPayload):
+    report_id = f"LOST-2026-{secrets.token_hex(2).upper()}"
+    pin = f"{random.randint(1000, 9999)}"
+    record = {
+        "id": report_id,
+        "tripId": payload.tripId,
+        "rideCode": payload.rideCode,
+        "itemCategory": payload.itemCategory,
+        "itemDescription": payload.itemDescription,
+        "passengerName": payload.passengerName,
+        "passengerPhone": payload.passengerPhone,
+        "driverName": "Rahul Sharma",
+        "driverPhone": "+91 98250 12345",
+        "status": "REPORTED_TO_DRIVER",
+        "handoverPin": pin,
+        "reportedAt": _now_iso(),
+        "returnDeliveryAddress": payload.returnDeliveryAddress
+    }
+    LOST_ITEMS_REGISTRY.insert(0, record)
+    log.info("🧳 Lost Property Reported #%s: %s (Trip %s)", report_id, payload.itemDescription, payload.rideCode)
+    return {
+        "status": "SUCCESS",
+        "ok": True,
+        "reportId": report_id,
+        "handoverPin": pin,
+        "item": record,
+        "message": f"Lost item ticket #{report_id} dispatched to driver Rahul Sharma. Secure Handover PIN: {pin}."
+    }
+
+
+# ---------------------------------------------------------------------------
+# 🛡️ STEP 6: Complimentary ₹5 Lakh Ride Safety & Medical Insurance Shield
+# ---------------------------------------------------------------------------
+
+@app.get("/api/insurance/policy/{trip_id}")
+def get_trip_insurance_policy(trip_id: str):
+    policy_no = f"SMARTCAB-INS-2026-{trip_id.upper()}"
+    return {
+        "status": "SUCCESS",
+        "ok": True,
+        "policyNumber": policy_no,
+        "tripId": trip_id,
+        "underwriter": "ICICI Lombard / SmartCab Safety Shield",
+        "coverageActive": True,
+        "totalSumInsured": "₹5,00,000",
+        "benefits": [
+            {"cover": "Emergency Accidental Medical Expenses", "sumInsured": "₹2,00,000", "cashlessHospitalNetwork": "All Major Hospitals (108 Hub, Apollo, SVP, KD)"},
+            {"cover": "Accidental Death & Permanent Total Disability", "sumInsured": "₹5,00,000", "payout": "100% Direct Family Nominee"},
+            {"cover": "Loss of Personal Baggage / Laptop in Transit", "sumInsured": "₹15,000", "payout": "Immediate Reimbursement"},
+            {"cover": "Emergency Ambulance & Trauma Care Assist", "sumInsured": "₹25,000", "payout": "100% Covered"}
+        ],
+        "helpline": "1800-2666 / 108 Emergency",
+        "certificateIssueDate": _now_iso()
+    }
+
+
+# ---------------------------------------------------------------------------
+# 🗺️ STEP 7: Driver Live Surge Heatmap & Hotspot Radar
+# ---------------------------------------------------------------------------
+
+AHMEDABAD_HOTSPOTS = [
+    {"name": "SG Highway Tech Corridor", "lat": 23.0728, "lng": 72.5165, "demandLevel": "VERY HIGH", "surgeMultiplier": "1.8x", "activeRidersWaiting": 28, "bonusPerRide": "+₹80"},
+    {"name": "SVPI Airport Terminal 1 & 2", "lat": 23.0772, "lng": 72.6347, "demandLevel": "EXTREME", "surgeMultiplier": "2.2x", "activeRidersWaiting": 45, "bonusPerRide": "+₹150"},
+    {"name": "GIFT City Financial Zone", "lat": 23.1601, "lng": 72.6841, "demandLevel": "HIGH", "surgeMultiplier": "1.6x", "activeRidersWaiting": 22, "bonusPerRide": "+₹60"},
+    {"name": "Sindhu Bhavan Road Night Hub", "lat": 23.0450, "lng": 72.5020, "demandLevel": "VERY HIGH", "surgeMultiplier": "1.9x", "activeRidersWaiting": 34, "bonusPerRide": "+₹90"},
+    {"name": "Kalupur Railway Station", "lat": 23.0253, "lng": 72.6012, "demandLevel": "HIGH", "surgeMultiplier": "1.5x", "activeRidersWaiting": 19, "bonusPerRide": "+₹50"},
+    {"name": "Prahlad Nagar Corporate Road", "lat": 23.0118, "lng": 72.5085, "demandLevel": "HIGH", "surgeMultiplier": "1.4x", "activeRidersWaiting": 16, "bonusPerRide": "+₹40"}
+]
+
+@app.get("/api/driver/hotspots")
+def get_driver_hotspots():
+    return {
+        "status": "SUCCESS",
+        "ok": True,
+        "city": "Ahmedabad",
+        "hotspots": AHMEDABAD_HOTSPOTS,
+        "totalActiveDemand": sum(h["activeRidersWaiting"] for h in AHMEDABAD_HOTSPOTS),
+        "peakArea": "SVPI Airport (2.2x Surge Active)"
+    }
+
+
+# ---------------------------------------------------------------------------
 # Trips
 # ---------------------------------------------------------------------------
 @app.get("/api/trips")

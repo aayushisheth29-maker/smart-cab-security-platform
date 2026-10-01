@@ -33,6 +33,7 @@ import L from 'leaflet';
 import { API_BASE, apiFetch } from './api';
 import { LanguageSwitcher, useLanguage } from './i18n';
 import DriverKycModal from './DriverKycModal';
+import DriverHeatmapModal from './DriverHeatmapModal';
 
 // Custom icons for driver map
 const driverIcon = L.divIcon({
@@ -72,6 +73,7 @@ export default function DriverDashboard() {
   const [showFuelModal, setShowFuelModal] = useState(false);
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [showKycModal, setShowKycModal] = useState(false);
+  const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   
   const [reportReason, setReportReason] = useState('Suspicious / Contraband Concern');
   const [reportNotes, setReportNotes] = useState('');
@@ -335,6 +337,14 @@ export default function DriverDashboard() {
           </div>
 
           <div className="flex items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => setShowHeatmapModal(true)}
+              className="px-3 py-1.5 rounded-xl font-bold text-xs bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/40 transition flex items-center gap-1.5 shadow"
+            >
+              <span>🔥 Surge Radar</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowKycModal(true)}
@@ -926,6 +936,14 @@ export default function DriverDashboard() {
           onKycSuccess={() => {
             fetchDriverData();
           }}
+        />
+      )}
+
+      {/* 🔥 DRIVER SURGE RADAR & HOTSPOT MODAL */}
+      {showHeatmapModal && (
+        <DriverHeatmapModal
+          isOpen={showHeatmapModal}
+          onClose={() => setShowHeatmapModal(false)}
         />
       )}
     </div>

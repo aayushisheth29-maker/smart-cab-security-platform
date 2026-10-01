@@ -9,6 +9,8 @@ import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import L from 'leaflet';
 import { apiFetch } from './api';
 import TripRatingModal from './TripRatingModal';
+import LostFoundModal from './LostFoundModal';
+import RideInsuranceModal from './RideInsuranceModal';
 
 const pickupMarkerIcon = new L.DivIcon({
   className: 'custom-map-icon',
@@ -59,7 +61,7 @@ function formatDate(iso) {
   }
 }
 
-function RideCard({ ride, onTrack, onRate, onViewRoute }) {
+function RideCard({ ride, onTrack, onRate, onViewRoute, onLostFound, onInsurance }) {
   const driver = ride.driver || {};
   const isSos = ride.status === 'DANGER';
   return (
@@ -138,13 +140,29 @@ function RideCard({ ride, onTrack, onRate, onViewRoute }) {
           </Link>
         )}
         {ride.status === 'COMPLETED' && (
-          <button
-            onClick={() => onRate && onRate(ride)}
-            className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold py-2.5 rounded-xl text-center transition shadow-sm flex items-center justify-center gap-1.5"
-          >
-            <Star className="h-4 w-4 fill-white" /> Rate &amp; Tip
-          </button>
+          <>
+            <button
+              onClick={() => onRate && onRate(ride)}
+              className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold py-2.5 rounded-xl text-center transition shadow-sm flex items-center justify-center gap-1.5"
+            >
+              <Star className="h-4 w-4 fill-white" /> Rate &amp; Tip
+            </button>
+            <button
+              onClick={() => onLostFound && onLostFound(ride)}
+              className="px-3 py-2.5 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 transition text-xs font-bold"
+              title="Report item left in this cab"
+            >
+              🧳 Lost Item
+            </button>
+          </>
         )}
+        <button
+          onClick={() => onInsurance && onInsurance(ride)}
+          className="px-3 py-2.5 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 transition text-xs font-bold"
+          title="View ₹5L Insurance Policy Certificate"
+        >
+          🛡️ ₹5L Policy
+        </button>
         <button
           onClick={() => onTrack(ride, true)}
           className="px-3 py-2.5 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition text-xs font-semibold"
@@ -177,6 +195,8 @@ export default function MyRides() {
   const [sharing, setSharing] = useState(null);
   const [shareMessage, setShareMessage] = useState('');
   const [ratingModalRide, setRatingModalRide] = useState(null);
+  const [lostFoundModalRide, setLostFoundModalRide] = useState(null);
+  const [insuranceModalRide, setInsuranceModalRide] = useState(null);
   const [selectedRouteRide, setSelectedRouteRide] = useState(null);
 
   useEffect(() => {
@@ -413,6 +433,8 @@ export default function MyRides() {
                 onTrack={handleTrack}
                 onRate={(r) => setRatingModalRide(r)}
                 onViewRoute={(r) => setSelectedRouteRide(r)}
+                onLostFound={(r) => setLostFoundModalRide(r)}
+                onInsurance={(r) => setInsuranceModalRide(r)}
               />
             ))}
           </div>
@@ -434,6 +456,27 @@ export default function MyRides() {
           loadRides();
         }}
       />
+
+      {/* 🧳 Lost & Found Property Retrieval Modal */}
+      {lostFoundModalRide && (
+        <LostFoundModal
+          isOpen={!!lostFoundModalRide}
+          onClose={() => setLostFoundModalRide(null)}
+          tripId={lostFoundModalRide.rideCode || lostFoundModalRide.id}
+          driverName={lostFoundModalRide.driver?.name || lostFoundModalRide.driverName || 'Rahul Sharma'}
+          driverPhone={lostFoundModalRide.driver?.phone || '+91 98250 12345'}
+        />
+      )}
+
+      {/* 🛡️ Complimentary ₹5,00,000 Ride Insurance Policy Modal */}
+      {insuranceModalRide && (
+        <RideInsuranceModal
+          isOpen={!!insuranceModalRide}
+          onClose={() => setInsuranceModalRide(null)}
+          tripId={insuranceModalRide.rideCode || insuranceModalRide.id}
+          passengerName={user?.name || 'Aayushi Sheth'}
+        />
+      )}
 
       {/* 🗺️ INTERACTIVE RIDE ROUTE & TELEMETRY VIEWER MODAL */}
       {selectedRouteRide && (

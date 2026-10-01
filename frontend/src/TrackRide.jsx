@@ -8,6 +8,8 @@ import VoiceSafetyCommands from './VoiceSafetyCommands';
 import SplitFareModal from './SplitFareModal';
 import TripRatingModal from './TripRatingModal';
 import EmergencyMedicalModal from './EmergencyMedicalModal';
+import LostFoundModal from './LostFoundModal';
+import RideInsuranceModal from './RideInsuranceModal';
 import { Chimes, announceMilestone } from './ttsService';
 
 const carIcon = new L.DivIcon({
@@ -38,6 +40,8 @@ const TrackRide = () => {
   const [showSplitModal, setShowSplitModal] = useState(false);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [showMedicalModal, setShowMedicalModal] = useState(false);
+  const [showLostFoundModal, setShowLostFoundModal] = useState(false);
+  const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [audioAnnounceEnabled, setAudioAnnounceEnabled] = useState(true);
   const videoRef = useRef(null);
   const mapRef = useRef(null);
@@ -426,6 +430,22 @@ const TrackRide = () => {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
+              onClick={() => setShowInsuranceModal(true)}
+              className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+              title="Complimentary ₹5,00,000 Accidental & Medical Shield"
+            >
+              <ShieldCheck className="h-4 w-4 mr-1.5" /> ₹5L Insurance
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowLostFoundModal(true)}
+              className="bg-orange-600 hover:bg-orange-700 text-white font-bold px-3 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+              title="Report item left in cab"
+            >
+              <span>🧳 Lost &amp; Found</span>
+            </button>
+            <button
+              type="button"
               onClick={() => setShowMedicalModal(true)}
               className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-3.5 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
             >
@@ -738,6 +758,27 @@ const TrackRide = () => {
           currentLat={trackingData?.currentLat || 23.0225}
           currentLng={trackingData?.currentLng || 72.5714}
           tripId={linkId}
+        />
+      )}
+
+      {/* 🧳 Lost & Found Property Retrieval Modal */}
+      {showLostFoundModal && (
+        <LostFoundModal
+          isOpen={showLostFoundModal}
+          onClose={() => setShowLostFoundModal(false)}
+          tripId={linkId}
+          driverName={trackingData?.driverName || 'Rahul Sharma'}
+          driverPhone={trackingData?.driverPhone || '+91 98250 12345'}
+        />
+      )}
+
+      {/* 🛡️ Complimentary ₹5,00,000 Ride Insurance Modal */}
+      {showInsuranceModal && (
+        <RideInsuranceModal
+          isOpen={showInsuranceModal}
+          onClose={() => setShowInsuranceModal(false)}
+          tripId={linkId}
+          passengerName={trackingData?.riderName || 'Aayushi Sheth'}
         />
       )}
     </div>
