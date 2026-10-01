@@ -131,19 +131,19 @@ class GlobalErrorBoundary extends React.Component {
   }
 }
 
-// 🔒 OWNER PORTAL MODE — used by the SECOND, private Vercel project
-// (e.g. https://owner.smart-security-cab.com). That project sets
-// VITE_OWNER_MODE=true → the app renders ONLY the Owner Portal: no rider
-// navbar, no ride booking, no floating rider help, no links to rider pages.
-// Same backend, same admin key — just a private door.
-const OWNER_MODE = import.meta.env.VITE_OWNER_MODE === 'true';
+// 🔒 AUTOMATIC PORTAL DETECTOR (Environment Variable OR Hostname)
+// Detects if the current domain is dedicated to Owner or Driver portal.
+// E.g.:
+// - https://smart-cab-owner-portal.vercel.app  -> Auto Owner Mode
+// - https://smart-cab-driver-portal.vercel.app -> Auto Driver Mode
+const currentHost = typeof window !== 'undefined' ? window.location.hostname.toLowerCase() : '';
 
-// 🚖 DRIVER PORTAL MODE — used by the THIRD, dedicated Driver Partner Vercel project
-// (e.g. https://driver.smart-security-cab.com or smart-cab-driver-portal.vercel.app).
-// That project sets VITE_DRIVER_MODE=true → the app renders ONLY the Driver Partner Portal
-// (KYC Onboarding, Shift Console, Live Ride Progression, Earnings Wallet, Fuel Logger, Instant Payouts).
-// Also packages into the standalone Driver Android APK.
-const DRIVER_MODE = import.meta.env.VITE_DRIVER_MODE === 'true';
+const OWNER_MODE = import.meta.env.VITE_OWNER_MODE === 'true' || 
+                   currentHost.includes('owner') || 
+                   currentHost.startsWith('admin.');
+
+const DRIVER_MODE = import.meta.env.VITE_DRIVER_MODE === 'true' || 
+                    currentHost.includes('driver');
 
 function App() {
   if (OWNER_MODE) {
