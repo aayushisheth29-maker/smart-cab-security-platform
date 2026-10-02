@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Car,
   ShieldCheck,
@@ -26,7 +26,14 @@ import {
   Building,
   CreditCard,
   Zap,
-  Award
+  Award,
+  Key,
+  Compass,
+  Gauge,
+  Flame,
+  Star,
+  ExternalLink,
+  Volume2
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import L from 'leaflet';
@@ -47,17 +54,6 @@ const driverIcon = L.divIcon({
   iconAnchor: [19, 19]
 });
 
-const waypointIcon = (letter, color) => L.divIcon({
-  className: 'route-waypoint-marker',
-  html: `
-    <div style="width: 24px; height: 24px; border-radius: 50%; background: ${color}; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; font-size: 11px; font-weight: 900; box-shadow: 0 3px 8px rgba(0,0,0,0.3);">
-      ${letter}
-    </div>
-  `,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12]
-});
-
 export default function DriverDashboard() {
   const { t } = useLanguage();
   const [driverName, setDriverName] = useState('Rahul Sharma');
@@ -67,6 +63,20 @@ export default function DriverDashboard() {
   const [loading, setLoading] = useState(false);
   const [actionBusy, setActionBusy] = useState(false);
   
+  // Uber-Style Incoming Request State
+  const [incomingRequest, setIncomingRequest] = useState(null);
+  const [incomingTimer, setIncomingTimer] = useState(15);
+  
+  // Uber-Style 4-Digit Start Ride OTP Modal
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [enteredOtp, setEnteredOtp] = useState('');
+  const [otpError, setOtpError] = useState('');
+
+  // Destination Mode ("Go Home" Filter)
+  const [destinationMode, setDestinationMode] = useState(false);
+  const [homeAddress, setHomeAddress] = useState('Silver Star, Chandlodia, Ahmedabad');
+  const [showDestModal, setShowDestModal] = useState(false);
+
   // Modals
   const [showVerifyModal, setShowVerifyModal] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -80,8 +90,8 @@ export default function DriverDashboard() {
 
   // Fuel form state
   const [fuelType, setFuelType] = useState('CNG');
-  const [fuelAmount, setFuelAmount] = useState('450');
-  const [fuelQuantity, setFuelQuantity] = useState('5.5');
+  const [fuelAmount, setFuelAmount] = useState('350');
+  const [fuelQuantity, setFuelQuantity] = useState('4.2');
   const [odometer, setOdometer] = useState('48250');
   const [fuelLogs, setFuelLogs] = useState([]);
 
@@ -91,7 +101,7 @@ export default function DriverDashboard() {
   const [payoutBusy, setPayoutBusy] = useState(false);
   const [payoutSuccessMsg, setPayoutSuccessMsg] = useState('');
 
-  // Daily target incentive state
+  // Daily target incentive state (Starter Budget: ₹40, ₹100, ₹200)
   const [targetData, setTargetData] = useState({
     completedRidesToday: 4,
     currentBonusUnlocked: 40,
@@ -101,6 +111,24 @@ export default function DriverDashboard() {
       { tier: 'Gold', ridesRequired: 10, bonusReward: 200, status: 'LOCKED' }
     ]
   });
+
+  // Sound Chime Generator for Uber-style Incoming Ping
+  const playIncomingBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(587.33, audioCtx.currentTime); // D5
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime + 0.15); // A5
+      gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 0.4);
+    } catch (e) {}
+  };
 
   // Sample drivers list for driver profile switcher
   const FLEET_DRIVERS = [
@@ -150,6 +178,24 @@ export default function DriverDashboard() {
     return () => clearInterval(interval);
   }, [driverName]);
 
+  // Incoming Request Countdown Timer
+  useEffect(() => {
+    if (!incomingRequest) return;
+    playIncomingBeep();
+    const timer = setInterval(() => {
+      setIncomingTimer((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          setIncomingRequest(null);
+          return 15;
+        }
+        if (prev % 3 === 0) playIncomingBeep();
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [incomingRequest]);
+
   const toggleShiftStatus = async () => {
     const nextState = !isOnline;
     setIsOnline(nextState);
@@ -167,6 +213,13 @@ export default function DriverDashboard() {
 
   const advanceRideStep = async (action) => {
     if (!activeRide) return;
+    
+    // If starting ride, enforce Uber-style 4-Digit PIN check
+    if (action === 'START') {
+      setShowOtpModal(true);
+      return;
+    }
+
     setActionBusy(true);
     try {
       await fetch(`${API_BASE}/api/driver/advance-ride`, {
@@ -181,6 +234,78 @@ export default function DriverDashboard() {
       await fetchDriverData();
     } catch (err) {
       alert(`Could not advance ride: ${err.message}`);
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const handleVerifyStartOtp = async (e) => {
+    e.preventDefault();
+    if (!enteredOtp || enteredOtp.length !== 4) {
+      setOtpError('Please enter the 4-digit ride OTP from passenger screen.');
+      return;
+    }
+
+    setActionBusy(true);
+    try {
+      // Advance to RIDE_STARTED
+      await fetch(`${API_BASE}/api/driver/advance-ride`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tripId: activeRide.id,
+          driverName,
+          action: 'START'
+        })
+      });
+      setShowOtpModal(false);
+      setEnteredOtp('');
+      setOtpError('');
+      await fetchDriverData();
+    } catch (e) {
+      setShowOtpModal(false);
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const triggerUberIncomingPing = () => {
+    setIncomingTimer(15);
+    setIncomingRequest({
+      riderName: 'Aayushi S.',
+      rating: '4.92 ★',
+      tripsCount: 42,
+      pickup: destinationMode ? 'Near SG Highway, Ahmedabad' : 'Chandlodia, Ahmedabad',
+      dropoff: destinationMode ? homeAddress : 'SVPI Airport Terminal 2 (AMD)',
+      distanceKm: destinationMode ? '4.8 km' : '11.5 km',
+      fare: destinationMode ? 140 : 260,
+      driverNetCut: destinationMode ? 112 : 208,
+      surge: '⚡ 1.25x Surge (+₹25)'
+    });
+  };
+
+  const handleAcceptIncomingRide = async () => {
+    if (!incomingRequest) return;
+    setActionBusy(true);
+    try {
+      await fetch(`${API_BASE}/api/trips`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          riderName: incomingRequest.riderName,
+          riderPhone: '+91 98765 43210',
+          pickupLocation: incomingRequest.pickup,
+          dropoffLocation: incomingRequest.dropoff,
+          distanceKm: parseFloat(incomingRequest.distanceKm),
+          fare: incomingRequest.fare,
+          driverName: driverName,
+          selectedCar: 'SmartSedan Prime'
+        })
+      });
+      setIncomingRequest(null);
+      await fetchDriverData();
+    } catch (e) {
+      setIncomingRequest(null);
     } finally {
       setActionBusy(false);
     }
@@ -280,30 +405,8 @@ export default function DriverDashboard() {
     }
   };
 
-  const simulateIncomingBooking = async () => {
-    try {
-      await fetch(`${API_BASE}/api/trips`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          riderName: 'Aayushi S.',
-          riderPhone: '+91 98765 43210',
-          pickupLocation: 'Chandlodia, Ahmedabad',
-          dropoffLocation: 'Sardar Vallabhbhai Patel Airport',
-          distanceKm: 12.8,
-          fare: 310.0,
-          driverName: driverName,
-          selectedCar: 'SmartSedan Prime'
-        })
-      });
-      await fetchDriverData();
-    } catch (e) {
-      alert('Could not simulate trip.');
-    }
-  };
-
   const totalFuelCost = fuelLogs.reduce((acc, f) => acc + (f.amount || 0), 0);
-  const netTakeHome = Math.max(0, (stats?.walletBalance || 248) + (targetData.currentBonusUnlocked || 150) - totalFuelCost);
+  const netTakeHome = Math.max(0, (stats?.walletBalance || 248) + (targetData.currentBonusUnlocked || 40) - totalFuelCost);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white font-sans pb-16">
@@ -316,7 +419,7 @@ export default function DriverDashboard() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="font-extrabold text-base tracking-tight">SMARTCAB DRIVER PARTNER</h1>
+                <h1 className="font-extrabold text-base tracking-tight">SMARTCAB DRIVER PRO</h1>
                 <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-emerald-400 animate-ping' : 'bg-slate-500'}`}></span>
               </div>
               <div className="text-[11px] text-slate-400 flex items-center gap-2">
@@ -336,22 +439,40 @@ export default function DriverDashboard() {
             </div>
           </div>
 
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-2">
+            {/* DESTINATION MODE (GO HOME) */}
+            <button
+              type="button"
+              onClick={() => setShowDestModal(true)}
+              className={`px-3 py-1.5 rounded-xl font-bold text-xs border transition flex items-center gap-1.5 shadow ${
+                destinationMode
+                  ? 'bg-purple-600 border-purple-500 text-white shadow-purple-900/40'
+                  : 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white'
+              }`}
+              title="Set Home Destination Filter"
+            >
+              <Compass className="h-3.5 w-3.5" />
+              <span>{destinationMode ? 'Going Home' : 'Dest Mode'}</span>
+            </button>
+
+            {/* SURGE RADAR */}
             <button
               type="button"
               onClick={() => setShowHeatmapModal(true)}
               className="px-3 py-1.5 rounded-xl font-bold text-xs bg-orange-500/20 hover:bg-orange-500/30 text-orange-300 border border-orange-500/40 transition flex items-center gap-1.5 shadow"
             >
-              <span>🔥 Surge Radar</span>
+              <Flame className="h-3.5 w-3.5 text-orange-400" />
+              <span className="hidden sm:inline">Surge Radar</span>
             </button>
 
+            {/* KYC STATUS */}
             <button
               type="button"
               onClick={() => setShowKycModal(true)}
               className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/40 transition flex items-center gap-1.5"
             >
               <ShieldCheck className="h-3.5 w-3.5 text-amber-400" />
-              <span>KYC Status</span>
+              <span className="hidden sm:inline">KYC</span>
             </button>
 
             <LanguageSwitcher />
@@ -366,13 +487,50 @@ export default function DriverDashboard() {
               }`}
             >
               <Power className="h-3.5 w-3.5" />
-              <span>{isOnline ? 'ON DUTY' : 'OFFLINE'}</span>
+              <span>{isOnline ? 'ONLINE' : 'OFFLINE'}</span>
             </button>
           </div>
         </div>
       </header>
 
       <main className="max-w-4xl mx-auto px-4 mt-6 space-y-6">
+        {/* UBER PRO QUALITY SCORECARD */}
+        <div className="bg-slate-900 border border-slate-800 rounded-3xl p-4 flex flex-wrap items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-gradient-to-tr from-cyan-500/20 to-blue-500/20 text-cyan-400 rounded-2xl border border-cyan-500/40 font-black text-xs">
+              💎 PRO
+            </div>
+            <div>
+              <span className="text-[10px] uppercase font-black text-cyan-400 tracking-wider">
+                SmartCab Diamond Partner Tier
+              </span>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className="text-sm font-black text-white">{driverName}</span>
+                <span className="text-xs text-amber-400 font-bold flex items-center">
+                  <Star className="h-3.5 w-3.5 fill-amber-400 mr-0.5" /> 4.96 Rating
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-xs">
+            <div className="text-right">
+              <span className="text-[10px] text-slate-400 block font-semibold">Acceptance Rate</span>
+              <strong className="text-emerald-400 font-bold">97.8%</strong>
+            </div>
+            <div className="text-right border-l border-slate-800 pl-4">
+              <span className="text-[10px] text-slate-400 block font-semibold">Cancellation</span>
+              <strong className="text-slate-300 font-bold">0.8%</strong>
+            </div>
+            <div className="text-right border-l border-slate-800 pl-4">
+              <span className="text-[10px] text-slate-400 block font-semibold">City Speed Limit</span>
+              <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800">
+                42 / 50 km/h
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* DRIVER EARNINGS & WALLET BANNER (80% NET CUT + INSTANT PAYOUT) */}
         <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 rounded-3xl p-5 border border-slate-800 shadow-xl">
           <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
@@ -416,12 +574,12 @@ export default function DriverDashboard() {
             </div>
             <div className="bg-slate-950/60 rounded-2xl p-3 border border-slate-800/80">
               <span className="text-[10px] text-amber-400 font-bold block">DRIVER RATING</span>
-              <span className="text-base font-black text-amber-400">★ 4.95</span>
+              <span className="text-base font-black text-amber-400">★ 4.96</span>
             </div>
           </div>
         </div>
 
-        {/* 🎯 DAILY TARGET INCENTIVES TRACKER */}
+        {/* 🎯 DAILY TARGET INCENTIVES TRACKER (STARTER BUDGET) */}
         <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-xl">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
@@ -502,7 +660,7 @@ export default function DriverDashboard() {
             <div className="bg-slate-950/70 p-3.5 rounded-2xl border border-slate-800">
               <span className="text-[10px] text-slate-400 uppercase font-bold block">Gross Cut + Bonus</span>
               <span className="text-base font-black text-white">
-                ₹{((stats?.walletBalance || 248) + (targetData.currentBonusUnlocked || 150)).toFixed(2)}
+                ₹{((stats?.walletBalance || 248) + (targetData.currentBonusUnlocked || 40)).toFixed(2)}
               </span>
             </div>
 
@@ -543,7 +701,7 @@ export default function DriverDashboard() {
                 </div>
                 <div>
                   <h3 className="font-extrabold text-base text-white">{activeRide.riderName}</h3>
-                  <p className="text-xs text-slate-400">Passenger · Verified Contact</p>
+                  <p className="text-xs text-slate-400">Passenger · 4.9 ★ Rating</p>
                   <div className="mt-1 flex items-center gap-2">
                     {activeRide.riderVerified ? (
                       <span className="text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-700/60 px-2 py-0.5 rounded-md flex items-center gap-1">
@@ -561,13 +719,30 @@ export default function DriverDashboard() {
                 </div>
               </div>
 
-              <a
-                href={`tel:${activeRide.riderPhone}`}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-4 py-2.5 rounded-xl transition text-xs flex items-center gap-1.5 shadow-md"
-              >
-                <Phone className="h-4 w-4" />
-                <span>Call Passenger</span>
-              </a>
+              <div className="flex items-center gap-2">
+                <a
+                  href={`tel:${activeRide.riderPhone}`}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold px-3.5 py-2.5 rounded-xl transition text-xs flex items-center gap-1.5 shadow-md"
+                >
+                  <Phone className="h-4 w-4" />
+                  <span>Call Rider</span>
+                </a>
+
+                {/* 🗺️ GOOGLE MAPS NAVIGATION LAUNCH */}
+                <a
+                  href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(
+                    activeRide.status === 'DRIVER_ACCEPTED' || activeRide.status === 'DRIVER_ASSIGNED'
+                      ? activeRide.pickup
+                      : activeRide.dropoff
+                  )}`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold px-3.5 py-2.5 rounded-xl transition text-xs flex items-center gap-1.5 shadow-md"
+                >
+                  <Navigation className="h-4 w-4" />
+                  <span>Google Maps</span>
+                </a>
+              </div>
             </div>
 
             {/* ROUTE WAYPOINTS */}
@@ -618,8 +793,8 @@ export default function DriverDashboard() {
                   disabled={actionBusy}
                   className="w-full bg-green-600 hover:bg-green-700 text-white font-black py-3.5 rounded-2xl transition flex items-center justify-center gap-2 text-sm shadow-lg shadow-green-900/40"
                 >
-                  {actionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Car className="h-5 w-5" />}
-                  <span>Passenger On Board → Start Trip</span>
+                  <Key className="h-5 w-5" />
+                  <span>Enter Passenger 4-Digit PIN &amp; Start Trip</span>
                 </button>
               )}
 
@@ -630,7 +805,7 @@ export default function DriverDashboard() {
                   className="w-full bg-slate-100 hover:bg-white text-slate-900 font-black py-3.5 rounded-2xl transition flex items-center justify-center gap-2 text-sm shadow-lg shadow-white/10"
                 >
                   {actionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-5 w-5" />}
-                  <span>Complete Ride &amp; Collect Payment</span>
+                  <span>Complete Ride &amp; Settle Payment (₹{activeRide.fare})</span>
                 </button>
               )}
 
@@ -662,18 +837,193 @@ export default function DriverDashboard() {
             </div>
             <h2 className="text-xl font-black text-white">You're Online &amp; Searching</h2>
             <p className="text-xs text-slate-400 max-w-sm mx-auto mt-1 mb-6">
-              Scanning Ahmedabad dispatch grid for passenger ride requests nearby.
+              {destinationMode ? `Filtering rides heading towards ${homeAddress}` : "Scanning Ahmedabad dispatch grid for passenger ride requests nearby."}
             </p>
             <button
-              onClick={simulateIncomingBooking}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-6 py-3 rounded-2xl transition text-xs inline-flex items-center gap-2 shadow-lg shadow-emerald-900/40"
+              onClick={triggerUberIncomingPing}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-6 py-3.5 rounded-2xl transition text-xs inline-flex items-center gap-2 shadow-lg shadow-emerald-900/40"
             >
               <Sparkles className="h-4 w-4" />
-              <span>⚡ Simulate Incoming Passenger Ride Request</span>
+              <span>⚡ Simulate Uber-Style Incoming Ride Request</span>
             </button>
           </div>
         )}
       </main>
+
+      {/* 🛎️ UBER-STYLE INCOMING RIDE REQUEST OVERLAY */}
+      {incomingRequest && (
+        <div className="fixed inset-0 z-[700] bg-black/85 backdrop-blur-md flex items-end sm:items-center justify-center p-4 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-slate-900 border-2 border-emerald-500 text-white rounded-3xl max-w-md w-full p-6 shadow-2xl relative overflow-hidden">
+            
+            {/* RADIAL COUNTDOWN BAR */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-slate-800">
+              <div 
+                className="h-full bg-emerald-400 transition-all duration-1000 ease-linear"
+                style={{ width: `${(incomingTimer / 15) * 100}%` }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between mb-4 mt-1">
+              <div className="flex items-center gap-2">
+                <span className="bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 text-[10px] font-black px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  Incoming Ride Ping
+                </span>
+                <span className="text-xs font-mono font-bold text-amber-400">
+                  ⏱️ {incomingTimer}s
+                </span>
+              </div>
+              <span className="text-xs font-black text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded-md border border-emerald-800">
+                {incomingRequest.surge}
+              </span>
+            </div>
+
+            <div className="text-center py-2 border-y border-slate-800 my-3">
+              <span className="text-xs text-slate-400 block font-semibold">Guaranteed Payout</span>
+              <span className="text-4xl font-black text-emerald-400">₹{incomingRequest.fare}</span>
+              <span className="text-xs text-slate-400 block mt-0.5">Your Take-Home: ₹{incomingRequest.driverNetCut} ({incomingRequest.distanceKm})</span>
+            </div>
+
+            <div className="space-y-2 text-xs py-2">
+              <div className="flex items-start gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-emerald-400 mt-1 shrink-0" />
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block">PICKUP</span>
+                  <span className="text-slate-100 font-semibold">{incomingRequest.pickup}</span>
+                </div>
+              </div>
+              <div className="flex items-start gap-2">
+                <div className="w-2.5 h-2.5 rounded-full bg-indigo-400 mt-1 shrink-0" />
+                <div>
+                  <span className="text-[10px] text-slate-400 font-bold block">DROPOFF</span>
+                  <span className="text-slate-100 font-semibold">{incomingRequest.dropoff}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4">
+              <button
+                type="button"
+                onClick={() => setIncomingRequest(null)}
+                className="w-1/3 py-3.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs transition"
+              >
+                Decline
+              </button>
+              <button
+                type="button"
+                onClick={handleAcceptIncomingRide}
+                disabled={actionBusy}
+                className="flex-1 py-3.5 rounded-2xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-black text-sm transition shadow-lg shadow-emerald-500/30 flex items-center justify-center gap-2 animate-pulse"
+              >
+                {actionBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <CheckCircle2 className="h-5 w-5" />}
+                <span>TAP TO ACCEPT</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 🔐 UBER-STYLE 4-DIGIT START OTP VERIFICATION MODAL */}
+      {showOtpModal && (
+        <div className="fixed inset-0 z-[700] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-sm w-full p-6 text-white shadow-2xl relative text-center">
+            <button onClick={() => setShowOtpModal(false)} className="absolute top-5 right-5 text-slate-400 hover:text-white">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="w-14 h-14 bg-indigo-500/20 text-indigo-400 border border-indigo-500/40 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Key className="h-7 w-7" />
+            </div>
+            <h3 className="font-extrabold text-lg">Enter Passenger Ride PIN</h3>
+            <p className="text-xs text-slate-400 mt-1 mb-4">
+              Ask passenger <strong>{activeRide?.riderName}</strong> for their 4-digit security PIN to start trip.
+            </p>
+
+            <form onSubmit={handleVerifyStartOtp} className="space-y-4">
+              <input
+                type="text"
+                value={enteredOtp}
+                onChange={(e) => {
+                  setEnteredOtp(e.target.value.replace(/[^0-9]/g, '').slice(0, 4));
+                  setOtpError('');
+                }}
+                maxLength={4}
+                placeholder="• • • •"
+                autoFocus
+                className="w-full text-center tracking-[12px] font-mono text-3xl font-black bg-slate-950 border border-slate-700 rounded-2xl py-3 text-emerald-400 focus:outline-none focus:border-emerald-500"
+              />
+
+              {otpError && (
+                <p className="text-xs text-red-400 font-bold">{otpError}</p>
+              )}
+
+              <button
+                type="submit"
+                disabled={actionBusy || enteredOtp.length !== 4}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-black py-3.5 rounded-xl transition text-sm shadow-md flex items-center justify-center gap-2"
+              >
+                {actionBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                <span>Verify PIN &amp; Begin Trip</span>
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 🧭 DESTINATION MODE MODAL ("GO HOME") */}
+      {showDestModal && (
+        <div className="fixed inset-0 z-[600] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl max-w-md w-full p-6 text-white shadow-2xl relative">
+            <button onClick={() => setShowDestModal(false)} className="absolute top-5 right-5 text-slate-400 hover:text-white">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="p-3 bg-purple-500/20 rounded-2xl text-purple-400">
+                <Compass className="h-6 w-6" />
+              </div>
+              <div>
+                <h3 className="font-extrabold text-lg">Driver Destination Mode</h3>
+                <p className="text-xs text-slate-400">Match rides going towards your home at shift end</p>
+              </div>
+            </div>
+
+            <div className="space-y-4 text-xs">
+              <div>
+                <label className="block font-bold text-slate-300 mb-1">Your Destination / Home Address</label>
+                <input
+                  type="text"
+                  value={homeAddress}
+                  onChange={(e) => setHomeAddress(e.target.value)}
+                  placeholder="e.g. Silver Star, Chandlodia, Ahmedabad"
+                  className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2.5 text-white font-bold outline-none"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDestinationMode(false);
+                    setShowDestModal(false);
+                  }}
+                  className="flex-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold py-3 rounded-xl transition"
+                >
+                  Turn Off
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDestinationMode(true);
+                    setShowDestModal(false);
+                    alert(`🏠 Destination Mode set towards ${homeAddress}. Matching rides on route!`);
+                  }}
+                  className="flex-1 bg-purple-600 hover:bg-purple-500 text-white font-black py-3 rounded-xl transition shadow"
+                >
+                  Enable Destination Filter
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ⛽ FUEL / ENERGY EXPENSE LOGGER MODAL */}
       {showFuelModal && (
@@ -719,7 +1069,7 @@ export default function DriverDashboard() {
                   type="number"
                   value={fuelAmount}
                   onChange={(e) => setFuelAmount(e.target.value)}
-                  placeholder="e.g. 450"
+                  placeholder="e.g. 350"
                   required
                   className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold outline-none"
                 />
@@ -733,7 +1083,7 @@ export default function DriverDashboard() {
                     step="0.1"
                     value={fuelQuantity}
                     onChange={(e) => setFuelQuantity(e.target.value)}
-                    placeholder="e.g. 5.5"
+                    placeholder="e.g. 4.2"
                     className="w-full bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-white outline-none"
                   />
                 </div>
