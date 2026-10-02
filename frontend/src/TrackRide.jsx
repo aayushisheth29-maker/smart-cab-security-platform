@@ -10,6 +10,8 @@ import TripRatingModal from './TripRatingModal';
 import EmergencyMedicalModal from './EmergencyMedicalModal';
 import LostFoundModal from './LostFoundModal';
 import RideInsuranceModal from './RideInsuranceModal';
+import LiveBeaconModal from './LiveBeaconModal';
+import TaxInvoiceModal from './TaxInvoiceModal';
 import { Chimes, announceMilestone } from './ttsService';
 
 const carIcon = new L.DivIcon({
@@ -42,6 +44,8 @@ const TrackRide = () => {
   const [showMedicalModal, setShowMedicalModal] = useState(false);
   const [showLostFoundModal, setShowLostFoundModal] = useState(false);
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
+  const [showBeaconModal, setShowBeaconModal] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [audioAnnounceEnabled, setAudioAnnounceEnabled] = useState(true);
   const videoRef = useRef(null);
   const mapRef = useRef(null);
@@ -430,8 +434,24 @@ const TrackRide = () => {
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
             <button
               type="button"
-              onClick={() => setShowInsuranceModal(true)}
+              onClick={() => setShowBeaconModal(true)}
               className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold px-3 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+              title="Share Live Ride Beacon with Family on WhatsApp"
+            >
+              <span>📡 Live Beacon</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowInvoiceModal(true)}
+              className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold px-3 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
+              title="View & Download GST Tax Invoice"
+            >
+              <span>📄 GST Invoice</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowInsuranceModal(true)}
+              className="bg-indigo-700 hover:bg-indigo-800 text-white font-bold px-3 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition"
               title="Complimentary ₹5,00,000 Accidental & Medical Shield"
             >
               <ShieldCheck className="h-4 w-4 mr-1.5" /> ₹5L Insurance
@@ -779,6 +799,30 @@ const TrackRide = () => {
           onClose={() => setShowInsuranceModal(false)}
           tripId={linkId}
           passengerName={trackingData?.riderName || 'Aayushi Sheth'}
+        />
+      )}
+
+      {/* 📡 Live Ride Beacon (Family Web Tracker) Modal */}
+      {showBeaconModal && (
+        <LiveBeaconModal
+          isOpen={showBeaconModal}
+          onClose={() => setShowBeaconModal(false)}
+          trip={{ id: linkId }}
+          rideCode={linkId}
+          driverName={trackingData?.driverName || 'Rahul Sharma'}
+          carPlate={trackingData?.carPlate || 'GJ 01 AB 1234'}
+          pickup={trackingData?.pickup}
+          dropoff={trackingData?.dropoff}
+        />
+      )}
+
+      {/* 📄 1-Tap GST Tax Invoice Modal */}
+      {showInvoiceModal && (
+        <TaxInvoiceModal
+          isOpen={showInvoiceModal}
+          onClose={() => setShowInvoiceModal(false)}
+          tripId={linkId}
+          initialTrip={trackingData}
         />
       )}
     </div>

@@ -41,6 +41,7 @@ import { API_BASE, apiFetch } from './api';
 import { LanguageSwitcher, useLanguage } from './i18n';
 import DriverKycModal from './DriverKycModal';
 import DriverHeatmapModal from './DriverHeatmapModal';
+import DriverWeeklyAnalyticsModal from './DriverWeeklyAnalyticsModal';
 
 // Custom icons for driver map
 const driverIcon = L.divIcon({
@@ -84,6 +85,7 @@ export default function DriverDashboard() {
   const [showPayoutModal, setShowPayoutModal] = useState(false);
   const [showKycModal, setShowKycModal] = useState(false);
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
+  const [showWeeklyModal, setShowWeeklyModal] = useState(false);
   
   const [reportReason, setReportReason] = useState('Suspicious / Contraband Concern');
   const [reportNotes, setReportNotes] = useState('');
@@ -463,6 +465,17 @@ export default function DriverDashboard() {
             >
               <Flame className="h-3.5 w-3.5 text-orange-400" />
               <span className="hidden sm:inline">Surge Radar</span>
+            </button>
+
+            {/* WEEKLY ANALYTICS & MILEAGE */}
+            <button
+              type="button"
+              onClick={() => setShowWeeklyModal(true)}
+              className="px-3 py-1.5 rounded-xl font-bold text-xs bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 border border-indigo-500/40 transition flex items-center gap-1.5 shadow"
+              title="View Weekly Financials & Fuel Mileage ROI"
+            >
+              <TrendingUp className="h-3.5 w-3.5 text-indigo-400" />
+              <span className="hidden sm:inline">Weekly ROI</span>
             </button>
 
             {/* KYC STATUS */}
@@ -1294,6 +1307,15 @@ export default function DriverDashboard() {
         <DriverHeatmapModal
           isOpen={showHeatmapModal}
           onClose={() => setShowHeatmapModal(false)}
+        />
+      )}
+
+      {/* 📊 DRIVER WEEKLY EARNINGS & MILEAGE ROI MODAL */}
+      {showWeeklyModal && (
+        <DriverWeeklyAnalyticsModal
+          isOpen={showWeeklyModal}
+          onClose={() => setShowWeeklyModal(false)}
+          driverName={driverName}
         />
       )}
     </div>

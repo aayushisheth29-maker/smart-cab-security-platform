@@ -11,6 +11,8 @@ import { apiFetch } from './api';
 import TripRatingModal from './TripRatingModal';
 import LostFoundModal from './LostFoundModal';
 import RideInsuranceModal from './RideInsuranceModal';
+import TaxInvoiceModal from './TaxInvoiceModal';
+import LiveBeaconModal from './LiveBeaconModal';
 
 const pickupMarkerIcon = new L.DivIcon({
   className: 'custom-map-icon',
@@ -61,7 +63,7 @@ function formatDate(iso) {
   }
 }
 
-function RideCard({ ride, onTrack, onRate, onViewRoute, onLostFound, onInsurance }) {
+function RideCard({ ride, onTrack, onRate, onViewRoute, onLostFound, onInsurance, onInvoice, onBeacon }) {
   const driver = ride.driver || {};
   const isSos = ride.status === 'DANGER';
   return (
@@ -127,12 +129,21 @@ function RideCard({ ride, onTrack, onRate, onViewRoute, onLostFound, onInsurance
         </button>
 
         {ACTIVE.includes(ride.status) && ride.status !== 'DANGER' && (
-          <button
-            onClick={() => onTrack(ride)}
-            className="flex-1 bg-slate-900 text-white text-xs sm:text-sm font-bold py-2.5 rounded-xl hover:bg-slate-800 transition"
-          >
-            Track live
-          </button>
+          <>
+            <button
+              onClick={() => onTrack(ride)}
+              className="flex-1 bg-slate-900 text-white text-xs sm:text-sm font-bold py-2.5 rounded-xl hover:bg-slate-800 transition"
+            >
+              Track live
+            </button>
+            <button
+              onClick={() => onBeacon && onBeacon(ride)}
+              className="px-3 py-2.5 rounded-xl border border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100 transition text-xs font-bold flex items-center gap-1"
+              title="Share Live Ride Beacon with Family"
+            >
+              <span>📡 Beacon</span>
+            </button>
+          </>
         )}
         {ride.status === 'DANGER' && (
           <Link to="/safety" className="flex-1 bg-red-600 text-white text-xs sm:text-sm font-bold py-2.5 rounded-xl text-center hover:bg-red-700 transition">
@@ -146,6 +157,13 @@ function RideCard({ ride, onTrack, onRate, onViewRoute, onLostFound, onInsurance
               className="flex-1 bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-bold py-2.5 rounded-xl text-center transition shadow-sm flex items-center justify-center gap-1.5"
             >
               <Star className="h-4 w-4 fill-white" /> Rate &amp; Tip
+            </button>
+            <button
+              onClick={() => onInvoice && onInvoice(ride)}
+              className="px-3 py-2.5 rounded-xl border border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100 transition text-xs font-bold flex items-center gap-1"
+              title="Download GST Tax Invoice & Expense Receipt"
+            >
+              <span>📄 Tax Invoice</span>
             </button>
             <button
               onClick={() => onLostFound && onLostFound(ride)}
@@ -197,6 +215,8 @@ export default function MyRides() {
   const [ratingModalRide, setRatingModalRide] = useState(null);
   const [lostFoundModalRide, setLostFoundModalRide] = useState(null);
   const [insuranceModalRide, setInsuranceModalRide] = useState(null);
+  const [invoiceModalRide, setInvoiceModalRide] = useState(null);
+  const [beaconModalRide, setBeaconModalRide] = useState(null);
   const [selectedRouteRide, setSelectedRouteRide] = useState(null);
 
   useEffect(() => {
@@ -435,6 +455,8 @@ export default function MyRides() {
                 onViewRoute={(r) => setSelectedRouteRide(r)}
                 onLostFound={(r) => setLostFoundModalRide(r)}
                 onInsurance={(r) => setInsuranceModalRide(r)}
+                onInvoice={(r) => setInvoiceModalRide(r)}
+                onBeacon={(r) => setBeaconModalRide(r)}
               />
             ))}
           </div>
@@ -475,6 +497,30 @@ export default function MyRides() {
           onClose={() => setInsuranceModalRide(null)}
           tripId={insuranceModalRide.rideCode || insuranceModalRide.id}
           passengerName={user?.name || 'Aayushi Sheth'}
+        />
+      )}
+
+      {/* 📄 1-Tap GST Tax Invoice Modal */}
+      {invoiceModalRide && (
+        <TaxInvoiceModal
+          isOpen={!!invoiceModalRide}
+          onClose={() => setInvoiceModalRide(null)}
+          tripId={invoiceModalRide.rideCode || invoiceModalRide.id}
+          initialTrip={invoiceModalRide}
+        />
+      )}
+
+      {/* 📡 Live Ride Beacon Modal */}
+      {beaconModalRide && (
+        <LiveBeaconModal
+          isOpen={!!beaconModalRide}
+          onClose={() => setBeaconModalRide(null)}
+          trip={beaconModalRide}
+          rideCode={beaconModalRide.rideCode || beaconModalRide.id}
+          driverName={beaconModalRide.driver?.name || beaconModalRide.driverName || 'Rahul Sharma'}
+          carPlate={beaconModalRide.driver?.plate || beaconModalRide.carPlate || 'GJ 01 AB 1234'}
+          pickup={beaconModalRide.pickupLocation || beaconModalRide.pickup}
+          dropoff={beaconModalRide.dropoffLocation || beaconModalRide.dropoff}
         />
       )}
 

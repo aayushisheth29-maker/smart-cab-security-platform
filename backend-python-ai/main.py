@@ -40,7 +40,7 @@ from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException, Dep
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any, Union
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import random
 import os
 import shutil
@@ -5367,6 +5367,246 @@ def get_driver_dashboard_stats(driver_name: Optional[str] = None):
         "walletBalance": wallet_balance if gross_earnings > 0 else 248.0,
         "rating": 4.96,
         "recentTrips": sorted(driver_trips, key=lambda x: x.get("createdAt", ""), reverse=True)[:5]
+    }
+
+
+# ---------------------------------------------------------------------------
+# 📄 1-TAP GST TAX INVOICE & PDF RECEIPT ENDPOINT
+# ---------------------------------------------------------------------------
+@app.get("/api/trips/{trip_id}/invoice")
+def get_trip_tax_invoice(trip_id: Union[int, str], customer_gstin: Optional[str] = None, company_name: Optional[str] = None):
+    """Generates official GST compliant tax invoice (SAC 996412) for ride booking."""
+    tid_str = str(trip_id)
+    trip = next((t for t in TRIPS if str(t.get("id")) == tid_str or str(t.get("rideCode")) == tid_str), None)
+    if not trip:
+        # Fallback sample trip invoice for demo preview
+        trip = {
+            "id": trip_id,
+            "rideCode": f"SC-{trip_id}",
+            "riderName": "Aayushi Sheth",
+            "riderPhone": "+91 98765 43210",
+            "pickupLocation": "SG Highway, Bodakdev, Ahmedabad",
+            "dropoffLocation": "Sardar Vallabhbhai Patel International Airport, Ahmedabad",
+            "distanceKm": 14.2,
+            "fare": 310.0,
+            "selectedCar": "SmartSedan Prime",
+            "driver": {"name": "Rahul Sharma", "plate": "GJ 01 AB 1234", "dl": "GJ01-2019-8821943"},
+            "paymentMethod": "UPI Instant",
+            "paymentStatus": "PAID",
+            "createdAt": _now_iso(),
+            "completedAt": _now_iso()
+        }
+    
+    total_fare = float(trip.get("fare", 250.0))
+    # In India, GST on cab aggregation / passenger transport is 5% total (2.5% CGST + 2.5% SGST)
+    base_taxable = round(total_fare / 1.05, 2)
+    total_gst = round(total_fare - base_taxable, 2)
+    cgst = round(total_gst / 2.0, 2)
+    sgst = round(total_gst - cgst, 2)
+    
+    inv_num_part = int(trip.get("id", 1)) if str(trip.get("id", "")).isdigit() else 108
+    invoice_number = f"SC/INV/2026/{inv_num_part:05d}"
+    driver_obj = trip.get("driver") if isinstance(trip.get("driver"), dict) else {}
+    
+    return {
+        "status": "SUCCESS",
+        "invoiceNumber": invoice_number,
+        "invoiceDate": trip.get("completedAt") or trip.get("createdAt") or _now_iso(),
+        "platformDetails": {
+            "legalName": "Smart Security AI Cab Services Private Limited",
+            "brandName": "SmartCab AI",
+            "gstin": "24AAECS1234F1Z8",
+            "cin": "U63040GJ2026PTC109823",
+            "pan": "AAECS1234F",
+            "address": "402, Titanium City Centre, Prahladnagar, Ahmedabad, Gujarat 380015",
+            "state": "Gujarat",
+            "stateCode": "24",
+            "supportEmail": "billing@smartsecuritycab.in",
+            "sacCode": "996412",
+            "sacDescription": "Passenger transportation services by motor-driven cabs"
+        },
+        "customerDetails": {
+            "name": trip.get("riderName", "Valued Passenger"),
+            "phone": trip.get("riderPhone", "+91 98765 43210"),
+            "customerGstin": customer_gstin or trip.get("customerGstin") or "",
+            "companyName": company_name or trip.get("companyName") or "",
+            "billingState": "Gujarat (24)"
+        },
+        "tripDetails": {
+            "tripId": trip.get("id"),
+            "rideCode": trip.get("rideCode") or f"SC-{trip.get('id')}",
+            "pickup": trip.get("pickupLocation") or trip.get("pickup", "Ahmedabad"),
+            "dropoff": trip.get("dropoffLocation") or trip.get("dropoff", "Destination"),
+            "distanceKm": trip.get("distanceKm", 10.5),
+            "carModel": trip.get("selectedCar") or driver_obj.get("carModel", "SmartSedan Prime"),
+            "driverName": driver_obj.get("name") or trip.get("driverName", "Rahul Sharma"),
+            "vehiclePlate": driver_obj.get("plate", "GJ 01 AB 1234"),
+            "driverDl": driver_obj.get("dl", "GJ01-2019-8821943"),
+            "bookingTime": trip.get("createdAt", _now_iso()),
+            "dropTime": trip.get("completedAt", _now_iso())
+        },
+        "fareBreakdown": {
+            "baseTaxableAmount": base_taxable,
+            "cgstRate": "2.5%",
+            "cgstAmount": cgst,
+            "sgstRate": "2.5%",
+            "sgstAmount": sgst,
+            "igstRate": "0.0%",
+            "igstAmount": 0.0,
+            "totalGst": total_gst,
+            "totalFarePaid": total_fare,
+            "currency": "INR",
+            "paymentMethod": trip.get("paymentMethod", "UPI"),
+            "paymentStatus": trip.get("paymentStatus", "PAID"),
+            "transactionRef": f"TXN-UPI-{uuid.uuid4().hex[:8].upper()}"
+        },
+        "digitalStamp": {
+            "verified": True,
+            "digitallySignedBy": "SmartCab Automated Tax Engine",
+            "hash": f"SHA256:{uuid.uuid4().hex}"
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# 📊 DRIVER WEEKLY EARNINGS & SHIFT PROFIT MILEAGE INTELLIGENCE
+# ---------------------------------------------------------------------------
+@app.get("/api/driver/weekly-analytics")
+def get_driver_weekly_analytics(driver_name: Optional[str] = "Rahul Sharma"):
+    """Returns 7-day day-by-day earnings, fuel ROI efficiency, and milestone intelligence."""
+    dname = (driver_name or "Rahul Sharma").strip()
+    
+    # 7-day calendar data for current week
+    days_data = [
+        {"day": "Mon", "date": "28 Sep", "rides": 6, "gross": 1380.0, "net80": 1104.0, "bonus": 100.0, "fuel": 320.0, "takeHome": 884.0},
+        {"day": "Tue", "date": "29 Sep", "rides": 5, "gross": 1150.0, "net80": 920.0, "bonus": 40.0, "fuel": 280.0, "takeHome": 680.0},
+        {"day": "Wed", "date": "30 Sep", "rides": 7, "gross": 1620.0, "net80": 1296.0, "bonus": 100.0, "fuel": 360.0, "takeHome": 1036.0},
+        {"day": "Thu", "date": "01 Oct", "rides": 4, "gross": 920.0, "net80": 736.0, "bonus": 40.0, "fuel": 220.0, "takeHome": 556.0},
+        {"day": "Fri", "date": "02 Oct", "rides": 5, "gross": 1240.0, "net80": 992.0, "bonus": 40.0, "fuel": 290.0, "takeHome": 742.0},
+        {"day": "Sat", "date": "03 Oct (Est.)", "rides": 8, "gross": 1950.0, "net80": 1560.0, "bonus": 200.0, "fuel": 420.0, "takeHome": 1340.0},
+        {"day": "Sun", "date": "04 Oct (Est.)", "rides": 9, "gross": 2200.0, "net80": 1760.0, "bonus": 200.0, "fuel": 460.0, "takeHome": 1500.0},
+    ]
+    
+    total_gross = sum(d["gross"] for d in days_data)
+    total_net80 = sum(d["net80"] for d in days_data)
+    total_bonus = sum(d["bonus"] for d in days_data)
+    total_fuel = sum(d["fuel"] for d in days_data)
+    total_take_home = total_net80 + total_bonus - total_fuel
+    total_rides = sum(d["rides"] for d in days_data)
+    total_distance_km = total_rides * 11.8
+    total_cng_kg = round(total_distance_km / 24.2, 1)
+    
+    return {
+        "status": "SUCCESS",
+        "driverName": dname,
+        "weekLabel": "Week 40 • Sep 28 - Oct 04, 2026",
+        "tier": "SmartCab Diamond Partner",
+        "kpis": {
+            "totalWeeklyGross": round(total_gross, 2),
+            "driverNet80Cut": round(total_net80, 2),
+            "targetBonusesUnlocked": round(total_bonus, 2),
+            "totalFuelExpense": round(total_fuel, 2),
+            "netTakeHomeProfit": round(total_take_home, 2),
+            "totalTripsCompleted": total_rides,
+            "acceptanceRate": "97.8%",
+            "cancellationRate": "0.8%",
+            "weeklyRating": 4.96
+        },
+        "mileageIntelligence": {
+            "totalKilometersDriven": round(total_distance_km, 1),
+            "estimatedCngConsumptionKg": total_cng_kg,
+            "fuelEfficiencyKmPerKg": 24.2,
+            "fuelCostPerKm": round(total_fuel / max(1.0, total_distance_km), 2),
+            "grossRevenuePerKm": round(total_gross / max(1.0, total_distance_km), 2),
+            "shiftProfitMargin": f"{round((total_take_home / total_gross) * 100, 1)}%"
+        },
+        "days": days_data,
+        "partnerPerks": [
+            {
+                "title": "⛽ IOCL & HP CNG Cashback Voucher",
+                "desc": "Flat ₹150 cashback on monthly CNG refuels over ₹2,500 at partnered stations in Ahmedabad.",
+                "badge": "Active (Claimed)"
+            },
+            {
+                "title": "🛡️ ₹50,000 Complimentary Personal Accident Cover",
+                "desc": "Active 24/7 on-duty insurance certificate backed by ICICI Lombard / TPA Desk.",
+                "badge": "Active Shield"
+            },
+            {
+                "title": "⚡ 0% Platform Commission Weekend Surge Hour",
+                "desc": "Keep 100% of customer fares between 8:00 PM and 10:00 PM every Saturday.",
+                "badge": "Unlocked"
+            }
+        ]
+    }
+
+
+# ---------------------------------------------------------------------------
+# 🛡️ LIVE RIDE BEACON (FAMILY WEB TRACKER) ENDPOINT
+# ---------------------------------------------------------------------------
+class BeaconSharePayload(BaseModel):
+    tripId: Optional[Union[int, str]] = None
+    riderName: Optional[str] = "Aayushi S."
+    contacts: Optional[List[Dict[str, str]]] = []
+    customMessage: Optional[str] = None
+    shareExpiryHours: Optional[int] = 24
+
+
+@app.post("/api/trips/{trip_id}/beacon-share")
+def create_trip_beacon_share(trip_id: Union[int, str], payload: Optional[BeaconSharePayload] = None):
+    """Generates a secure live ride beacon share URL and WhatsApp message payload."""
+    tid_str = str(trip_id)
+    trip = next((t for t in TRIPS if str(t.get("id")) == tid_str or str(t.get("rideCode")) == tid_str), None)
+    
+    link_id = f"BEACON_{uuid.uuid4().hex[:10]}"
+    driver_obj = (trip.get("driver") if trip else None) or {}
+    driver_name = driver_obj.get("name") if isinstance(driver_obj, dict) else (trip.get("driverName") if trip else "Rahul Sharma")
+    car_plate = driver_obj.get("plate") if isinstance(driver_obj, dict) else "GJ 01 AB 1234"
+    rider_name = (payload.riderName if payload else None) or (trip.get("riderName") if trip else "Aayushi S.")
+    
+    expires_at = (datetime.now(timezone.utc).replace(microsecond=0) + timedelta(hours=payload.shareExpiryHours if payload else 24)).isoformat()
+    
+    link = {
+        "linkId": link_id,
+        "bookingId": tid_str,
+        "riderName": rider_name,
+        "driverName": driver_name or "Rahul Sharma",
+        "driverLicense": driver_obj.get("dl", "GJ01-2019-8821943"),
+        "carPlate": car_plate or "GJ 01 AB 1234",
+        "carModel": driver_obj.get("carModel", "SmartSedan Prime"),
+        "pickup": trip.get("pickupLocation") if trip else "SG Highway, Ahmedabad",
+        "dropoff": trip.get("dropoffLocation") if trip else "SVPI Airport, Ahmedabad",
+        "currentLocation": {"lat": 23.0338, "lng": 72.5467},
+        "status": "ON_ROUTE",
+        "createdAt": _now_iso(),
+        "expiresAt": expires_at,
+        "emergencyContacts": payload.contacts if payload else [],
+        "isBeacon": True
+    }
+    
+    SHARE_LINKS[link_id] = link
+    _persist_share_link(link)
+    
+    track_url = f"/track/{link_id}"
+    full_url = f"{FRONTEND_URL}/track/{link_id}"
+    
+    whatsapp_text = (
+        f"🛡️ *SmartCab Live Ride Beacon*\n\n"
+        f"Hi, track my live cab in real-time:\n"
+        f"👤 *Driver:* {driver_name} ({car_plate})\n"
+        f"📍 *Route:* {link['pickup']} ➔ {link['dropoff']}\n"
+        f"⏱️ *Safety Shield:* AI Route Deviation & SOS active\n\n"
+        f"🔴 *Live GPS Map:* {full_url}"
+    )
+    
+    return {
+        "status": "SUCCESS",
+        "linkId": link_id,
+        "trackUrl": track_url,
+        "fullShareUrl": full_url,
+        "whatsappShareText": whatsapp_text,
+        "whatsappUrl": f"https://api.whatsapp.com/send?text={urllib.parse.quote(whatsapp_text)}",
+        "link": link
     }
 
 
