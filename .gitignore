@@ -14,3 +14,8 @@ venv/
 # OS / editor
 .DS_Store
 Thumbs.db
+
+# Local-only mobile/ML preview artifacts (never real rider data)
+.cache/
+frontend/build/
+*.joblib

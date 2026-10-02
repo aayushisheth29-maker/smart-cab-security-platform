@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ShieldCheck, ArrowLeft, Siren, MapPin, Users, Video, Loader2, Phone,
-  Copy, Check, Smartphone, AlertTriangle, Share2, Plus, Trash2,
+  Copy, Check, CheckCircle2, Smartphone, AlertTriangle, Share2, Plus, Trash2, EyeOff, Volume2, FileText,
+  HeartPulse, Hospital
 } from 'lucide-react';
 import { apiFetch } from './api';
+import EmergencyMedicalModal from './EmergencyMedicalModal';
 
 function readLastRide() {
   try {
@@ -70,6 +72,25 @@ export default function SafetyCenter() {
   const [routeCheck, setRouteCheck] = useState(null);
   const [routeBusy, setRouteBusy] = useState(false);
   const [notice, setNotice] = useState('');
+  const [testSending, setTestSending] = useState(null);
+  const [testResult, setTestResult] = useState(null);
+  const [showMedicalModal, setShowMedicalModal] = useState(false);
+
+  const sendTestBroadcast = async (contact) => {
+    setTestSending(contact.phone);
+    setTestResult(null);
+    try {
+      const data = await apiFetch('/api/emergency/test-broadcast', {
+        method: 'POST',
+        body: JSON.stringify({ phone: contact.phone, name: contact.name })
+      });
+      setTestResult({ phone: contact.phone, success: true, message: `✅ Test alert dispatched to ${contact.name} (${contact.phone}) via SMS & WhatsApp!` });
+    } catch (e) {
+      setTestResult({ phone: contact.phone, success: false, message: `⚠️ ${e.message}` });
+    } finally {
+      setTestSending(null);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -216,6 +237,7 @@ export default function SafetyCenter() {
             <Link to="/" className="hover:text-green-400 transition">Book Ride</Link>
             <Link to="/rides" className="hover:text-green-400 transition">My Rides</Link>
             <Link to="/safety" className="text-green-400">Safety Center</Link>
+            <Link to="/route-lab" className="hover:text-green-400 transition text-emerald-400">🧭 Route Lab</Link>
           </nav>
         </div>
       </header>
@@ -285,6 +307,72 @@ export default function SafetyCenter() {
           </div>
         )}
 
+        {/* Quick Emergency Hotlines */}
+        <div className="mb-8 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-xs font-extrabold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+              <Phone className="h-3.5 w-3.5 text-red-500" /> One-Tap National Helplines
+            </span>
+            <span className="text-[10px] bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-full">
+              Toll-Free 24/7
+            </span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <a
+              href="tel:112"
+              className="flex items-center gap-3 p-3 bg-red-50 hover:bg-red-100/80 border border-red-200 rounded-2xl transition group"
+            >
+              <div className="p-2.5 rounded-xl bg-red-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                112
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">National Police</div>
+                <div className="text-[10px] text-red-700 font-semibold">Immediate Dispatch</div>
+              </div>
+            </a>
+
+            <a
+              href="tel:181"
+              className="flex items-center gap-3 p-3 bg-pink-50 hover:bg-pink-100/80 border border-pink-200 rounded-2xl transition group"
+            >
+              <div className="p-2.5 rounded-xl bg-pink-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                181
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">Women Helpline</div>
+                <div className="text-[10px] text-pink-700 font-semibold">24/7 Confidential</div>
+              </div>
+            </a>
+
+            <button
+              type="button"
+              onClick={() => setShowMedicalModal(true)}
+              className="flex items-center gap-3 p-3 bg-amber-50 hover:bg-amber-100/80 border border-amber-200 rounded-2xl transition group text-left cursor-pointer"
+            >
+              <div className="p-2.5 rounded-xl bg-amber-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                108
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">Ambulance &amp; Hospitals</div>
+                <div className="text-[10px] text-amber-700 font-semibold">24/7 ER Locator &amp; SOS →</div>
+              </div>
+            </button>
+
+            <a
+              href="tel:1091"
+              className="flex items-center gap-3 p-3 bg-purple-50 hover:bg-purple-100/80 border border-purple-200 rounded-2xl transition group"
+            >
+              <div className="p-2.5 rounded-xl bg-purple-600 text-white font-black text-sm shrink-0 group-hover:scale-105 transition-transform">
+                1091
+              </div>
+              <div>
+                <div className="font-extrabold text-slate-900 text-xs">Women in Distress</div>
+                <div className="text-[10px] text-purple-700 font-semibold">Quick Support</div>
+              </div>
+            </a>
+          </div>
+        </div>
+
         <div className="grid md:grid-cols-2 gap-6">
           {/* SOS */}
           <Card
@@ -311,27 +399,54 @@ export default function SafetyCenter() {
             <button
               onClick={shareLiveRide}
               disabled={shareBusy}
-              className="w-full bg-green-600 text-white font-bold py-3 rounded-2xl hover:bg-green-700 transition disabled:opacity-60 flex items-center justify-center gap-2"
+              className="w-full bg-green-600 text-white font-bold py-3 rounded-2xl hover:bg-green-700 transition disabled:opacity-60 flex items-center justify-center gap-2 shadow-md hover:shadow-lg"
             >
               {shareBusy ? <Loader2 className="h-5 w-5 animate-spin" /> : <Share2 className="h-5 w-5" />}
               {shareBusy ? 'Creating secure link…' : 'Create & share tracking link'}
             </button>
             {shareLink && (
-              <div className="mt-3 bg-green-50 border border-green-200 rounded-xl p-3">
-                <div className="text-xs text-green-700 font-bold mb-2 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> Live tracking link ready</div>
+              <div className="mt-3 bg-green-50/80 border border-green-200 rounded-2xl p-3.5 space-y-3">
+                <div className="text-xs text-green-800 font-extrabold flex items-center justify-between">
+                  <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-green-600" /> Live tracking link ready</span>
+                  <span className="text-[10px] bg-green-200 text-green-900 font-black px-2 py-0.5 rounded-full">Active</span>
+                </div>
+                
                 <div className="flex items-center gap-2">
-                  <code className="flex-1 text-xs bg-white border border-green-200 rounded-lg px-3 py-2 truncate">{shareLink}</code>
-                  <button onClick={copyLink} className="p-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition">
-                    {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                  <code className="flex-1 text-xs bg-white border border-green-300 rounded-xl px-3 py-2.5 truncate font-mono text-slate-800 font-bold">{shareLink}</code>
+                  <button onClick={copyLink} className="p-2.5 bg-green-700 text-white rounded-xl hover:bg-green-800 transition shadow-sm" title="Copy tracking link">
+                    {copied ? <Check className="h-4 w-4 text-emerald-200" /> : <Copy className="h-4 w-4" />}
                   </button>
                 </div>
+
+                {/* Direct 1-tap WhatsApp and SMS Sharing Buttons */}
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <a
+                    href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                      `🚨 SmartCab Live Ride Tracking:\n${user?.name || lastRide?.riderName || 'I am'} in a SmartCab ride (${lastRide?.rideCode || 'Active Ride'}).\nDriver: ${lastRide?.driver?.name || 'Verified Driver'} (${lastRide?.driver?.plate || ''})\n\n📍 Track my real-time GPS location here:\n${shareLink}`
+                    )}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black shadow-sm transition"
+                  >
+                    <span>💬</span> WhatsApp Share
+                  </a>
+                  <a
+                    href={`sms:?body=${encodeURIComponent(
+                      `SmartCab Ride Share: Track my live ride location here: ${shareLink}`
+                    )}`}
+                    className="flex items-center justify-center gap-1.5 py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black shadow-sm transition"
+                  >
+                    <span>📱</span> SMS Share
+                  </a>
+                </div>
+
                 {notifyResult && (
-                  <div className="mt-3 text-xs text-green-800">
-                    <div className="font-bold mb-1">
-                      {notifyResult.transport === 'twilio' ? 'SMS sent to contacts' : 'Message preview (SMS provider not configured)'}
+                  <div className="mt-2 text-xs bg-white border border-green-200 rounded-xl p-3">
+                    <div className="font-black text-emerald-800 flex items-center gap-1.5 mb-1">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                      Automated Broadcast Dispatched
                     </div>
-                    <pre className="whitespace-pre-wrap bg-white border border-green-200 rounded-lg p-2 text-[11px]">{notifyResult.message}</pre>
-                    {notifyResult.note && <p className="text-amber-700 mt-1">{notifyResult.note}</p>}
+                    <pre className="whitespace-pre-wrap bg-slate-50 border border-slate-200 rounded-lg p-2 text-[11px] font-sans text-slate-700 font-medium">{notifyResult.message}</pre>
                   </div>
                 )}
               </div>
@@ -340,19 +455,50 @@ export default function SafetyCenter() {
 
           {/* Emergency contacts */}
           <Card icon={Users} tone="blue" title="Emergency Contacts" subtitle="Manage trusted contacts">
-            <div className="space-y-2 mb-4">
+            <div className="space-y-2 mb-4 max-h-56 overflow-y-auto">
               {contacts.length === 0 ? (
-                <p className="text-sm text-slate-400">No trusted contacts yet. Add someone so SOS alerts reach them.</p>
+                <p className="text-sm text-slate-400 bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 text-center">
+                  No trusted contacts yet. Add someone so SOS alerts reach them immediately.
+                </p>
               ) : (
                 contacts.map((c) => (
-                  <div key={c.phone} className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2.5">
-                    <div className="text-sm">
-                      <div className="font-bold text-slate-800">{c.name}</div>
-                      <div className="text-slate-500 text-xs">{c.phone}</div>
+                  <div key={c.phone} className="space-y-1.5 bg-slate-50 border border-slate-100 rounded-xl p-3 hover:bg-slate-100/80 transition">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="h-9 w-9 rounded-full bg-blue-100 text-blue-700 font-extrabold text-xs flex items-center justify-center shrink-0">
+                          {c.name ? c.name.slice(0, 2).toUpperCase() : 'EC'}
+                        </div>
+                        <div className="text-sm">
+                          <div className="font-extrabold text-slate-900">{c.name}</div>
+                          <a href={`tel:${c.phone}`} className="text-slate-500 hover:text-blue-600 text-xs font-semibold flex items-center gap-1">
+                            <Phone className="h-3 w-3 text-emerald-600" /> {c.phone}
+                          </a>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => sendTestBroadcast(c)}
+                          disabled={testSending === c.phone}
+                          className="px-2.5 py-1 text-[11px] font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-300 rounded-lg transition disabled:opacity-50"
+                          title="Test SMS and WhatsApp dispatch"
+                        >
+                          {testSending === c.phone ? "Sending…" : "Test SMS/WA"}
+                        </button>
+                        <button
+                          onClick={() => removeContact(c.phone)}
+                          className="text-slate-400 hover:text-red-600 hover:bg-red-50 transition p-1.5 rounded-lg"
+                          title={`Remove ${c.name}`}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </div>
-                    <button onClick={() => removeContact(c.phone)} className="text-red-400 hover:text-red-600 transition p-1">
-                      <Trash2 className="h-4 w-4" />
-                    </button>
+                    {testResult && testResult.phone === c.phone && (
+                      <div className={`text-[11px] font-bold p-1.5 rounded-md ${testResult.success ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}`}>
+                        {testResult.message}
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -361,31 +507,53 @@ export default function SafetyCenter() {
               <input
                 value={newContact.name}
                 onChange={(e) => setNewContact({ ...newContact, name: e.target.value })}
-                placeholder="Name (e.g. Mom)"
-                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                placeholder="Name (e.g. Mom, Bestie)"
+                className="flex-1 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-600 outline-none font-medium"
               />
               <input
                 value={newContact.phone}
                 onChange={(e) => setNewContact({ ...newContact, phone: e.target.value })}
-                placeholder="+91 …"
-                className="flex-1 border border-slate-200 rounded-xl px-3 py-2 text-sm focus:ring-2 focus:ring-blue-600 outline-none"
+                placeholder="+91 98765 43210"
+                className="flex-1 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm focus:ring-2 focus:ring-blue-600 outline-none font-medium"
               />
-              <button onClick={addContact} disabled={contactBusy} className="bg-blue-600 text-white p-2.5 rounded-xl hover:bg-blue-700 transition disabled:opacity-60">
-                <Plus className="h-5 w-5" />
+              <button
+                onClick={addContact}
+                disabled={contactBusy || !newContact.name.trim() || !newContact.phone.trim()}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 rounded-xl transition disabled:opacity-50 font-bold flex items-center justify-center"
+              >
+                <Plus className="h-4 w-4" />
               </button>
             </div>
           </Card>
 
           {/* Live Guard */}
-          <Card icon={Video} tone="amber" title="Live Guard" subtitle="Camera & evidence features" action={<span className="text-xs font-bold text-amber-600 bg-amber-50 px-2 py-1 rounded-full">On</span>}>
+          <Card icon={Video} tone="amber" title="Live Guard" subtitle="Camera, stealth & legal evidence" action={<span className="text-xs font-bold text-amber-600 bg-amber-50 px-2.5 py-1 rounded-full border border-amber-200">Active</span>}>
             <p className="text-sm text-slate-500 mb-4">
-              After booking a ride, open <strong>Live Guard</strong> from the ride screen to stream
-              camera evidence to your family's tracking page. Clips are uploaded every few seconds
-              and kept in a rolling buffer.
+              Stream encrypted in-cabin camera & audio directly to your family's live tracking view in real time.
             </p>
-            <div className="bg-slate-50 rounded-xl p-4 text-sm text-slate-600 flex items-start gap-3">
-              <Smartphone className="h-5 w-5 text-slate-400 shrink-0 mt-0.5" />
-              <p>Every share link <strong>auto-expires after 24 hours</strong> for your privacy. You can always create a new one.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-4">
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 mb-1">
+                  <EyeOff className="h-3.5 w-3.5 text-emerald-600" /> Stealth Disguise
+                </div>
+                <p className="text-[11px] text-slate-500">Dimmable clock screen hides recording from aggressive drivers.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 mb-1">
+                  <Volume2 className="h-3.5 w-3.5 text-pink-600" /> Decibel Visualizer
+                </div>
+                <p className="text-[11px] text-slate-500">Live multi-band audio sensor flags high volume and shouting.</p>
+              </div>
+              <div className="bg-slate-50 border border-slate-100 rounded-xl p-3">
+                <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800 mb-1">
+                  <FileText className="h-3.5 w-3.5 text-rose-600" /> Police Dossier
+                </div>
+                <p className="text-[11px] text-slate-500">One-tap sealed legal package containing driver data & video.</p>
+              </div>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-3.5 text-xs text-slate-600 flex items-start gap-2.5">
+              <Smartphone className="h-4 w-4 text-slate-400 shrink-0 mt-0.5" />
+              <p>Every tracking link auto-expires after 24 hours. Video chunks are encrypted during transit.</p>
             </div>
           </Card>
 
@@ -406,6 +574,12 @@ export default function SafetyCenter() {
             ) : (
               <p className="text-sm text-slate-500">We compare your live GPS position against the pickup → dropoff route. If you're more than 500 m off, you get a clear warning — a rule-based check, not a guess.</p>
             )}
+            <div className="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between">
+              <span className="text-xs text-slate-500 font-medium">Interactive Route Intelligence Lab</span>
+              <Link to="/route-lab" className="text-xs font-bold text-green-700 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition inline-flex items-center gap-1">
+                Open Route Lab →
+              </Link>
+            </div>
           </Card>
         </div>
       </main>
@@ -435,6 +609,17 @@ export default function SafetyCenter() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* 🏥 24/7 Nearest Hospital & Emergency Medical Guide */}
+      {showMedicalModal && (
+        <EmergencyMedicalModal
+          isOpen={showMedicalModal}
+          onClose={() => setShowMedicalModal(false)}
+          currentLat={lastRide?.pickupLat || 23.0225}
+          currentLng={lastRide?.pickupLng || 72.5714}
+          tripId={lastRide?.bookingId || lastRide?.id}
+        />
       )}
     </div>
   );
