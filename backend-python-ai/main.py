@@ -1021,11 +1021,13 @@ def seed_samples(force: bool = False) -> None:
     if force or not DRIVERS:
         DRIVERS.clear()
         sample_drivers = [
-            {"name": "Rahul S.",  "rating": 4.8, "dl": "MH02-2019-1234567", "plate": "MH 02 AB 1234", "carModel": "White SmartMini",  "phone": "+919876500001"},
-            {"name": "Vikram P.", "rating": 4.9, "dl": "DL04-2018-9876543", "plate": "DL 04 CD 5678", "carModel": "Silver SmartSedan", "phone": "+919876500002"},
-            {"name": "Anita M.",  "rating": 5.0, "dl": "KA01-2020-4567890", "plate": "KA 01 EF 9012", "carModel": "Black SmartSUV",   "phone": "+919876500003"},
-            {"name": "Suresh K.", "rating": 4.7, "dl": "GJ01-2017-3456789", "plate": "GJ 01 GH 3456", "carModel": "Red SmartMini",   "phone": "+919876500004"},
-            {"name": "Priya T.",  "rating": 4.9, "dl": "TS09-2021-1122334", "plate": "TS 09 IJ 7890", "carModel": "Blue SmartSedan",  "phone": "+919876500005"},
+            {"name": "Rahul S.",  "rating": 4.8, "dl": "MH02-2019-1234567", "plate": "MH 02 AB 1234", "carModel": "White SmartMini AC",  "phone": "+919876500001"},
+            {"name": "Vikram P.", "rating": 4.9, "dl": "DL04-2018-9876543", "plate": "DL 04 CD 5678", "carModel": "Silver SmartSedan Prime", "phone": "+919876500002"},
+            {"name": "Anita M.",  "rating": 5.0, "dl": "KA01-2020-4567890", "plate": "KA 01 EF 9012", "carModel": "Black SmartSUV Guard",   "phone": "+919876500003"},
+            {"name": "Mukesh R.", "rating": 4.9, "dl": "GJ01-2021-9988776", "plate": "GJ 01 AR 4421", "carModel": "Bajaj SmartAuto CNG",  "phone": "+919876500006"},
+            {"name": "Arjun V.",  "rating": 4.9, "dl": "GJ01-2022-1122334", "plate": "GJ 01 BK 7789", "carModel": "Ather SmartBike EV",  "phone": "+919876500007"},
+            {"name": "Suresh K.", "rating": 4.7, "dl": "GJ01-2017-3456789", "plate": "GJ 01 GH 3456", "carModel": "Red SmartMini AC",   "phone": "+919876500004"},
+            {"name": "Priya T.",  "rating": 4.9, "dl": "TS09-2021-1122334", "plate": "TS 09 IJ 7890", "carModel": "Blue SmartSedan Prime",  "phone": "+919876500005"},
         ]
         for d in sample_drivers:
             d["id"] = _next_id["driver"]
@@ -2566,10 +2568,11 @@ def _parse_booking_time(value: str) -> datetime:
 
 # Per-car-type pricing: (base_fare_inr, per_km_rate_inr)
 PRICING_TABLE = {
-    "SmartBike":  {"base": 20,  "perKm": 6,  "displayName": "SmartBike",  "icon": "🏍️", "capacity": 1, "etaMin": 3},
-    "SmartMini":  {"base": 40,  "perKm": 10, "displayName": "SmartMini",  "icon": "🚗", "capacity": 4, "etaMin": 5},
-    "SmartSedan": {"base": 50,  "perKm": 14, "displayName": "SmartSedan", "icon": "🚖", "capacity": 4, "etaMin": 7},
-    "SmartSUV":   {"base": 80,  "perKm": 20, "displayName": "SmartSUV",   "icon": "🚙", "capacity": 6, "etaMin": 10},
+    "SmartBike":  {"base": 18,  "perKm": 7,  "displayName": "SmartBike Express", "icon": "🛵", "capacity": 1, "etaMin": 2},
+    "SmartAuto":  {"base": 30,  "perKm": 11, "displayName": "SmartAuto CNG",     "icon": "🛺", "capacity": 3, "etaMin": 2},
+    "SmartMini":  {"base": 40,  "perKm": 10, "displayName": "SmartMini AC",      "icon": "🚗", "capacity": 4, "etaMin": 4},
+    "SmartSedan": {"base": 55,  "perKm": 14, "displayName": "SmartSedan Prime",  "icon": "🚘", "capacity": 4, "etaMin": 5},
+    "SmartSUV":   {"base": 85,  "perKm": 20, "displayName": "SmartSUV Guard",    "icon": "🚙", "capacity": 6, "etaMin": 7},
 }
 
 

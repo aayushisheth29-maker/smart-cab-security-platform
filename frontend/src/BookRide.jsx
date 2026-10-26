@@ -1474,10 +1474,11 @@ const BookRide = () => {
 
   // Per-car pricing — MUST mirror the backend PRICING_TABLE in main.py.
   const CAR_PRICING = {
-    SmartBike:  { base: 20, perKm: 6 },
+    SmartBike:  { base: 18, perKm: 7 },
+    SmartAuto:  { base: 30, perKm: 11 },
     SmartMini:  { base: 40, perKm: 10 },
-    SmartSedan: { base: 50, perKm: 14 },
-    SmartSUV:   { base: 80, perKm: 20 },
+    SmartSedan: { base: 55, perKm: 14 },
+    SmartSUV:   { base: 85, perKm: 20 },
   };
 
   // Local replica of the backend's _estimate_fare — used ONLY when the
@@ -4302,18 +4303,32 @@ const BookRide = () => {
                       <div className="overflow-y-auto flex-1 pr-1 space-y-3 mb-4">
                         {[
                           {
+                            id: 'SmartAuto',
+                            title: 'SmartAuto',
+                            tagline: 'Pocket-friendly 3-wheeler · Zero surge option',
+                            icon: Car,
+                            seats: '👤 3 Seats',
+                            fuel: '🌿 CNG Green',
+                            luggage: '🧳 1-2 Bags',
+                            eta: '2 min away',
+                            badge: 'Meter Guaranteed',
+                            badgeTone: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+                            base: 30,
+                            perKm: 11,
+                          },
+                          {
                             id: 'SmartBike',
                             title: 'SmartBike',
                             tagline: 'Fastest in city traffic · Solo ride',
                             icon: Bike,
                             seats: '👤 1 Rider',
-                            fuel: '⚡ EV Green',
+                            fuel: '⚡ EV / Petrol',
                             luggage: '🎒 1 Backpack',
-                            eta: '3 min away',
-                            badge: 'Helmet Verified',
+                            eta: '2 min away',
+                            badge: 'Sanitized Helmet Provided',
                             badgeTone: 'bg-emerald-50 text-emerald-700 border-emerald-200',
-                            base: 20,
-                            perKm: 6,
+                            base: 18,
+                            perKm: 7,
                           },
                           {
                             id: 'SmartMini',
@@ -4323,38 +4338,38 @@ const BookRide = () => {
                             seats: '👤 4 Seats',
                             fuel: '⚡ Electric / CNG',
                             luggage: '🧳 2 Bags',
-                            eta: '5 min away',
-                            badge: 'SOS Active',
+                            eta: '4 min away',
+                            badge: 'SOS 112 Shield',
                             badgeTone: 'bg-emerald-50 text-emerald-700 border-emerald-200',
                             base: 40,
                             perKm: 10,
                           },
                           {
                             id: 'SmartSedan',
-                            title: 'SmartSedan',
-                            tagline: 'Extra comfort · Top-rated driver',
+                            title: 'SmartSedan Prime',
+                            tagline: 'Extra legroom & top rated diamond driver',
                             icon: Car,
                             seats: '👤 4 Seats',
                             fuel: '⛽ Hybrid Petrol',
-                            luggage: '🧳 3 Bags',
-                            eta: '7 min away',
-                            badge: 'Top Rated Driver',
+                            luggage: '🧳 3 Large Bags',
+                            eta: '5 min away',
+                            badge: 'Top Rated 4.9★ Driver',
                             badgeTone: 'bg-blue-50 text-blue-700 border-blue-200',
-                            base: 50,
+                            base: 55,
                             perKm: 14,
                           },
                           {
                             id: 'SmartSUV',
-                            title: 'SmartSUV',
-                            tagline: 'Spacious 6-seater · Extra trunk room',
+                            title: 'SmartSUV Guard',
+                            tagline: 'Spacious 6-seater · Extra trunk room & live dashcam',
                             icon: Car,
                             seats: '👤 6 Seats',
                             fuel: '⛽ Petrol / Diesel',
-                            luggage: '🧳 4 Large Bags',
-                            eta: '10 min away',
-                            badge: 'Large Trunk Space',
+                            luggage: '🧳 4+ Large Bags',
+                            eta: '7 min away',
+                            badge: 'AI Cabin Sentinel',
                             badgeTone: 'bg-purple-50 text-purple-700 border-purple-200',
-                            base: 80,
+                            base: 85,
                             perKm: 20,
                           },
                         ].map((car) => {
@@ -5491,10 +5506,11 @@ const BookRide = () => {
                       <label className="block text-sm font-semibold text-slate-700 mb-1">Vehicle type *</label>
                       <select name="vehicleType" value={driverForm.vehicleType} onChange={handleDriverFormChange}
                         className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-amber-500 outline-none bg-white">
-                        <option value="SmartMini">SmartMini</option>
-                        <option value="SmartSedan">SmartSedan</option>
-                        <option value="SmartSUV">SmartSUV</option>
-                        <option value="SmartBike">SmartBike</option>
+                        <option value="SmartAuto">SmartAuto (CNG 3-Wheeler)</option>
+                        <option value="SmartBike">SmartBike (Motorcycle / EV)</option>
+                        <option value="SmartMini">SmartMini (Compact AC)</option>
+                        <option value="SmartSedan">SmartSedan (Prime AC)</option>
+                        <option value="SmartSUV">SmartSUV (Prime Guard)</option>
                       </select>
                     </div>
                     <div>
