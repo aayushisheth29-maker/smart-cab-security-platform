@@ -1692,9 +1692,10 @@ def admin_update_background_check(app_id: int, payload: BackgroundCheckUpdate):
 # ---------------------------------------------------------------------------
 # Users
 # ---------------------------------------------------------------------------
-@app.get("/api/users")
+@app.get("/api/users", dependencies=[Depends(require_admin)])
 def list_users():
-    return USERS
+    """Admin-only: lists registered user profiles without exposing password hashes."""
+    return [{k: v for k, v in u.items() if k not in ("password", "passwordHash")} for u in USERS]
 
 
 # ---------------------------------------------------------------------------
@@ -4260,15 +4261,35 @@ EVIDENCE_VAULT_DIR = os.environ.get("EVIDENCE_DIR") or (
 os.makedirs(EVIDENCE_VAULT_DIR, exist_ok=True)
 
 
+ALLOWED_EVIDENCE_EXTENSIONS = {
+    ".jpg", ".jpeg", ".png", ".webp", ".mp4", ".webm", ".mov", ".m4a", ".wav", ".mp3", ".pdf", ".bin"
+}
+MAX_EVIDENCE_SIZE_BYTES = 25 * 1024 * 1024  # 25 MB
+
+
 @app.post("/api/evidence/upload")
 async def upload_evidence(file: UploadFile = File(...), bookingId: str = Form(""), linkId: str = Form("")):
     # basename() strips any client-supplied path so a malicious filename
     # like "../../etc/passwd" can't escape the vault directory.
     raw_name = os.path.basename(file.filename or "evidence.bin") or "evidence.bin"
+    ext = os.path.splitext(raw_name)[1].lower()
+    if ext and ext not in ALLOWED_EVIDENCE_EXTENSIONS:
+        raise HTTPException(status_code=400, detail=f"File extension '{ext}' is not permitted for evidence upload.")
+        
     safe_name = f"{int(time.time())}_{raw_name}"
     out_path = os.path.join(EVIDENCE_VAULT_DIR, safe_name)
+    
+    total_bytes = 0
     with open(out_path, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        while chunk := await file.read(1024 * 1024):  # 1MB buffer
+            total_bytes += len(chunk)
+            if total_bytes > MAX_EVIDENCE_SIZE_BYTES:
+                try:
+                    os.remove(out_path)
+                except Exception:
+                    pass
+                raise HTTPException(status_code=413, detail="Evidence file exceeds 25 MB maximum limit.")
+            f.write(chunk)
 
     rec = {
         "id": _next_id["evidence"],
@@ -4283,7 +4304,7 @@ async def upload_evidence(file: UploadFile = File(...), bookingId: str = Form(""
     return {"status": "ok", "evidenceId": rec["id"], "file": safe_name}
 
 
-@app.get("/api/evidence")
+@app.get("/api/evidence", dependencies=[Depends(require_admin)])
 def list_evidence():
     return EVIDENCE
 
