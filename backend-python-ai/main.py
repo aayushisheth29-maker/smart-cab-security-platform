@@ -281,26 +281,47 @@ def client_key(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 # ---------------------------------------------------------------------------
-# Optional Supabase Postgres connection
+# Optional Supabase / Render Postgres connection
 # ---------------------------------------------------------------------------
 DATABASE_URL = os.environ.get("DATABASE_URL")  # e.g. Supabase pooler URL
 db_conn = None
 db_enabled = False
 
-if DATABASE_URL:
+
+def _get_db_conn():
+    """Get active Postgres connection with auto-reconnect."""
+    global db_conn, db_enabled
+    if not DATABASE_URL:
+        db_enabled = False
+        return None
+    try:
+        if db_conn is not None and not db_conn.closed:
+            with db_conn.cursor() as cur:
+                cur.execute("SELECT 1")
+            db_enabled = True
+            return db_conn
+    except Exception:
+        pass
     try:
         import psycopg2
         import psycopg2.extras
-        db_conn = psycopg2.connect(DATABASE_URL, connect_timeout=8)
+        url = DATABASE_URL
+        if url.startswith("postgres://"):
+            url = url.replace("postgres://", "postgresql://", 1)
+        db_conn = psycopg2.connect(url, connect_timeout=8)
         db_conn.autocommit = True
-        with db_conn.cursor() as cur:
-            cur.execute("SELECT 1")
         db_enabled = True
-        log.info("✅ Connected to Postgres (Supabase pooler)")
+        log.info("✅ Connected to Postgres database")
+        return db_conn
     except Exception as e:
-        log.warning("⚠️ Could not connect to DATABASE_URL, falling back to in-memory: %s", e)
+        log.warning("⚠️ Could not connect to DATABASE_URL: %s", e)
         db_conn = None
         db_enabled = False
+        return None
+
+
+if DATABASE_URL:
+    _get_db_conn()
 
 # ---------------------------------------------------------------------------
 # In-memory store (the source of truth for live share-link / ping flow)
@@ -446,11 +467,12 @@ def _load_single_link_from_disk(link_id: str) -> Optional[Dict[str, Any]]:
 
 
 def _load_single_link_from_postgres(link_id: str) -> Optional[Dict[str, Any]]:
-    """Look up a single link by ID from Supabase (when DATABASE_URL is set)."""
-    if not db_enabled:
+    """Look up a single link by ID from PostgreSQL (when DATABASE_URL is set)."""
+    conn = _get_db_conn()
+    if not conn:
         return None
     try:
-        with db_conn.cursor() as cur:
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 SELECT link_id, booking_id, rider_name, driver_name, driver_license,
@@ -866,14 +888,15 @@ def _now_iso() -> str:
 
 
 def _persist_share_link(link: Dict[str, Any]) -> None:
-    """Save to Supabase (if configured) AND to local disk. Disk is the
+    """Save to PostgreSQL (if configured) AND to local disk. Disk is the
     always-on fallback so share links survive Render's auto-restart even
     when DATABASE_URL is not configured."""
     _save_share_links_to_disk()
-    if not db_enabled:
+    conn = _get_db_conn()
+    if not conn:
         return
     try:
-        with db_conn.cursor() as cur:
+        with conn.cursor() as cur:
             cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS share_links (
