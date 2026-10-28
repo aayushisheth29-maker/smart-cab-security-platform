@@ -1330,11 +1330,22 @@ def home():
 @app.get("/api/health")
 def health():
     return {
+        "status": "ok",
         "version": "3.2.0",
+        "database": "connected" if db_enabled else "in-memory",
+        "ts": _now_iso(),
+    }
+
+
+@app.get("/api/admin/health", dependencies=[Depends(require_admin)])
+def admin_health():
+    """Privileged system telemetry endpoint for verified administrators."""
+    return {
+        "status": "ok",
+        "version": "3.2.0",
+        "database": "connected" if db_enabled else "in-memory",
         "keyResetFlag": os.environ.get("SMARTCAB_ADMIN_KEY_RESET", "").lower() in ("1", "true", "yes"),
         "keyHashActive": bool(_admin_credentials.get("hash")),
-        "status": "ok",
-        "database": "connected" if db_enabled else "in-memory",
         "share_links_count": len(SHARE_LINKS),
         "trips_count": len(TRIPS),
         "drivers_count": len(DRIVERS),
