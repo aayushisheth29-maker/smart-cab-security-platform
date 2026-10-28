@@ -67,7 +67,7 @@ class _FakeAgent:
     def __init__(self, content):
         self._content = content
 
-    def invoke(self, *args, **kwargs):
+    async def ainvoke(self, *args, **kwargs):
         return {"messages": [_FakeMessage(self._content)]}
 
 
@@ -76,7 +76,7 @@ def _use_fake_agent(content):
     main_mod._safety_agent_error = None
 
 
-def _post_agent(message="Hello, is SOS real?"):
+def _post_agent(message="Where is my driver?"):
     return client.post("/api/agent", json={"message": message, "language": "en"})
 
 
@@ -233,7 +233,7 @@ def test_agent_endpoint_reasoning_only_falls_back_without_leak():
             {"type": "reasoning", "reasoning": "hidden", "extras": {"signature": "SECRET-1"}},
         ]
     )
-    res = _post_agent("How do I book a ride?")
+    res = _post_agent("Book a ride for me from Gota to Saraspur")
     assert res.status_code == 200, res.text
     body = res.json()
     # No readable text -> scripted fallback keeps the chatbot working.
@@ -246,7 +246,7 @@ def test_agent_endpoint_reasoning_only_falls_back_without_leak():
 def test_agent_endpoint_empty_and_garbage_content_falls_back():
     for bad in (None, "", "   ", [], {}, {"type": "text", "text": "x"}):
         _use_fake_agent(bad)
-        res = _post_agent("How do I book a ride?")
+        res = _post_agent("Book a ride for me from Gota to Saraspur")
         assert res.status_code == 200, res.text
         body = res.json()
         assert body["engine"] == "fallback", f"content={bad!r} gave {body}"
@@ -257,7 +257,7 @@ def test_agent_endpoint_dict_message_shape_supported():
     """LangGraph may return plain dict messages; content must still be filtered."""
 
     class _DictAgent:
-        def invoke(self, *args, **kwargs):
+        async def ainvoke(self, *args, **kwargs):
             return {
                 "messages": [
                     {
@@ -271,7 +271,7 @@ def test_agent_endpoint_dict_message_shape_supported():
 
     main_mod._safety_agent = _DictAgent()
     main_mod._safety_agent_error = None
-    res = _post_agent("hi")
+    res = _post_agent("Where is my driver?")
     assert res.status_code == 200, res.text
     body = res.json()
     assert body["engine"] == "ai"
