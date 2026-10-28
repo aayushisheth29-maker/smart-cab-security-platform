@@ -4604,28 +4604,6 @@ const BookRide = () => {
                           </button>
                         </div>
                       </div>
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center space-x-1.5">
-                          {appliedOffer ? (
-                            <button
-                              type="button"
-                              onClick={() => setAppliedOffer(null)}
-                              className="text-[11px] font-bold text-rose-600 hover:underline px-1.5"
-                            >
-                              Remove
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            onClick={() => setShowOffersModal(true)}
-                            className="text-xs font-black bg-slate-900 text-white px-3 py-1.5 rounded-xl hover:bg-slate-800 transition"
-                          >
-                            {appliedOffer ? "Offers (6)" : "View Offers"}
-                          </button>
-                        </div>
-                      </div>
 
                       <div className="shrink-0 pt-3 border-t border-slate-100">
                         <button 
