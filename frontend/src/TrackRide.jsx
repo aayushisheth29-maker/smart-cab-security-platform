@@ -119,6 +119,7 @@ const TrackRide = () => {
             currentLocation: data.currentLocation || { lat: 23.0338, lng: 72.5467 },
             status: data.status || "ON_ROUTE",
             pingCount: data.pingCount || 1,
+            ridePreferences: data.ridePreferences || null,
           });
         }
       } catch (err) {
@@ -142,6 +143,7 @@ const TrackRide = () => {
             currentLocation: localRide.currentLocation || { lat: 23.0338, lng: 72.5467 },
             status: "ON_ROUTE",
             pingCount: 1,
+            ridePreferences: localRide.ridePreferences || null,
           });
         } else {
           setTrackingData({
@@ -654,6 +656,32 @@ const TrackRide = () => {
                 {trackingData?.carModel && trackingData.carModel !== '—' ? trackingData.carModel : '—'}
               </span>
             </div>
+
+            {trackingData?.ridePreferences && (
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-2.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold text-slate-700">
+                <span className="text-[10px] font-bold uppercase text-slate-400">Customized Comfort:</span>
+                {trackingData.ridePreferences.acPreference && (
+                  <span className="bg-blue-50 text-blue-700 px-2 py-0.5 rounded-md border border-blue-200">
+                    ❄️ {trackingData.ridePreferences.acPreference}
+                  </span>
+                )}
+                {trackingData.ridePreferences.quietRide && (
+                  <span className="bg-purple-50 text-purple-700 px-2 py-0.5 rounded-md border border-purple-200">
+                    🤫 Quiet Ride Active
+                  </span>
+                )}
+                {trackingData.ridePreferences.luggageAssistance && (
+                  <span className="bg-amber-50 text-amber-800 px-2 py-0.5 rounded-md border border-amber-200">
+                    🧳 Luggage Help
+                  </span>
+                )}
+                {trackingData.ridePreferences.womenDriverPreference && (
+                  <span className="bg-rose-50 text-rose-700 px-2 py-0.5 rounded-md border border-rose-200">
+                    🛡️ Women Sentinel Active
+                  </span>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

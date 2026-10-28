@@ -998,20 +998,36 @@ ALLOWED_TRANSITIONS: Dict[str, set] = {
 
 
 def _assign_driver_to_trip(trip: Dict[str, Any]) -> None:
-    """Attach a verified driver to the trip (demo: random from DRIVERS)."""
+    """Attach a verified driver to the trip matched with vehicle category."""
     if trip.get("driver") or not DRIVERS:
         return
-    d = random.choice(DRIVERS)
+    car_type = trip.get("selectedCar") or "SmartMini"
+    # Try finding driver matching the category
+    matching = [d for d in DRIVERS if car_type.lower() in (d.get("carModel", "")).lower()]
+    d = random.choice(matching) if matching else random.choice(DRIVERS)
+
+    category_defaults = {
+        "SmartAuto": "Bajaj RE Green CNG Auto",
+        "SmartBike": "Ather 450X EV Bike",
+        "SmartMini": "Maruti WagonR AC",
+        "SmartSedan": "Honda City Hybrid Prime",
+        "SmartSUV": "Toyota Innova Crysta SUV",
+    }
+    car_model = d.get("carModel") or category_defaults.get(car_type, f"Smart {car_type}")
+    if car_type not in car_model and car_type in category_defaults:
+        car_model = category_defaults[car_type]
+
     trip["driver"] = {
         "id": d.get("id"),
         "name": d.get("name"),
         "rating": d.get("rating"),
         "plate": d.get("plate"),
-        "carModel": d.get("carModel"),
+        "carModel": car_model,
         "phone": d.get("phone"),
         "dl": d.get("dl"),
+        "vehicleTier": car_type,
     }
-    trip["etaMinutes"] = random.choice([3, 4, 5, 6, 7, 8])
+    trip["etaMinutes"] = random.choice([2, 3, 4, 5, 6])
     trip["driverAssignedAt"] = _now_iso()
 
 
@@ -1117,6 +1133,8 @@ class TripCreate(BaseModel):
     distanceFare: Optional[float] = 0
     surgeMultiplier: Optional[float] = 1.0
     bookingTime: Optional[str] = None  # ISO timestamp; used for surge calc
+    ridePreferences: Optional[Dict[str, Any]] = None  # e.g. {"acPreference": "Max Chilled (20°C)", "quietRide": True, "luggageAssistance": True}
+
 
 
 class PricingEstimateRequest(BaseModel):
@@ -2569,12 +2587,257 @@ def _parse_booking_time(value: str) -> datetime:
 
 # Per-car-type pricing: (base_fare_inr, per_km_rate_inr)
 PRICING_TABLE = {
-    "SmartBike":  {"base": 18,  "perKm": 7,  "displayName": "SmartBike Express", "icon": "🛵", "capacity": 1, "etaMin": 2},
-    "SmartAuto":  {"base": 30,  "perKm": 11, "displayName": "SmartAuto CNG",     "icon": "🛺", "capacity": 3, "etaMin": 2},
-    "SmartMini":  {"base": 40,  "perKm": 10, "displayName": "SmartMini AC",      "icon": "🚗", "capacity": 4, "etaMin": 4},
-    "SmartSedan": {"base": 55,  "perKm": 14, "displayName": "SmartSedan Prime",  "icon": "🚘", "capacity": 4, "etaMin": 5},
-    "SmartSUV":   {"base": 85,  "perKm": 20, "displayName": "SmartSUV Guard",    "icon": "🚙", "capacity": 6, "etaMin": 7},
+    "SmartBike": {
+        "base": 18,
+        "perKm": 7,
+        "displayName": "SmartBike Express",
+        "icon": "🛵",
+        "capacity": 1,
+        "etaMin": 2,
+        "categoryGroup": "daily",
+        "tier": "Bike Taxi",
+        "fuel": "⚡ EV / Petrol",
+        "luggage": "🎒 1 Backpack",
+        "badge": "Sanitized Helmet Provided",
+        "badgeTone": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "tagline": "Fastest in city traffic · Solo ride",
+    },
+    "SmartAuto": {
+        "base": 30,
+        "perKm": 11,
+        "displayName": "SmartAuto CNG",
+        "icon": "🛺",
+        "capacity": 3,
+        "etaMin": 2,
+        "categoryGroup": "daily",
+        "tier": "Auto Rickshaw",
+        "fuel": "🌿 CNG Green",
+        "luggage": "🧳 1-2 Bags",
+        "badge": "Meter Guaranteed",
+        "badgeTone": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "tagline": "Pocket-friendly 3-wheeler · Zero surge option",
+    },
+    "SmartMini": {
+        "base": 40,
+        "perKm": 10,
+        "displayName": "SmartMini AC",
+        "icon": "🚗",
+        "capacity": 4,
+        "etaMin": 4,
+        "categoryGroup": "daily",
+        "tier": "Compact AC",
+        "fuel": "⚡ Electric / CNG",
+        "luggage": "🧳 2 Bags",
+        "badge": "SOS 112 Shield",
+        "badgeTone": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "tagline": "Affordable compact AC cab",
+    },
+    "SmartSedan": {
+        "base": 55,
+        "perKm": 14,
+        "displayName": "SmartSedan Prime",
+        "icon": "🚘",
+        "capacity": 4,
+        "etaMin": 5,
+        "categoryGroup": "premium",
+        "tier": "Prime Sedan",
+        "fuel": "⛽ Hybrid Petrol",
+        "luggage": "🧳 3 Large Bags",
+        "badge": "Top Rated 4.9★ Driver",
+        "badgeTone": "bg-blue-50 text-blue-700 border-blue-200",
+        "tagline": "Extra legroom & top rated diamond driver",
+    },
+    "SmartSUV": {
+        "base": 85,
+        "perKm": 20,
+        "displayName": "SmartSUV Guard",
+        "icon": "🚙",
+        "capacity": 6,
+        "etaMin": 7,
+        "categoryGroup": "premium",
+        "tier": "Prime SUV / Sentinel",
+        "fuel": "⛽ Petrol / Diesel",
+        "luggage": "🧳 4+ Large Bags",
+        "badge": "AI Cabin Sentinel",
+        "badgeTone": "bg-purple-50 text-purple-700 border-purple-200",
+        "tagline": "Spacious 6-seater · Extra trunk room & live dashcam",
+    },
 }
+
+VEHICLE_CATEGORIES_CATALOG = [
+    {
+        "id": "SmartAuto",
+        "displayName": "SmartAuto CNG",
+        "tier": "Auto Rickshaw",
+        "categoryGroup": "daily",
+        "icon": "🛺",
+        "baseFare": 30,
+        "perKmRate": 11,
+        "capacity": 3,
+        "luggage": "1-2 Bags (25 kg)",
+        "fuelType": "🌿 Green CNG Eco",
+        "etaMin": 2,
+        "badge": "Meter Guaranteed",
+        "badgeTone": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "tagline": "Pocket-friendly 3-wheeler · Zero surge option",
+        "description": "The quintessential Indian city ride. Best for zipping through narrow streets and heavy traffic with zero surge meter assurance.",
+        "comfortOptions": {
+            "acAvailable": False,
+            "quietMode": False,
+            "luggageAssistance": True,
+            "womenDriver": True,
+        },
+        "safetyPerks": [
+            "Govt Verified Meter Fare",
+            "Direct Driver UPI QR Code",
+            "GPS Sentinel Live Tracking",
+            "Instant SOS 112 Trigger",
+        ],
+        "popularRoutes": ["Station ↔ Home", "Local Market Runs", "Metro Feeder Connection"],
+        "sampleVehicles": ["Bajaj RE Compact CNG", "Piaggio Ape City DX", "Mahindra Alfa"],
+    },
+    {
+        "id": "SmartBike",
+        "displayName": "SmartBike Express",
+        "tier": "Bike Taxi",
+        "categoryGroup": "daily",
+        "icon": "🛵",
+        "baseFare": 18,
+        "perKmRate": 7,
+        "capacity": 1,
+        "luggage": "1 Backpack (10 kg)",
+        "fuelType": "⚡ EV / Petrol",
+        "etaMin": 2,
+        "badge": "Sanitized Helmet Provided",
+        "badgeTone": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "tagline": "Fastest in city traffic · Solo ride",
+        "description": "Beat rush-hour traffic on a certified two-wheeler. Includes sanitized helmet with visor and emergency dash sentinel.",
+        "comfortOptions": {
+            "acAvailable": False,
+            "quietMode": True,
+            "luggageAssistance": False,
+            "womenDriver": False,
+        },
+        "safetyPerks": [
+            "Sanitized Helmet with Visor",
+            "Real-Time Speed & Lean Telemetry",
+            "Zero Emission EV Options",
+            "Cheapest Per-Km Rate (₹7/km)",
+        ],
+        "popularRoutes": ["Rush Hour Office Commute", "Tech Park Express", "College Runs"],
+        "sampleVehicles": ["Ather 450X EV", "Hero Electric Optima", "Bajaj Pulsar 150"],
+    },
+    {
+        "id": "SmartMini",
+        "displayName": "SmartMini AC",
+        "tier": "Compact Cab",
+        "categoryGroup": "daily",
+        "icon": "🚗",
+        "baseFare": 40,
+        "perKmRate": 10,
+        "capacity": 4,
+        "luggage": "2 Medium Bags (40 kg)",
+        "fuelType": "⚡ Electric / CNG",
+        "etaMin": 4,
+        "badge": "SOS 112 Shield",
+        "badgeTone": "bg-emerald-50 text-emerald-700 border-emerald-200",
+        "tagline": "Affordable compact AC cab",
+        "description": "Comfy air-conditioned hatchback cab for daily city transit. High fuel efficiency, door-to-door convenience, and full GPS monitoring.",
+        "comfortOptions": {
+            "acAvailable": True,
+            "quietMode": True,
+            "luggageAssistance": True,
+            "womenDriver": True,
+        },
+        "safetyPerks": [
+            "100% Chilled AC Guaranteed",
+            "Child Lock Safety Deactivation",
+            "AI Night Route Sentinel",
+            "Shared Live Ride Beacon",
+        ],
+        "popularRoutes": ["City Hospital Visits", "Daily Office Commute", "Family Outings"],
+        "sampleVehicles": ["Maruti Suzuki WagonR AC", "Tata Tiago EV", "Hyundai Grand i10 Nios"],
+    },
+    {
+        "id": "SmartSedan",
+        "displayName": "SmartSedan Prime",
+        "tier": "Prime Sedan",
+        "categoryGroup": "premium",
+        "icon": "🚘",
+        "baseFare": 55,
+        "perKmRate": 14,
+        "capacity": 4,
+        "luggage": "3 Large Bags (60 kg)",
+        "fuelType": "⛽ Hybrid Petrol",
+        "etaMin": 5,
+        "badge": "Top Rated 4.9★ Driver",
+        "badgeTone": "bg-blue-50 text-blue-700 border-blue-200",
+        "tagline": "Extra legroom & top rated diamond driver",
+        "description": "Executive sedan travel featuring premium legroom, leatherette seating, in-car charging cables, and 4.85+ star rated Diamond fleet drivers.",
+        "comfortOptions": {
+            "acAvailable": True,
+            "quietMode": True,
+            "luggageAssistance": True,
+            "womenDriver": True,
+        },
+        "safetyPerks": [
+            "Top-Rated Diamond Fleet Drivers (4.85+ ★)",
+            "Quiet Ride / Silent Mode Preference",
+            "High-Speed In-Cabin USB Fast Charger",
+            "Spacious Boot for 3 Large Suitcases",
+        ],
+        "popularRoutes": ["Airport & Corporate Parks", "Business Client Meetings", "Dinner & Event Travel"],
+        "sampleVehicles": ["Honda City Hybrid", "Maruti Suzuki Dzire Prime", "Hyundai Aura SX"],
+    },
+    {
+        "id": "SmartSUV",
+        "displayName": "SmartSUV Guard",
+        "tier": "Prime SUV / Sentinel",
+        "categoryGroup": "premium",
+        "icon": "🚙",
+        "baseFare": 85,
+        "perKmRate": 20,
+        "capacity": 6,
+        "luggage": "4+ Large Bags (90 kg)",
+        "fuelType": "⛽ Petrol / Diesel",
+        "etaMin": 7,
+        "badge": "AI Cabin Sentinel",
+        "badgeTone": "bg-purple-50 text-purple-700 border-purple-200",
+        "tagline": "Spacious 6-seater · Extra trunk room & live dashcam",
+        "description": "Grand 6-passenger SUV engineered for group excursions, airport heavy baggage, and long highway journeys equipped with dual AI cabin dashcams.",
+        "comfortOptions": {
+            "acAvailable": True,
+            "quietMode": True,
+            "luggageAssistance": True,
+            "womenDriver": True,
+        },
+        "safetyPerks": [
+            "6 Full Adult Passenger Seats",
+            "Dual Dashcam AI Cabin Sentinel",
+            "Heavy Luggage Boot / Carrier",
+            "Highway High-Stability Chassis",
+        ],
+        "popularRoutes": ["SVPI Airport Family Transfers", "Outstation Highway Trips", "Wedding & Group Events"],
+        "sampleVehicles": ["Toyota Innova Crysta", "Mahindra XUV700 AX7", "Kia Carens Luxury"],
+    },
+]
+
+
+@app.get("/api/categories")
+def get_vehicle_categories(group: Optional[str] = None):
+    """
+    Returns the rich catalog of Ola/Uber-style vehicle categories,
+    pricing parameters, seating capacities, safety sentinel tiers,
+    and comfort features.
+    """
+    if group:
+        filtered = [c for c in VEHICLE_CATEGORIES_CATALOG if c.get("categoryGroup") == group]
+        return {"success": True, "count": len(filtered), "categories": filtered}
+    return {
+        "success": True,
+        "count": len(VEHICLE_CATEGORIES_CATALOG),
+        "categories": VEHICLE_CATEGORIES_CATALOG,
+    }
 
 
 def _calc_surge(when: datetime) -> tuple[float, str]:
@@ -2630,6 +2893,13 @@ def pricing_estimate(payload: PricingEstimateRequest):
             "icon": cfg["icon"],
             "capacity": cfg["capacity"],
             "etaMin": cfg["etaMin"],
+            "categoryGroup": cfg.get("categoryGroup", "daily"),
+            "tier": cfg.get("tier", "Standard"),
+            "fuel": cfg.get("fuel", "Petrol"),
+            "luggage": cfg.get("luggage", "Standard"),
+            "badge": cfg.get("badge", ""),
+            "badgeTone": cfg.get("badgeTone", ""),
+            "tagline": cfg.get("tagline", ""),
             "baseFare": est["baseFare"],
             "distanceFare": est["distanceFare"],
             "surgeMultiplier": est["surgeMultiplier"],

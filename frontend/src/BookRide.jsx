@@ -7,7 +7,7 @@ import {
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
   Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
   FileWarning, ArrowUpDown, Sparkles, Luggage, Share2, Zap, Eye, EyeOff, Volume2, ShieldAlert, FileText, Activity,
-  Tag, HeartPulse, Hospital
+  Tag, HeartPulse, Hospital, Sliders, VolumeX, Briefcase, Info
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -27,6 +27,7 @@ import AirportFastTrackModal from './AirportFastTrackModal';
 import ScheduleRideModal from './ScheduleRideModal';
 import EmergencyMedicalModal from './EmergencyMedicalModal';
 import CorporateBillingModal from './CorporateBillingModal';
+import VehicleCategoriesModal, { CATEGORIES_DATA } from './VehicleCategoriesModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -229,13 +230,36 @@ const BookRide = () => {
   // 📸 Camera direction state (user = front selfie, environment = back dashcam)
   const [facingMode, setFacingMode] = useState("user");
 
-  // 🚗 Dynamic Driver Database
+  // 🚗 Dynamic Driver Database mapped by Vehicle Category
+  const CATEGORY_DRIVERS = {
+    SmartAuto: [
+      { name: "Mukesh R.", rating: 4.9, dl: "GJ01-2021-9988776", plate: "GJ 01 AR 4421", carModel: "Bajaj RE Green CNG Auto", photo: "https://randomuser.me/api/portraits/men/52.jpg", tier: "Auto Rickshaw" },
+      { name: "Ramesh P.", rating: 4.8, dl: "GJ01-2019-3322110", plate: "GJ 01 AU 8812", carModel: "Piaggio Ape City DX Auto", photo: "https://randomuser.me/api/portraits/men/58.jpg", tier: "Auto Rickshaw" },
+    ],
+    SmartBike: [
+      { name: "Arjun V.", rating: 4.9, dl: "GJ01-2022-1122334", plate: "GJ 01 BK 7789", carModel: "Ather 450X EV Bike", photo: "https://randomuser.me/api/portraits/men/33.jpg", tier: "Bike Taxi" },
+      { name: "Kunal M.", rating: 4.8, dl: "GJ01-2023-5566778", plate: "GJ 01 BK 4432", carModel: "Hero Electric Optima", photo: "https://randomuser.me/api/portraits/men/29.jpg", tier: "Bike Taxi" },
+    ],
+    SmartMini: [
+      { name: "Rahul S.", rating: 4.8, dl: "MH02-2019-1234567", plate: "GJ 01 CR 1234", carModel: "White Maruti WagonR AC", photo: "https://randomuser.me/api/portraits/men/32.jpg", tier: "Compact AC" },
+      { name: "Suresh K.", rating: 4.7, dl: "GJ01-2017-3456789", plate: "GJ 01 GH 3456", carModel: "Tata Tiago EV Hatchback", photo: "https://randomuser.me/api/portraits/men/22.jpg", tier: "Compact AC" },
+    ],
+    SmartSedan: [
+      { name: "Vikram P.", rating: 4.9, dl: "DL04-2018-9876543", plate: "GJ 01 PR 5678", carModel: "Silver Honda City Hybrid", photo: "https://randomuser.me/api/portraits/men/44.jpg", tier: "Prime Sedan" },
+      { name: "Priya T.", rating: 4.9, dl: "TS09-2021-1122334", plate: "GJ 01 SD 7890", carModel: "White Maruti Dzire Prime", photo: "https://randomuser.me/api/portraits/women/45.jpg", tier: "Prime Sedan" },
+    ],
+    SmartSUV: [
+      { name: "Anita M.", rating: 5.0, dl: "KA01-2020-4567890", plate: "GJ 01 SV 9012", carModel: "Black Toyota Innova Crysta", photo: "https://randomuser.me/api/portraits/women/68.jpg", tier: "Prime SUV Guard" },
+      { name: "Harish G.", rating: 4.9, dl: "GJ01-2018-4455667", plate: "GJ 01 SV 3311", carModel: "Mahindra XUV700 AX7", photo: "https://randomuser.me/api/portraits/men/61.jpg", tier: "Prime SUV Guard" },
+    ],
+  };
+
   const DRIVERS = [
-    { name: "Rahul S.", rating: 4.8, dl: "MH02-2019-1234567", plate: "MH 02 AB 1234", photo: "https://randomuser.me/api/portraits/men/32.jpg" },
-    { name: "Vikram P.", rating: 4.9, dl: "DL04-2018-9876543", plate: "DL 04 CD 5678", photo: "https://randomuser.me/api/portraits/men/44.jpg" },
-    { name: "Anita M.", rating: 5.0, dl: "KA01-2020-4567890", plate: "KA 01 EF 9012", photo: "https://randomuser.me/api/portraits/women/68.jpg" },
-    { name: "Suresh K.", rating: 4.7, dl: "GJ01-2017-3456789", plate: "GJ 01 GH 3456", photo: "https://randomuser.me/api/portraits/men/22.jpg" },
-    { name: "Priya T.", rating: 4.9, dl: "TS09-2021-1122334", plate: "TS 09 IJ 7890", photo: "https://randomuser.me/api/portraits/women/45.jpg" }
+    { name: "Rahul S.", rating: 4.8, dl: "MH02-2019-1234567", plate: "MH 02 AB 1234", carModel: "White Maruti WagonR AC", photo: "https://randomuser.me/api/portraits/men/32.jpg" },
+    { name: "Vikram P.", rating: 4.9, dl: "DL04-2018-9876543", plate: "DL 04 CD 5678", carModel: "Silver Honda City Hybrid", photo: "https://randomuser.me/api/portraits/men/44.jpg" },
+    { name: "Anita M.", rating: 5.0, dl: "KA01-2020-4567890", plate: "KA 01 EF 9012", carModel: "Black Toyota Innova Crysta", photo: "https://randomuser.me/api/portraits/women/68.jpg" },
+    { name: "Suresh K.", rating: 4.7, dl: "GJ01-2017-3456789", plate: "GJ 01 GH 3456", carModel: "Tata Tiago EV Hatchback", photo: "https://randomuser.me/api/portraits/men/22.jpg" },
+    { name: "Priya T.", rating: 4.9, dl: "TS09-2021-1122334", plate: "TS 09 IJ 7890", carModel: "White Maruti Dzire Prime", photo: "https://randomuser.me/api/portraits/women/45.jpg" }
   ];
   
   const [assignedDriver, setAssignedDriver] = useState(DRIVERS[0]);
@@ -311,6 +335,14 @@ const BookRide = () => {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showMedicalModal, setShowMedicalModal] = useState(false);
   const [showCorporateModal, setShowCorporateModal] = useState(false);
+  const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'daily' | 'premium'
+  const [ridePreferences, setRidePreferences] = useState({
+    acPreference: 'Standard (23°C)',
+    quietRide: false,
+    luggageAssistance: false,
+    womenDriverPreference: false,
+  });
   const [formStep, setFormStep] = useState(1);
   const [formSubmitted, setFormSubmitted] = useState(false);
 
@@ -1935,8 +1967,9 @@ const BookRide = () => {
     setIsSearching(false);
 
     if (pCoords && dCoords) {
-      // 🚗 Assign a RANDOM dynamic driver every time!
-      const randomDriver = DRIVERS[Math.floor(Math.random() * DRIVERS.length)];
+      // 🚗 Assign a dynamic driver matching the selected vehicle category!
+      const driverPool = (CATEGORY_DRIVERS && CATEGORY_DRIVERS[selectedCar]) || DRIVERS;
+      const randomDriver = driverPool[Math.floor(Math.random() * driverPool.length)] || DRIVERS[0];
       setAssignedDriver(randomDriver);
 
       try {
@@ -2000,6 +2033,7 @@ const BookRide = () => {
           surgeMultiplier: estimate.surgeMultiplier,
           bookingTime: estimate.bookingTime,
           selectedCar,
+          ridePreferences,
           status: "PENDING"
         };
 
@@ -2051,6 +2085,7 @@ const BookRide = () => {
             discount: discountAmount,
             distanceKm: distKm.toFixed(1),
             selectedCar,
+            ridePreferences,
             createdAt: new Date().toISOString(),
             pickupLat: pCoords[0], pickupLng: pCoords[1],
             dropoffLat: dCoords[0], dropoffLng: dCoords[1],
@@ -4281,11 +4316,11 @@ const BookRide = () => {
                       <div className="shrink-0">
                         <button 
                           onClick={() => setShowPrices(false)} 
-                          className="flex items-center text-slate-600 hover:text-black font-semibold text-sm mb-4 group transition"
+                          className="flex items-center text-slate-600 hover:text-black font-semibold text-sm mb-3 group transition"
                         >
                           <ArrowLeft className="h-4 w-4 mr-1.5 group-hover:-translate-x-1 transition-transform" /> Back to locations
                         </button>
-                        <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center justify-between mb-3">
                           <div>
                             <h2 className="text-2xl font-extrabold text-slate-900">Choose your ride</h2>
                             <p className="text-xs text-slate-500 mt-0.5 truncate max-w-[240px]">
@@ -4298,13 +4333,61 @@ const BookRide = () => {
                             </span>
                           )}
                         </div>
+
+                        {/* Category filter tabs & specs compare trigger */}
+                        <div className="flex items-center justify-between gap-1 mb-3 overflow-x-auto pb-1">
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setCategoryFilter('all')}
+                              className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                                categoryFilter === 'all'
+                                  ? 'bg-slate-900 text-white shadow'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
+                            >
+                              All (5)
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCategoryFilter('daily')}
+                              className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                                categoryFilter === 'daily'
+                                  ? 'bg-slate-900 text-white shadow'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
+                            >
+                              ⚡ Daily
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setCategoryFilter('premium')}
+                              className={`px-3 py-1 rounded-full text-xs font-bold transition ${
+                                categoryFilter === 'premium'
+                                  ? 'bg-slate-900 text-white shadow'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
+                            >
+                              👑 Prime
+                            </button>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setShowCategoryModal(true)}
+                            className="text-[11px] font-black text-amber-700 hover:text-amber-900 bg-amber-50 hover:bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-full flex items-center gap-1 shrink-0 transition"
+                          >
+                            <Info className="w-3.5 h-3.5" /> Compare Specs
+                          </button>
+                        </div>
                       </div>
 
-                      <div className="overflow-y-auto flex-1 pr-1 space-y-3 mb-4">
+                      <div className="overflow-y-auto flex-1 pr-1 space-y-3 mb-3">
                         {[
                           {
                             id: 'SmartAuto',
                             title: 'SmartAuto',
+                            categoryGroup: 'daily',
                             tagline: 'Pocket-friendly 3-wheeler · Zero surge option',
                             icon: Car,
                             seats: '👤 3 Seats',
@@ -4319,6 +4402,7 @@ const BookRide = () => {
                           {
                             id: 'SmartBike',
                             title: 'SmartBike',
+                            categoryGroup: 'daily',
                             tagline: 'Fastest in city traffic · Solo ride',
                             icon: Bike,
                             seats: '👤 1 Rider',
@@ -4333,6 +4417,7 @@ const BookRide = () => {
                           {
                             id: 'SmartMini',
                             title: 'SmartMini',
+                            categoryGroup: 'daily',
                             tagline: 'Affordable compact AC cab',
                             icon: Car,
                             seats: '👤 4 Seats',
@@ -4347,6 +4432,7 @@ const BookRide = () => {
                           {
                             id: 'SmartSedan',
                             title: 'SmartSedan Prime',
+                            categoryGroup: 'premium',
                             tagline: 'Extra legroom & top rated diamond driver',
                             icon: Car,
                             seats: '👤 4 Seats',
@@ -4361,6 +4447,7 @@ const BookRide = () => {
                           {
                             id: 'SmartSUV',
                             title: 'SmartSUV Guard',
+                            categoryGroup: 'premium',
                             tagline: 'Spacious 6-seater · Extra trunk room & live dashcam',
                             icon: Car,
                             seats: '👤 6 Seats',
@@ -4372,7 +4459,9 @@ const BookRide = () => {
                             base: 85,
                             perKm: 20,
                           },
-                        ].map((car) => {
+                        ]
+                          .filter((car) => categoryFilter === 'all' || car.categoryGroup === categoryFilter)
+                          .map((car) => {
                           const isSelected = selectedCar === car.id;
                           const CarIcon = car.icon;
                           const fareInfo = displayFareDetails(car.base, car.perKm);
@@ -4418,7 +4507,7 @@ const BookRide = () => {
                                   </div>
                                 </div>
                               </div>
-                              <div className="text-right shrink-0 pl-2">
+                              <div className="text-right shrink-0 pl-2 flex flex-col items-end">
                                 {fareInfo.discount > 0 ? (
                                   <div>
                                     <div className="text-xs line-through text-slate-400">₹{fareInfo.original}</div>
@@ -4435,14 +4524,50 @@ const BookRide = () => {
                                     </div>
                                   </div>
                                 )}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSelectedCar(car.id);
+                                    setShowCategoryModal(true);
+                                  }}
+                                  className={`mt-1.5 text-[10px] font-bold px-2 py-0.5 rounded transition ${
+                                    isSelected
+                                      ? 'text-amber-300 hover:text-white bg-white/10 hover:bg-white/20'
+                                      : 'text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  Specs ℹ️
+                                </button>
                               </div>
                             </div>
                           );
                         })}
                       </div>
 
+                      {/* 🛋️ RIDE COMFORT & PREFERENCES SUMMARY BAR */}
+                      <div className="p-3 my-1.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-2xl flex items-center justify-between">
+                        <div className="flex items-center space-x-2 overflow-hidden">
+                          <Sliders className="w-4 h-4 text-amber-500 shrink-0" />
+                          <div className="text-xs font-semibold text-slate-700 dark:text-slate-300 truncate">
+                            <span className="font-bold text-slate-900 dark:text-white mr-1.5">Comfort:</span>
+                            <span>❄️ {ridePreferences.acPreference}</span>
+                            {ridePreferences.quietRide && <span className="ml-1.5 text-purple-600 font-bold">• 🤫 Quiet Mode</span>}
+                            {ridePreferences.luggageAssistance && <span className="ml-1.5 text-blue-600 font-bold">• 🧳 Luggage Help</span>}
+                            {ridePreferences.womenDriverPreference && <span className="ml-1.5 text-rose-600 font-bold">• 🛡️ Women Sentinel</span>}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowCategoryModal(true)}
+                          className="text-[11px] font-black text-slate-900 dark:text-white hover:underline bg-white dark:bg-slate-700 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-600 shrink-0 shadow-sm"
+                        >
+                          Customize
+                        </button>
+                      </div>
+
                       {/* 🏷️ UBER-STYLE PROMO & OFFERS BAR */}
-                      <div className="p-3 my-2 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300 dark:border-amber-500/30 rounded-2xl flex items-center justify-between">
+                      <div className="p-3 my-1.5 bg-gradient-to-r from-amber-500/10 via-orange-500/10 to-amber-500/5 border border-amber-300 dark:border-amber-500/30 rounded-2xl flex items-center justify-between">
                         <div className="flex items-center space-x-2">
                           <Tag className="w-4 h-4 text-amber-500" />
                           {appliedOffer ? (
@@ -4457,6 +4582,28 @@ const BookRide = () => {
                           ) : (
                             <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
                               Apply Coupon / First Ride Free
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                          {appliedOffer ? (
+                            <button
+                              type="button"
+                              onClick={() => setAppliedOffer(null)}
+                              className="text-[11px] font-bold text-rose-600 hover:underline px-1.5"
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => setShowOffersModal(true)}
+                            className="text-xs font-black bg-slate-900 text-white px-3 py-1.5 rounded-xl hover:bg-slate-800 transition"
+                          >
+                            {appliedOffer ? "Offers (6)" : "View Offers"}
+                          </button>
+                        </div>
+                      </div>
                             </span>
                           )}
                         </div>
@@ -5774,6 +5921,23 @@ const BookRide = () => {
         <CorporateBillingModal
           isOpen={showCorporateModal}
           onClose={() => setShowCorporateModal(false)}
+        />
+      )}
+
+      {/* 🚗 Vehicle Categories & Comfort Matrix Modal */}
+      {showCategoryModal && (
+        <VehicleCategoriesModal
+          isOpen={showCategoryModal}
+          onClose={() => setShowCategoryModal(false)}
+          selectedCar={selectedCar}
+          onSelectCar={(carId) => setSelectedCar(carId)}
+          estimatedDistanceKm={
+            pickupCoords && dropoffCoords
+              ? haversineKm(pickupCoords, dropoffCoords)
+              : 10
+          }
+          ridePreferences={ridePreferences}
+          onUpdatePreferences={(newPrefs) => setRidePreferences(newPrefs)}
         />
       )}
     </div>

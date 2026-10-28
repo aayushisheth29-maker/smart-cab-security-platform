@@ -89,6 +89,40 @@ function RideCard({ ride, onTrack, onRate, onViewRoute, onLostFound, onInsurance
         </div>
       </div>
 
+      {/* Vehicle Category & Comfort Tags */}
+      <div className="flex flex-wrap items-center gap-1.5 mb-3">
+        {ride.selectedCar && (
+          <span className="bg-slate-100 text-slate-800 text-[11px] font-bold px-2.5 py-0.5 rounded-md border border-slate-200">
+            {ride.selectedCar === 'SmartAuto' && '🛺 SmartAuto CNG'}
+            {ride.selectedCar === 'SmartBike' && '🛵 SmartBike Express'}
+            {ride.selectedCar === 'SmartMini' && '🚗 SmartMini AC'}
+            {ride.selectedCar === 'SmartSedan' && '🚘 SmartSedan Prime'}
+            {ride.selectedCar === 'SmartSUV' && '🚙 SmartSUV Guard'}
+            {!['SmartAuto', 'SmartBike', 'SmartMini', 'SmartSedan', 'SmartSUV'].includes(ride.selectedCar) && `🚗 ${ride.selectedCar}`}
+          </span>
+        )}
+        {ride.ridePreferences?.acPreference && (
+          <span className="bg-blue-50 text-blue-700 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-blue-200">
+            ❄️ {ride.ridePreferences.acPreference}
+          </span>
+        )}
+        {ride.ridePreferences?.quietRide && (
+          <span className="bg-purple-50 text-purple-700 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-purple-200">
+            🤫 Quiet Mode
+          </span>
+        )}
+        {ride.ridePreferences?.luggageAssistance && (
+          <span className="bg-amber-50 text-amber-800 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-amber-200">
+            🧳 Luggage Help
+          </span>
+        )}
+        {ride.ridePreferences?.womenDriverPreference && (
+          <span className="bg-rose-50 text-rose-700 text-[10px] font-semibold px-2 py-0.5 rounded-md border border-rose-200">
+            🛡️ Women Sentinel
+          </span>
+        )}
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
         <div className="flex items-center gap-3">
           {driver.name ? (
