@@ -7,7 +7,7 @@ import {
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
   Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
   FileWarning, ArrowUpDown, Sparkles, Luggage, Share2, Zap, Eye, EyeOff, Volume2, ShieldAlert, FileText, Activity,
-  Tag, HeartPulse, Hospital, Sliders, VolumeX, Briefcase, Info
+  Tag, HeartPulse, Hospital, Sliders, VolumeX, Briefcase, Info, Trash2, PlusCircle, CornerDownRight
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -69,6 +69,13 @@ const dropoffIcon = new L.DivIcon({
   className: 'custom-map-icon',
   html: `<div style="background-color: #16a34a; border-radius: 50%; width: 18px; height: 18px; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);"></div>`,
   iconAnchor: [9, 9]
+});
+
+// Intermediate Waypoint Stop dot — amber circle with number
+const createStopIcon = (num) => new L.DivIcon({
+  className: 'custom-map-icon',
+  html: `<div style="background-color: #f59e0b; color: white; border-radius: 50%; width: 22px; height: 22px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; border: 2.5px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4);">${num}</div>`,
+  iconAnchor: [11, 11]
 });
 
 const carIcon = new L.DivIcon({
@@ -512,6 +519,29 @@ const BookRide = () => {
 
   const [pickup, setPickup] = useState('');
   const [dropoff, setDropoff] = useState('');
+  // 📍 MULTI-STOP / EXTRA LOCATIONS STATE
+  const [stops, setStops] = useState([]); // [{ id, address, coords }]
+  const [showAddStopInActiveRide, setShowAddStopInActiveRide] = useState(false);
+  const [activeRideNewStop, setActiveRideNewStop] = useState('');
+
+  const addStop = () => {
+    if (stops.length >= 2) return;
+    setStops((prev) => [
+      ...prev,
+      { id: Math.random().toString(36).substring(2, 9), address: '', coords: null },
+    ]);
+  };
+
+  const removeStop = (id) => {
+    setStops((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const updateStop = (id, newAddress, newCoords = null) => {
+    setStops((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, address: newAddress, coords: newCoords } : s))
+    );
+  };
+
   const [showPrices, setShowPrices] = useState(false);
   const [rideConfirmed, setRideConfirmed] = useState(false);
   const [selectedCar, setSelectedCar] = useState('SmartMini');
@@ -538,8 +568,16 @@ const BookRide = () => {
     rec.onresult = (e) => {
       const text = (e.results[0][0].transcript || '').trim();
       if (text) {
-        if (type === 'pickup') setPickup(text); else setDropoff(text);
-        setPresetCoords((prev) => ({ ...prev, [type]: null }));
+        if (type === 'pickup') {
+          setPickup(text);
+          setPresetCoords((prev) => ({ ...prev, pickup: null }));
+        } else if (type === 'dropoff') {
+          setDropoff(text);
+          setPresetCoords((prev) => ({ ...prev, dropoff: null }));
+        } else if (typeof type === 'string' && type.startsWith('stop-')) {
+          const stopId = type.replace('stop-', '');
+          updateStop(stopId, text, null);
+        }
       }
     };
     rec.onerror = (e) => {
@@ -1516,33 +1554,52 @@ const BookRide = () => {
   // Local replica of the backend's _estimate_fare — used ONLY when the
   // backend's /api/pricing/estimate is unreachable, so the rider still sees
   // the correct per-car, surge-aware price.
-  const localFareEstimate = (distKm, carType) => {
+  const calculateRouteDistance = (pCoords, dCoords, stopList = []) => {
+    if (!pCoords || !dCoords) return 0;
+    const validWaypoints = [
+      pCoords,
+      ...stopList.map((s) => s.coords).filter(Boolean),
+      dCoords,
+    ];
+    let total = 0;
+    for (let i = 0; i < validWaypoints.length - 1; i++) {
+      total += haversineKm(validWaypoints[i], validWaypoints[i + 1]);
+    }
+    return total;
+  };
+
+  const localFareEstimate = (distKm, carType, stopsCount = 0) => {
     const cfg = CAR_PRICING[carType] || CAR_PRICING.SmartMini;
     const { surge, reason } = currentSurge();
     const baseFare = cfg.base;
     const distanceFare = Math.round(distKm * cfg.perKm * 100) / 100;
+    const stopsFare = stopsCount * 25;
     return {
       baseFare,
       distanceFare,
+      stopsFare,
+      stopsCount,
       surgeMultiplier: surge,
       surgeReason: reason,
-      totalFare: Math.round(Math.max(baseFare, baseFare + distanceFare) * surge * 100) / 100,
+      totalFare: Math.round(Math.max(baseFare, baseFare + distanceFare + stopsFare) * surge * 100) / 100,
       bookingTime: new Date().toISOString(),
     };
   };
 
-  // Haversine distance between pickup and dropoff for the price cards.
+  // Haversine distance between pickup, all stops and dropoff for the price cards.
   // NOW surge-aware (peak 1.5x, late-night 1.2x) and promo-discount-aware
   const displayFareDetails = (base, perKm) => {
     let distKm = 0;
     if (pickupCoords && dropoffCoords) {
-      distKm = haversineKm(pickupCoords, dropoffCoords);
+      distKm = calculateRouteDistance(pickupCoords, dropoffCoords, stops);
     }
+    const stopsCount = stops.filter((s) => s.address && s.address.trim()).length;
+    const stopAllowance = stopsCount * 25;
     const { surge } = currentSurge();
-    const raw = Math.round((base + distKm * perKm) * surge);
-    if (!appliedOffer) return { original: raw, final: raw, discount: 0 };
+    const raw = Math.round((base + distKm * perKm + stopAllowance) * surge);
+    if (!appliedOffer) return { original: raw, final: raw, discount: 0, distKm, stopAllowance };
     const { discount, finalFare } = calculateDiscount(appliedOffer, raw);
-    return { original: raw, final: finalFare, discount };
+    return { original: raw, final: finalFare, discount, distKm, stopAllowance };
   };
 
   const displayFare = (base, perKm) => {
@@ -2338,6 +2395,89 @@ const BookRide = () => {
               </div>
               <span>Click any spot on the map to pin this location</span>
             </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const renderStopInput = (stop, index) => {
+    const inputType = `stop-${stop.id}`;
+    return (
+      <div key={stop.id} className="relative z-15 flex items-center bg-amber-50/70 border border-amber-200 hover:border-amber-300 rounded-xl px-4 py-3 focus-within:ring-2 focus-within:ring-amber-500 focus-within:border-transparent transition-all shadow-sm">
+        <div className="w-5 h-5 bg-amber-500 text-white text-[11px] font-extrabold rounded-full mr-3 flex items-center justify-center flex-shrink-0 shadow-sm">
+          {index + 1}
+        </div>
+        <input
+          type="text"
+          placeholder={`Extra Stop ${index + 1} (e.g. Navrangpura / CG Road)`}
+          value={stop.address}
+          onChange={(e) => updateStop(stop.id, e.target.value, null)}
+          onFocus={() => setFocusedInput(inputType)}
+          onBlur={() => setTimeout(() => setFocusedInput(null), 250)}
+          className="bg-transparent outline-none w-full text-base placeholder-amber-700/50 font-semibold text-gray-900"
+        />
+        {stop.address ? (
+          <button
+            type="button"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              updateStop(stop.id, '', null);
+            }}
+            className="p-1 rounded-full text-gray-400 hover:text-gray-700 hover:bg-amber-100 transition mr-1"
+            title="Clear"
+            aria-label="Clear stop"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        ) : null}
+        <button
+          type="button"
+          onClick={() => startVoiceInput(inputType)}
+          className={`p-1.5 rounded-lg transition mr-1 ${
+            listeningInput === inputType
+              ? 'bg-red-500 text-white animate-pulse shadow-md'
+              : 'text-gray-400 hover:text-slate-900 hover:bg-amber-100'
+          }`}
+          title="Voice input for stop"
+        >
+          <Mic className="h-4 w-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => removeStop(stop.id)}
+          className="p-1.5 rounded-lg text-red-500 hover:bg-red-100 hover:text-red-700 transition"
+          title="Remove stop"
+          aria-label="Remove stop"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+        {focusedInput === inputType && (
+          <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-2xl shadow-[0_12px_40px_rgba(0,0,0,0.18)] z-[100] max-h-60 overflow-y-auto border border-gray-100 animate-in fade-in duration-200">
+            <div className="p-2 text-[11px] font-bold text-gray-400 uppercase tracking-wider px-4 pt-3">
+              Suggested Stops
+            </div>
+            {locationSuggestions
+              .filter((s) => s.title.toLowerCase().includes((stop.address || '').toLowerCase()) || !stop.address)
+              .map((loc, idx) => (
+                <div
+                  key={idx}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    updateStop(stop.id, loc.title, null);
+                    setFocusedInput(null);
+                  }}
+                  className="flex items-center px-4 py-2.5 hover:bg-amber-50 cursor-pointer border-b border-gray-50 last:border-0 text-left transition-colors group"
+                >
+                  <div className="bg-amber-100 text-amber-800 p-2 rounded-lg mr-3 shrink-0">
+                    <MapPin className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-gray-900 leading-tight">{loc.title}</p>
+                    <p className="text-xs text-gray-500">{loc.subtitle}</p>
+                  </div>
+                </div>
+              ))}
           </div>
         )}
       </div>
@@ -4093,6 +4233,9 @@ const BookRide = () => {
                             <ResilientTileLayer onStatus={setMapStatus} />
                             <MapUpdater center={mapCenter} zoom={mapZoom} />
                             {pickupCoords && <Marker position={pickupCoords} icon={pickupIcon} />}
+                            {stops.map((s, idx) => (
+                              s.coords ? <Marker key={s.id || idx} position={s.coords} icon={createStopIcon(idx + 1)} /> : null
+                            ))}
                             {dropoffCoords && <Marker position={dropoffCoords} icon={dropoffIcon} />}
                             {pickupCoords && dropoffCoords && (
                               <Marker position={[currentCarLat, currentCarLng]} icon={carIcon} />
@@ -4172,6 +4315,23 @@ const BookRide = () => {
                                   <span className="truncate">{dropoff}</span>
                                 </div>
                               </div>
+
+                              {/* 📍 Intermediate stops badge display */}
+                              {stops && stops.length > 0 && (
+                                <div className="flex flex-col gap-1.5 pt-2 border-t border-slate-200/70 text-xs">
+                                  <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                                    <CornerDownRight className="h-3 w-3 text-amber-500" /> Waypoints &amp; Stops:
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    {stops.map((s, idx) => (
+                                      <span key={s.id || idx} className="bg-amber-50 text-amber-900 border border-amber-200 px-2.5 py-1 rounded-lg font-medium flex items-center gap-1.5 shadow-2xs">
+                                        <span className="w-4 h-4 bg-amber-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
+                                        <span className="truncate max-w-[200px]">{s.address || `Stop ${idx + 1}`}</span>
+                                      </span>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
                             </div>
 
                             {/* Quick Action Toolbar */}
@@ -4605,6 +4765,20 @@ const BookRide = () => {
                         </div>
                       </div>
 
+                      {/* 📍 MULTI-STOP ITINERARY SUMMARY */}
+                      {stops && stops.filter((s) => s.address && s.address.trim()).length > 0 && (
+                        <div className="p-2.5 my-1 bg-amber-50/80 border border-amber-200/90 rounded-2xl flex items-center justify-between">
+                          <div className="flex items-center space-x-2 text-xs">
+                            <CornerDownRight className="w-4 h-4 text-amber-600 shrink-0" />
+                            <span className="font-bold text-amber-950">
+                              Includes {stops.filter((s) => s.address && s.address.trim()).length} Extra Stop(s) (+₹{stops.filter((s) => s.address && s.address.trim()).length * 25} wait allowance)
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-bold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full">
+                            Multi-Stop
+                          </span>
+                        </div>
+                      )}
                       <div className="shrink-0 pt-3 border-t border-slate-100">
                         <button 
                           onClick={handleConfirmRide} 
@@ -4648,6 +4822,24 @@ const BookRide = () => {
 
                       <div className="relative flex flex-col space-y-2 w-full">
                         {renderLocationInput('pickup', "Pickup (e.g., Kalupur, Delhi, BLR)", pickup, setPickup)}
+
+                        {/* 📍 Intermediate Extra Stops / Waypoints */}
+                        {stops.map((stop, idx) => renderStopInput(stop, idx))}
+
+                        {/* + Add Extra Stop button */}
+                        {stops.length < 2 && (
+                          <div className="flex items-center justify-between py-1 px-1">
+                            <button
+                              type="button"
+                              onClick={addStop}
+                              className="flex items-center space-x-1.5 text-xs font-bold text-emerald-700 hover:text-emerald-800 bg-emerald-50 hover:bg-emerald-100/80 border border-emerald-200/80 rounded-xl px-3 py-1.5 transition shadow-2xs"
+                            >
+                              <PlusCircle className="h-3.5 w-3.5" />
+                              <span>+ Add Extra Stop (Drop friend / errand)</span>
+                            </button>
+                            <span className="text-[11px] text-gray-400 font-medium">Up to 2 stops (+₹25/stop)</span>
+                          </div>
+                        )}
 
                         {/* 🔄 Swap Pickup & Dropoff button */}
                         <div className="relative flex justify-center -my-2.5 z-30">

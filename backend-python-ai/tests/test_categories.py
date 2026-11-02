@@ -106,3 +106,38 @@ def test_trip_booking_with_ride_preferences_and_category():
     assert trip["ridePreferences"]["acPreference"] == "Chilled (20°C)"
     assert "driver" in trip
     assert trip["driver"]["vehicleTier"] == "SmartSedan"
+
+
+def test_pricing_and_booking_with_multi_stops():
+    """Verify multi-stop pricing allowance and trip creation with waypoints."""
+    # 1. Pricing estimate with 2 stops
+    pricing_payload = {
+        "distanceKm": 12.0,
+        "selectedCar": "SmartMini",
+        "stopsCount": 2,
+        "bookingTime": "2026-10-28T12:00:00+05:30"
+    }
+    res = client.post("/api/pricing/estimate", json=pricing_payload)
+    assert res.status_code == 200
+    pdata = res.json()
+    # SmartMini: base 40 + (12 * 10 = 120) + (2 stops * 25 = 50) = 210
+    assert pdata["stopsCount"] == 2
+    assert pdata["stopsFare"] == 50.0
+    assert pdata["totalFare"] == 210.0
+
+    # 2. Trip booking with intermediate stops list
+    trip_payload = {
+        "riderName": "Kunal M.",
+        "pickupLocation": "Prahlad Nagar, Ahmedabad",
+        "dropoffLocation": "Airport Terminal 2",
+        "stops": ["Navrangpura Corner", "Shahibaug Underpass"],
+        "stopsCount": 2,
+        "distanceKm": 18.5,
+        "selectedCar": "SmartMini",
+        "fare": 275.0,
+    }
+    trip_res = client.post("/api/trips", json=trip_payload)
+    assert trip_res.status_code == 200
+    trip = trip_res.json()
+    assert trip["stops"] == ["Navrangpura Corner", "Shahibaug Underpass"]
+    assert trip["stopsCount"] == 2

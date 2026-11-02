@@ -116,6 +116,7 @@ const TrackRide = () => {
             carModel: data.carModel || "SmartCab Sedan",
             pickup: data.pickup || "SG Highway, Ahmedabad",
             dropoff: data.dropoff || "Airport, Ahmedabad",
+            stops: data.stops || [],
             currentLocation: data.currentLocation || { lat: 23.0338, lng: 72.5467 },
             status: data.status || "ON_ROUTE",
             pingCount: data.pingCount || 1,
@@ -140,6 +141,7 @@ const TrackRide = () => {
             carModel: localRide.carModel || localRide.driver?.carModel || "SmartCab Sedan",
             pickup: localRide.pickup || "SG Highway, Ahmedabad",
             dropoff: localRide.dropoff || "Ahmedabad Airport",
+            stops: localRide.stops || [],
             currentLocation: localRide.currentLocation || { lat: 23.0338, lng: 72.5467 },
             status: "ON_ROUTE",
             pingCount: 1,
@@ -617,6 +619,16 @@ const TrackRide = () => {
                     {trackingData?.isWaiting ? '—' : (trackingData?.pickup && trackingData.pickup !== '—' ? trackingData.pickup : 'Not set yet')}
                   </p>
                 </div>
+                {trackingData?.stops && trackingData.stops.map((stop, sIdx) => (
+                  <div key={sIdx} className="bg-amber-50/80 p-2 rounded-xl border border-amber-200/70 -ml-2 pl-3">
+                    <p className="text-[11px] text-amber-800 font-extrabold flex items-center gap-1">
+                      📍 STOP {sIdx + 1}
+                    </p>
+                    <p className="font-bold text-gray-900 text-sm">
+                      {typeof stop === 'string' ? stop : (stop.address || `Stop ${sIdx + 1}`)}
+                    </p>
+                  </div>
+                ))}
                 <div>
                   <p className="text-xs text-gray-500 font-bold">DROPOFF</p>
                   <p className="font-bold text-gray-900">

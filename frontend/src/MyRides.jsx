@@ -84,6 +84,11 @@ function RideCard({ ride, onTrack, onRate, onViewRoute, onLostFound, onInsurance
         </div>
         <div className="text-sm">
           <div className="font-semibold">{ride.pickupLocation || 'Pickup'}</div>
+          {ride.stops && ride.stops.length > 0 && (
+            <div className="text-amber-800 text-xs font-semibold my-1 flex items-center gap-1 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">
+              <span>📍 +{ride.stops.length} Stop(s): {Array.isArray(ride.stops) ? ride.stops.join(' → ') : ride.stops}</span>
+            </div>
+          )}
           <div className="text-slate-400 text-xs my-0.5">→ {ride.dropoffLocation || 'Destination'}</div>
           <div className="font-semibold">{ride.dropoffLocation || 'Destination'}</div>
         </div>

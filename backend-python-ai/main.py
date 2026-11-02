@@ -1147,6 +1147,7 @@ class TripCreate(BaseModel):
     riderPhone: Optional[str] = ""
     pickupLocation: Optional[str] = ""
     dropoffLocation: Optional[str] = ""
+    stops: Optional[List[Union[str, Dict[str, Any]]]] = None  # e.g. ["Chai Point"] or [{"address": "Chai Point", "lat": 23.03, "lng": 72.54}]
     distanceKm: Optional[float] = 10.0
     fare: Optional[float] = 170
     status: Optional[str] = "PENDING"
@@ -1154,9 +1155,12 @@ class TripCreate(BaseModel):
     # Uber-style pricing breakdown (so the dashboard can show base+km+surge)
     baseFare: Optional[float] = 0
     distanceFare: Optional[float] = 0
+    stopsFare: Optional[float] = 0
+    stopsCount: Optional[int] = 0
     surgeMultiplier: Optional[float] = 1.0
     bookingTime: Optional[str] = None  # ISO timestamp; used for surge calc
     ridePreferences: Optional[Dict[str, Any]] = None  # e.g. {"acPreference": "Max Chilled (20°C)", "quietRide": True, "luggageAssistance": True}
+    userId: Optional[int] = None
 
 
 
@@ -1164,6 +1168,8 @@ class PricingEstimateRequest(BaseModel):
     distanceKm: float
     selectedCar: Optional[str] = "SmartMini"
     bookingTime: Optional[str] = None  # ISO; defaults to "now"
+    stopsCount: Optional[int] = 0
+    stops: Optional[List[Any]] = None
 
 
 class PricingEstimateResponse(BaseModel):
@@ -2886,17 +2892,20 @@ def _calc_surge(when: datetime) -> tuple[float, str]:
     return 1.0, "Off-peak: standard rates"
 
 
-def _estimate_fare(distance_km: float, car_type: str, when: datetime) -> Dict[str, Any]:
+def _estimate_fare(distance_km: float, car_type: str, when: datetime, stops_count: int = 0) -> Dict[str, Any]:
     """Single source of truth for Smart Security AI Cab pricing. Returns a full breakdown
     so the frontend can show a transparent receipt."""
     cfg = PRICING_TABLE.get(car_type, PRICING_TABLE["SmartMini"])
     surge, reason = _calc_surge(when)
     base = float(cfg["base"])
     distance_fare = round(distance_km * cfg["perKm"], 2)
-    total = round(max(base, base + distance_fare) * surge, 2)
+    stops_fare = round(max(0, stops_count) * 25.0, 2)  # ₹25 per extra intermediate stop
+    total = round(max(base, base + distance_fare + stops_fare) * surge, 2)
     return {
         "baseFare": base,
         "distanceFare": distance_fare,
+        "stopsFare": stops_fare,
+        "stopsCount": stops_count,
         "surgeMultiplier": surge,
         "surgeReason": reason,
         "totalFare": total,
@@ -2915,12 +2924,13 @@ def pricing_estimate(payload: PricingEstimateRequest):
         raise HTTPException(status_code=400, detail="distanceKm must be > 0")
 
     when = _parse_booking_time(payload.bookingTime)
+    stops_count = payload.stopsCount or (len(payload.stops) if payload.stops else 0)
 
-    primary = _estimate_fare(payload.distanceKm, payload.selectedCar or "SmartMini", when)
+    primary = _estimate_fare(payload.distanceKm, payload.selectedCar or "SmartMini", when, stops_count=stops_count)
 
     all_options = []
     for car_type, cfg in PRICING_TABLE.items():
-        est = _estimate_fare(payload.distanceKm, car_type, when)
+        est = _estimate_fare(payload.distanceKm, car_type, when, stops_count=stops_count)
         all_options.append({
             "carType": car_type,
             "displayName": cfg["displayName"],
@@ -2936,6 +2946,7 @@ def pricing_estimate(payload: PricingEstimateRequest):
             "tagline": cfg.get("tagline", ""),
             "baseFare": est["baseFare"],
             "distanceFare": est["distanceFare"],
+            "stopsFare": est["stopsFare"],
             "surgeMultiplier": est["surgeMultiplier"],
             "totalFare": est["totalFare"],
         })
@@ -2946,6 +2957,7 @@ def pricing_estimate(payload: PricingEstimateRequest):
         "distanceKm": round(payload.distanceKm, 2),
         "selectedCar": payload.selectedCar or "SmartMini",
         "bookingTime": when.isoformat(),
+        "stopsCount": stops_count,
         **primary,
         "allOptions": all_options,
     }
@@ -4184,15 +4196,19 @@ def create_trip(payload: TripCreate, request: Request):
     # Re-compute the fare server-side if the frontend didn't provide one.
     # This prevents the rider app from accidentally storing a hardcoded
     # "232" or any other fake value — the backend is the source of truth.
+    stops_count = len(trip.get("stops") or []) or int(trip.get("stopsCount") or 0)
+    trip["stopsCount"] = stops_count
     if not trip.get("fare") or trip.get("fare") == 0:
         when = _parse_booking_time(trip.get("bookingTime"))
         estimate = _estimate_fare(
             float(trip.get("distanceKm", 10.0)),
             trip.get("selectedCar", "SmartMini"),
             when,
+            stops_count=stops_count,
         )
         trip["baseFare"] = estimate["baseFare"]
         trip["distanceFare"] = estimate["distanceFare"]
+        trip["stopsFare"] = estimate["stopsFare"]
         trip["surgeMultiplier"] = estimate["surgeMultiplier"]
         trip["fare"] = estimate["totalFare"]
     else:
@@ -4202,6 +4218,8 @@ def create_trip(payload: TripCreate, request: Request):
             trip["baseFare"] = 0
         if not trip.get("distanceFare"):
             trip["distanceFare"] = 0
+        if not trip.get("stopsFare"):
+            trip["stopsFare"] = stops_count * 25.0
         if not trip.get("surgeMultiplier"):
             trip["surgeMultiplier"] = 1.0
 
