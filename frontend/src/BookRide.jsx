@@ -1774,11 +1774,66 @@ const BookRide = () => {
     return true;
   };
 
-  // 📍 USE MY LOCATION — asks the browser for the rider's real GPS
-  // coordinates, fills the pickup field with exact neighborhood, and centers the map.
+  // 📍 REVERSE GEOCODING HELPER
+  // Accurately extracts building, road, neighbourhood/locality, and city from OSM Nominatim
+  const formatReverseAddress = (data, lat, lng) => {
+    if (!data || !data.address) {
+      if (data && data.display_name) {
+        return data.display_name.split(', ').slice(0, 3).join(', ');
+      }
+      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    }
+    const a = data.address;
+    const landmark = a.amenity || a.building || a.shop || a.office || a.leisure || a.tourism || a.aeroway || a.railway || '';
+    const road = a.road || a.pedestrian || a.street || a.highway || '';
+    const locality = a.neighbourhood || a.suburb || a.residential || a.subdistrict || a.quarter || a.village || a.hamlet || '';
+    const city = a.city || a.town || a.municipality || a.city_district || a.state_district || 'Ahmedabad';
+
+    const parts = [];
+    if (landmark) parts.push(landmark);
+    if (road && !parts.some((p) => p.toLowerCase().includes(road.toLowerCase())) && !locality.toLowerCase().includes(road.toLowerCase())) {
+      parts.push(road);
+    }
+    if (locality && !parts.some((p) => p.toLowerCase().includes(locality.toLowerCase()))) {
+      parts.push(locality);
+    }
+    if (city && !parts.some((p) => p.toLowerCase().includes(city.toLowerCase()))) {
+      parts.push(city);
+    }
+
+    if (parts.length > 0) {
+      return parts.join(', ');
+    }
+    if (data.display_name) {
+      return data.display_name.split(', ').slice(0, 3).join(', ');
+    }
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  };
+
+  const reverseGeocode = async (lat, lng) => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(
+        `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1`,
+        { signal: controller.signal }
+      );
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        return formatReverseAddress(data, lat, lng);
+      }
+    } catch (e) {
+      console.warn('Reverse geocode failed or timed out:', e);
+    }
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+  };
+
+  // 📍 USE MY LOCATION — asks the browser/device for the rider's real GPS
+  // coordinates, reverse geocodes to the exact location, sets map pin & pickup.
   const useMyLocation = () => {
     if (!navigator.geolocation) {
-      alert("Your browser doesn't support GPS. Type the pickup address instead.");
+      alert("Your browser doesn't support GPS. Please type the pickup address instead.");
       return;
     }
     setLocatingMe(true);
@@ -1787,72 +1842,50 @@ const BookRide = () => {
         const lat = pos.coords.latitude;
         const lng = pos.coords.longitude;
         setUserLocation([lat, lng]);
-        setLocatingMe(false);
-
-        // Accurate Northwest Ahmedabad detection (Chandlodia / Silver Star)
-        if (lat >= 23.060 && lat <= 23.090 && lng >= 72.530 && lng <= 72.565) {
-          setPickup("Silver Star, Chandlodia, Ahmedabad");
-          setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
-          setMapCenter([23.0728, 72.5459]);
-          setMapZoom(16);
-          return;
-        }
-
+        setPickupCoords([lat, lng]);
+        setPresetCoords((prev) => ({ ...prev, pickup: [lat, lng] }));
         setMapCenter([lat, lng]);
         setMapZoom(16);
 
-        // Reverse-geocode to fill the pickup field with a real clean address
-        try {
-          const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18`);
-          const data = await res.json();
-          if (data && data.address) {
-            const a = data.address;
-            const locality = a.neighbourhood || a.suburb || a.residential || a.quarter || a.road || a.village || '';
-            const city = a.city || a.town || 'Ahmedabad';
-            if (locality && locality.toLowerCase().includes('ranip') && (lat <= 23.085 && lng <= 72.555)) {
-              setPickup("Silver Star, Chandlodia, Ahmedabad");
-              setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
-            } else if (locality) {
-              setPickup(`${locality}, ${city}`);
-            } else {
-              setPickup(data.display_name.split(', ').slice(0, 2).join(', '));
-            }
-          } else if (data && data.display_name) {
-            const short = data.display_name.split(', ').slice(0, 2).join(', ');
-            setPickup(short);
-          } else {
-            setPickup(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-          }
-        } catch (e) {
-          setPickup("Silver Star, Chandlodia, Ahmedabad");
-          setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
-        }
+        // Reverse-geocode to get the accurate street, locality, and city
+        const resolvedAddress = await reverseGeocode(lat, lng);
+        setPickup(resolvedAddress);
+        setLocatingMe(false);
       },
       (err) => {
         setLocatingMe(false);
-        setPickup("Silver Star, Chandlodia, Ahmedabad");
-        setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
-        setMapCenter([23.0728, 72.5459]);
-        setMapZoom(16);
+        console.warn("Geolocation error:", err);
+        if (err.code === 1) {
+          alert("📍 Location permission was denied. Please allow location access in your browser or type your pickup address.");
+        } else if (err.code === 2 || err.code === 3) {
+          alert("📍 GPS signal timed out or position unavailable. Please check your device location settings or enter your address manually.");
+        } else {
+          alert("📍 Could not retrieve your current location. Please type your pickup address.");
+        }
       },
-      { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  };
     );
   };
 
   const handleMapClick = async (latlng) => {
     try {
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latlng.lat}&lon=${latlng.lng}`);
-      const data = await response.json();
-      if (data && data.display_name) {
-        const shortAddress = data.display_name.split(', ').slice(0, 2).join(', ');
-        if (focusedInput === 'dropoff' || (pickup && !dropoff)) {
-          setDropoff(shortAddress);
-        } else {
-          setPickup(shortAddress);
-        }
+      const resolvedAddress = await reverseGeocode(latlng.lat, latlng.lng);
+      if (focusedInput === 'dropoff' || (pickup && !dropoff)) {
+        setDropoff(resolvedAddress);
+        setDropoffCoords([latlng.lat, latlng.lng]);
+        setPresetCoords((prev) => ({ ...prev, dropoff: [latlng.lat, latlng.lng] }));
+      } else if (focusedInput && typeof focusedInput === 'string' && focusedInput.startsWith('stop-')) {
+        const stopId = focusedInput.replace('stop-', '');
+        updateStop(stopId, resolvedAddress, [latlng.lat, latlng.lng]);
+      } else {
+        setPickup(resolvedAddress);
+        setPickupCoords([latlng.lat, latlng.lng]);
+        setPresetCoords((prev) => ({ ...prev, pickup: [latlng.lat, latlng.lng] }));
       }
     } catch (error) {
-      console.error("Could not fetch address from map click");
+      console.error("Could not fetch address from map click:", error);
     }
   };
 
