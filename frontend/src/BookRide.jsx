@@ -1866,8 +1866,6 @@ const BookRide = () => {
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
     );
   };
-    );
-  };
 
   const handleMapClick = async (latlng) => {
     try {
