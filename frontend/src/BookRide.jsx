@@ -871,15 +871,18 @@ const BookRide = () => {
   const liveStreamTimerRef = useRef(null);
 
   const locationSuggestions = [
+    { title: "Ahmedabad Institute of Technology (AIT)", subtitle: "Gota-Ognaj Road, Lapkaman, Ahmedabad" },
+    { title: "Ognaj", subtitle: "Ognaj Gam / Science City Ext, Ahmedabad" },
+    { title: "Science City", subtitle: "Science City Road, Sola, Ahmedabad" },
+    { title: "Gota", subtitle: "SG Highway / Vandemataram, Ahmedabad" },
     { title: "Silver Star, Chandlodia", subtitle: "Silver Star Complex, Chandlodia, Ahmedabad (Home)" },
     { title: "Chandlodia", subtitle: "Chandlodia, Ahmedabad, Gujarat" },
-    { title: "Gota", subtitle: "SG Highway, Ahmedabad, Gujarat" },
     { title: "Kalupur Railway Station", subtitle: "Kalupur Railway Station Rd, Kapasia Bazar" },
     { title: "Ahmedabad Junction", subtitle: "Sakar Bazzar, Kalupur, Ahmedabad" },
     { title: "Saraspur", subtitle: "Ahmedabad, Gujarat" },
     { title: "Sardar Vallabhbhai Patel Airport (AMD)", subtitle: "Hansol, Ahmedabad, Gujarat" },
-    { title: "D86", subtitle: "Uttamnagar, Thakkarbapanagar, Ahmedabad" },
-    { title: "Aai Shri Khodiyar Mata", subtitle: "Nikol Gam Road, Ahmedabad, Gujarat" },
+    { title: "Vastrapur Lake", subtitle: "Vastrapur, Ahmedabad, Gujarat" },
+    { title: "Prahlad Nagar", subtitle: "SG Highway, Ahmedabad, Gujarat" },
     { title: "Delhi Airport", subtitle: "Indira Gandhi International Airport" },
     { title: "Mumbai Central", subtitle: "Mumbai, Maharashtra" }
   ];
@@ -1644,12 +1647,20 @@ const BookRide = () => {
   // locality centres — good enough for a demo ride estimate, and the
   // city-scoped Nominatim search above remains the primary source.
   const AHMEDABAD_GAZETTEER = [
+    ['ahmedabad institute of technology', [23.1118, 72.5085]],
+    ['ait college', [23.1118, 72.5085]],
+    ['ait ognaj', [23.1118, 72.5085]],
+    ['ait', [23.1118, 72.5085]],
+    ['ognaj', [23.0970, 72.4980]],
+    ['lapkaman', [23.1190, 72.5020]],
+    ['science city', [23.0780, 72.5020]],
+    ['shilaj', [23.0610, 72.4780]],
+    ['gota', [23.0920, 72.5350]],
     ['silver star chandlodia', [23.0728, 72.5459]],
     ['chandlodia silver star', [23.0728, 72.5459]],
     ['silver star', [23.0728, 72.5459]],
     ['chandlodia', [23.0728, 72.5459]],
     ['chandlodiya', [23.0728, 72.5459]],
-    ['gota', [23.0722, 72.5409]],
     ['new ranip', [23.0906, 72.5702]], ['ranip', [23.0862, 72.5715]],
     ['saraspur', [23.0252, 72.5990]],
     ['kalupur railway station', [23.0253, 72.6012]], ['kalupur', [23.0280, 72.5997]],
@@ -1657,6 +1668,7 @@ const BookRide = () => {
     ['sabarmati', [23.0701, 72.5908]], ['ashram road', [23.0325, 72.5710]],
     ['navrangpura', [23.0317, 72.5628]], ['naranpura', [23.0552, 72.5670]],
     ['maninagar', [22.9997, 72.6010]], ['bopal', [22.9928, 72.4680]],
+    ['south bopal', [22.9980, 72.4560]],
     ['satellite', [23.0155, 72.5270]], ['vastrapur', [23.0366, 72.5270]],
     ['paldi', [23.0101, 72.5685]], ['ellis bridge', [23.0225, 72.5650]],
     ['thaltej', [23.0502, 72.5143]], ['motera', [23.0914, 72.5974]],
@@ -1664,7 +1676,7 @@ const BookRide = () => {
     ['shahibaug', [23.0547, 72.5959]], ['naroda', [23.0730, 72.6530]],
     ['vastral', [22.9600, 72.6620]], ['sarkhej', [22.9868, 72.5050]],
     ['sg highway', [23.0265, 72.5084]], ['sola', [23.0730, 72.5162]],
-    ['nirma university', [23.0301, 72.5177]],
+    ['nirma university', [23.1287, 72.5447]],
     ['airport', [23.0772, 72.6347]],
   ];
 
@@ -1774,39 +1786,82 @@ const BookRide = () => {
     return true;
   };
 
-  // 📍 REVERSE GEOCODING HELPER
-  // Accurately extracts building, road, neighbourhood/locality, and city from OSM Nominatim
+  // 📍 PRECISION REVERSE GEOCODING HELPER
+  // Accurately extracts landmark, college, campus, road, micro-locality (village/neighbourhood) & city
   const formatReverseAddress = (data, lat, lng) => {
-    if (!data || !data.address) {
-      if (data && data.display_name) {
-        return data.display_name.split(', ').slice(0, 3).join(', ');
-      }
-      return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
-    }
-    const a = data.address;
-    const landmark = a.amenity || a.building || a.shop || a.office || a.leisure || a.tourism || a.aeroway || a.railway || '';
-    const road = a.road || a.pedestrian || a.street || a.highway || '';
-    const locality = a.neighbourhood || a.suburb || a.residential || a.subdistrict || a.quarter || a.village || a.hamlet || '';
-    const city = a.city || a.town || a.municipality || a.city_district || a.state_district || 'Ahmedabad';
+    if (!data) return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
 
+    const a = data.address || {};
+    const rawName = data.name || (data.namedetails && data.namedetails.name) || '';
+    const specificPoi = a.college || a.university || a.school || a.hospital || a.clinic || a.amenity || a.building || a.office || a.commercial || a.shop || a.tourism || a.leisure || a.railway || a.aeroway || '';
+    const landmark = (rawName && !['house', 'residential', 'road', 'village', 'suburb', 'unnamed'].includes(rawName.toLowerCase())) ? rawName : specificPoi;
+
+    const road = a.road || a.pedestrian || a.street || a.highway || '';
+    // Micro-locality (Village / Neighbourhood) is much more specific than a wide taluka/suburb
+    const village = a.village || a.hamlet || '';
+    const neighbourhood = a.neighbourhood || a.residential || a.quarter || '';
+    const suburb = a.suburb || a.city_district || '';
+    const city = a.city || a.town || a.municipality || a.county || 'Ahmedabad';
+
+    // 🎓 Check known educational campuses & landmarks by coordinate proximity
+    // Ahmedabad Institute of Technology (AIT) Campus / Lapkaman / Ognaj Road
+    if (lat >= 23.105 && lat <= 23.125 && lng >= 72.495 && lng <= 72.520) {
+      if (!landmark || landmark.toLowerCase().includes('road') || landmark.toLowerCase().includes('gota')) {
+        return "Ahmedabad Institute of Technology (AIT), Ognaj, Ahmedabad";
+      }
+    }
+    // Ognaj Village / Science City Extension
+    if (lat >= 23.085 && lat <= 23.105 && lng >= 72.485 && lng <= 72.508) {
+      if (!landmark) {
+        return "Ognaj, Science City Ext, Ahmedabad";
+      }
+    }
+    // Science City
+    if (lat >= 23.072 && lat <= 23.085 && lng >= 72.495 && lng <= 72.512) {
+      if (!landmark) {
+        return "Science City, Sola, Ahmedabad";
+      }
+    }
+
+    // Parse display_name tokens (stripping out noise like state/country/pincode/taluka)
+    if (data.display_name) {
+      const rawTokens = data.display_name.split(', ').map((t) => t.trim()).filter(Boolean);
+      const cleanTokens = rawTokens.filter((t) => {
+        const lower = t.toLowerCase();
+        if (['india', 'gujarat', 'maharashtra', 'delhi', 'karnataka', 'rajasthan', 'uttar pradesh'].includes(lower)) return false;
+        if (/^\d{6}$/.test(t)) return false; // 6-digit Indian PIN codes
+        if (/taluk[a]?/i.test(t) || /tehsil/i.test(t) || /district/i.test(t) || /zone/i.test(t) || /ward/i.test(t)) return false;
+        return true;
+      });
+
+      if (cleanTokens.length >= 2) {
+        const topTokens = cleanTokens.slice(0, 3);
+        const hasCity = topTokens.some((t) => t.toLowerCase().includes(city.toLowerCase()) || t.toLowerCase().includes('ahmedabad'));
+        if (!hasCity) {
+          topTokens.push(city);
+        }
+        return topTokens.join(', ');
+      }
+    }
+
+    // Structured fallback
     const parts = [];
     if (landmark) parts.push(landmark);
-    if (road && !parts.some((p) => p.toLowerCase().includes(road.toLowerCase())) && !locality.toLowerCase().includes(road.toLowerCase())) {
+    if (road && !parts.some((p) => p.toLowerCase().includes(road.toLowerCase()))) {
       parts.push(road);
     }
-    if (locality && !parts.some((p) => p.toLowerCase().includes(locality.toLowerCase()))) {
-      parts.push(locality);
+    if (village && !parts.some((p) => p.toLowerCase().includes(village.toLowerCase()))) {
+      parts.push(village);
+    } else if (neighbourhood && !parts.some((p) => p.toLowerCase().includes(neighbourhood.toLowerCase()))) {
+      parts.push(neighbourhood);
+    } else if (suburb && !parts.some((p) => p.toLowerCase().includes(suburb.toLowerCase()))) {
+      parts.push(suburb);
     }
     if (city && !parts.some((p) => p.toLowerCase().includes(city.toLowerCase()))) {
       parts.push(city);
     }
 
-    if (parts.length > 0) {
-      return parts.join(', ');
-    }
-    if (data.display_name) {
-      return data.display_name.split(', ').slice(0, 3).join(', ');
-    }
+    if (parts.length > 0) return parts.join(', ');
     return `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
   };
 
@@ -4903,12 +4958,36 @@ const BookRide = () => {
                           <button
                             type="button"
                             onClick={() => {
+                              setPickup("Ahmedabad Institute of Technology (AIT), Ognaj, Ahmedabad");
+                              setPresetCoords((prev) => ({ ...prev, pickup: [23.1118, 72.5085] }));
+                              setMapCenter([23.1118, 72.5085]);
+                              setMapZoom(16);
+                            }}
+                            className="text-xs font-extrabold bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-300 rounded-full px-3 py-1 transition flex items-center gap-1 shadow-xs"
+                          >
+                            🎓 AIT College (Ognaj)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setPickup("Ognaj, Ahmedabad");
+                              setPresetCoords((prev) => ({ ...prev, pickup: [23.0970, 72.4980] }));
+                              setMapCenter([23.0970, 72.4980]);
+                              setMapZoom(16);
+                            }}
+                            className="text-xs font-bold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-300 rounded-full px-2.5 py-1 transition flex items-center gap-1 shadow-xs"
+                          >
+                            📍 Ognaj
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
                               setPickup("Silver Star, Chandlodia, Ahmedabad");
                               setPresetCoords((prev) => ({ ...prev, pickup: [23.0728, 72.5459] }));
                               setMapCenter([23.0728, 72.5459]);
                               setMapZoom(16);
                             }}
-                            className="text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full px-3 py-1 transition flex items-center gap-1 shadow-sm"
+                            className="text-xs font-extrabold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 rounded-full px-3 py-1 transition flex items-center gap-1 shadow-xs"
                           >
                             🏠 Silver Star, Chandlodia
                           </button>
@@ -4931,6 +5010,16 @@ const BookRide = () => {
                             className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-2.5 py-1 transition flex items-center gap-1"
                           >
                             🚆 Kalupur Stn
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDropoff("Science City, Sola, Ahmedabad");
+                              setPresetCoords((prev) => ({ ...prev, dropoff: [23.0780, 72.5020] }));
+                            }}
+                            className="text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-full px-2.5 py-1 transition flex items-center gap-1"
+                          >
+                            🔬 Science City
                           </button>
                         </div>
                       </div>
