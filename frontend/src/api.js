@@ -15,6 +15,11 @@ function resolveApiBase() {
   const env = typeof import.meta !== "undefined" ? import.meta.env : null;
   if (env && env.VITE_API_URL) return env.VITE_API_URL;
 
+  // In Vite dev / preview environments, use relative path so Vite dev server proxy routes to local backend
+  if (env && env.DEV) {
+    return "";
+  }
+
   if (env && env.VITE_PREVIEW_API_PORT && typeof window !== "undefined") {
     const host = window.location.host;
     const match = host.match(/^\d+-(.+)$/); // "5173-<sandbox>.e2b.app"
