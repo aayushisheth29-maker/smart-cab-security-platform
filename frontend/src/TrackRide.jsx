@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users, Star, Volume2, VolumeX, Bell, HeartPulse } from 'lucide-react';
+import { ShieldCheck, PhoneCall, Car, ArrowLeft, Loader2, MapPin, CheckCircle, Video, Users, Star, Volume2, VolumeX, Bell, HeartPulse, Moon } from 'lucide-react';
 import { API_BASE } from './api';
 import VoiceSafetyCommands from './VoiceSafetyCommands';
 import SplitFareModal from './SplitFareModal';
@@ -12,6 +12,7 @@ import LostFoundModal from './LostFoundModal';
 import RideInsuranceModal from './RideInsuranceModal';
 import LiveBeaconModal from './LiveBeaconModal';
 import TaxInvoiceModal from './TaxInvoiceModal';
+import NightShieldModal from './NightShieldModal';
 import { Chimes, announceMilestone } from './ttsService';
 
 const carIcon = new L.DivIcon({
@@ -46,6 +47,7 @@ const TrackRide = () => {
   const [showInsuranceModal, setShowInsuranceModal] = useState(false);
   const [showBeaconModal, setShowBeaconModal] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [showNightShieldModal, setShowNightShieldModal] = useState(false);
   const [audioAnnounceEnabled, setAudioAnnounceEnabled] = useState(true);
   const videoRef = useRef(null);
   const mapRef = useRef(null);
@@ -443,6 +445,14 @@ const TrackRide = () => {
               title="Share Live Ride Beacon with Family on WhatsApp"
             >
               <span>📡 Live Beacon</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowNightShieldModal(true)}
+              className="bg-purple-800 hover:bg-purple-900 text-white font-extrabold px-3 py-2.5 rounded-xl text-xs sm:text-sm flex items-center justify-center shadow transition border border-purple-400"
+              title="Night Shield Sentinel Mode, Fake Call Disguise & Audio Check-Ins"
+            >
+              <Moon className="h-4 w-4 mr-1 text-purple-200" /> Night Shield™
             </button>
             <button
               type="button"
@@ -863,6 +873,15 @@ const TrackRide = () => {
           onClose={() => setShowInvoiceModal(false)}
           tripId={linkId}
           initialTrip={trackingData}
+        />
+      )}
+
+      {/* 🌙 Night Shield™ & Women Sentinel Modal */}
+      {showNightShieldModal && (
+        <NightShieldModal
+          isOpen={showNightShieldModal}
+          onClose={() => setShowNightShieldModal(false)}
+          tripId={linkId}
         />
       )}
     </div>

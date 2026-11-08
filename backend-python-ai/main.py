@@ -7371,3 +7371,132 @@ try:
 except Exception as _route_err:
     log.warning(f"Route Lab preview endpoints not attached: {_route_err}")
 
+
+# ---------------------------------------------------------------------------
+# 🛡️ Night Shield & Women Sentinel Security Hub
+# ---------------------------------------------------------------------------
+WOMEN_FLEET_PARTNERS = [
+    {
+        "id": "WF-101",
+        "name": "Anita M.",
+        "rating": 5.0,
+        "tripsCount": 1840,
+        "carModel": "White SmartSedan Prime",
+        "plate": "KA 01 EF 9012",
+        "phone": "+919876500003",
+        "badge": "Women Sentinel Lead",
+        "languages": ["English", "Hindi", "Gujarati", "Kannada"],
+        "policeVerified": True,
+        "dashcamLive": True,
+        "photo": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=256",
+    },
+    {
+        "id": "WF-102",
+        "name": "Priya T.",
+        "rating": 4.95,
+        "tripsCount": 1220,
+        "carModel": "Silver SmartMini AC",
+        "plate": "TS 09 IJ 7890",
+        "phone": "+919876500005",
+        "badge": "Pink Shield Certified",
+        "languages": ["English", "Hindi", "Telugu", "Gujarati"],
+        "policeVerified": True,
+        "dashcamLive": True,
+        "photo": "https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=256",
+    },
+    {
+        "id": "WF-103",
+        "name": "Sunita K.",
+        "rating": 4.98,
+        "tripsCount": 980,
+        "carModel": "Black SmartSUV Guard",
+        "plate": "GJ 01 ZY 8812",
+        "phone": "+919876500008",
+        "badge": "Night Sentinel Expert",
+        "languages": ["English", "Hindi", "Gujarati"],
+        "policeVerified": True,
+        "dashcamLive": True,
+        "photo": "https://images.unsplash.com/photo-1567532939604-b6b5b0db2604?auto=format&fit=crop&q=80&w=256",
+    },
+]
+
+SENTINEL_CHECKINS_LOG: List[Dict[str, Any]] = []
+
+class NightShieldStatusRequest(BaseModel):
+    clientTime: Optional[str] = None
+    lat: Optional[float] = None
+    lng: Optional[float] = None
+
+class SentinelCheckInPayload(BaseModel):
+    tripId: Union[str, int]
+    status: str  # "SAFE", "UNRESPONSIVE", "SOS", "DEVIATION"
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    batteryLevel: Optional[int] = None
+    notes: Optional[str] = None
+
+@app.get("/api/sentinel/women-drivers")
+def get_women_drivers():
+    """Returns verified women driver partners available for Sentinel bookings."""
+    return {
+        "success": True,
+        "count": len(WOMEN_FLEET_PARTNERS),
+        "drivers": WOMEN_FLEET_PARTNERS,
+    }
+
+@app.post("/api/sentinel/night-shield/status")
+def get_night_shield_status(payload: Optional[NightShieldStatusRequest] = None):
+    """Calculates IST time and returns Night Shield activation recommendations."""
+    now_utc = datetime.now(timezone.utc)
+    ist_time = now_utc + timedelta(hours=5, minutes=30)
+    hour = ist_time.hour
+    is_night_time = (hour >= 22 or hour < 6)
+
+    return {
+        "success": True,
+        "isNightTime": is_night_time,
+        "istHour": hour,
+        "formattedIstTime": ist_time.strftime("%I:%M %p IST"),
+        "shieldStatus": "ACTIVE_SENTINEL" if is_night_time else "STANDBY_READY",
+        "recommendedFeatures": [
+            "Women Driver Priority",
+            "10-Min Audio Safety Check-Ins",
+            "Live WhatsApp Family Link",
+            "Fake Incoming Call Disguise",
+            "1-Tap 1091 Women Helpline & 112 SOS",
+        ],
+        "emergencyHelplines": {
+            "nationalEmergency": "112",
+            "womenHelpline": "1091",
+            "womenHelplineGujarat": "181",
+            "medicalEmergency": "108",
+        },
+        "availableWomenDrivers": len(WOMEN_FLEET_PARTNERS),
+    }
+
+@app.post("/api/sentinel/check-in")
+def record_sentinel_check_in(payload: SentinelCheckInPayload):
+    """Records a periodic or trigger-based safety check-in from the rider's device."""
+    checkin_record = {
+        "id": f"CHK-{int(datetime.now().timestamp())}",
+        "tripId": payload.tripId,
+        "status": payload.status,
+        "latitude": payload.latitude,
+        "longitude": payload.longitude,
+        "batteryLevel": payload.batteryLevel,
+        "notes": payload.notes,
+        "recordedAt": _now_iso(),
+    }
+    SENTINEL_CHECKINS_LOG.append(checkin_record)
+
+    action_taken = "LOGGED"
+    if payload.status in ("SOS", "UNRESPONSIVE"):
+        action_taken = "DISPATCH_TRIGGERED"
+        log.warning("🚨 Sentinel Check-in ALERT for Trip %s: Status %s", payload.tripId, payload.status)
+
+    return {
+        "success": True,
+        "checkInId": checkin_record["id"],
+        "actionTaken": action_taken,
+        "recordedAt": checkin_record["recordedAt"],
+    }

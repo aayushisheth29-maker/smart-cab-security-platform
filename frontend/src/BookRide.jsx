@@ -7,7 +7,7 @@ import {
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
   Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
   FileWarning, ArrowUpDown, Sparkles, Luggage, Share2, Zap, Eye, EyeOff, Volume2, ShieldAlert, FileText, Activity,
-  Tag, HeartPulse, Hospital, Sliders, VolumeX, Briefcase, Info, Trash2, PlusCircle, CornerDownRight
+  Tag, HeartPulse, Hospital, Sliders, VolumeX, Briefcase, Info, Trash2, PlusCircle, CornerDownRight, Moon
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -28,6 +28,7 @@ import ScheduleRideModal from './ScheduleRideModal';
 import EmergencyMedicalModal from './EmergencyMedicalModal';
 import CorporateBillingModal from './CorporateBillingModal';
 import VehicleCategoriesModal, { CATEGORIES_DATA } from './VehicleCategoriesModal';
+import NightShieldModal from './NightShieldModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -343,6 +344,7 @@ const BookRide = () => {
   const [showMedicalModal, setShowMedicalModal] = useState(false);
   const [showCorporateModal, setShowCorporateModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [showNightShieldModal, setShowNightShieldModal] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'daily' | 'premium'
   const [ridePreferences, setRidePreferences] = useState({
     acPreference: 'Standard (23°C)',
@@ -4156,7 +4158,14 @@ const BookRide = () => {
                 <Calendar className="w-4 h-4 text-purple-600" /> Reserve Advance
                 <span className="text-[10px] bg-purple-100 text-purple-800 px-1.5 py-0.2 rounded font-black">Zero Surge</span>
               </button>
-              <button 
+              <button
+                onClick={() => setShowNightShieldModal(true)}
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-purple-900 hover:text-purple-950 font-extrabold transition-colors flex items-center gap-1.5"
+              >
+                <Moon className="w-4 h-4 text-purple-600" /> Night Shield™
+                <span className="text-[10px] bg-gradient-to-r from-purple-200 to-indigo-100 text-purple-900 border border-purple-300 px-1.5 py-0.2 rounded font-black">🌸 Women Sentinel</span>
+              </button>
+              <button
                 onClick={() => setShowCorporateModal(true)} 
                 className="whitespace-nowrap pb-2 border-b-2 border-transparent text-slate-800 hover:text-slate-950 font-bold transition-colors flex items-center gap-1.5"
               >
@@ -6228,6 +6237,18 @@ const BookRide = () => {
           }
           ridePreferences={ridePreferences}
           onUpdatePreferences={(newPrefs) => setRidePreferences(newPrefs)}
+        />
+      )}
+
+      {/* 🌙 Night Shield™ & Women Sentinel Modal */}
+      {showNightShieldModal && (
+        <NightShieldModal
+          isOpen={showNightShieldModal}
+          onClose={() => setShowNightShieldModal(false)}
+          onSelectDriver={(driver) => {
+            setRidePreferences(prev => ({ ...prev, womenDriverPreference: true }));
+            alert(`🌸 Sentinel Matched: 5★ Driver Partner ${driver.name} (${driver.vehicle_model} - ${driver.plate}) has been assigned with Priority Route Monitoring.`);
+          }}
         />
       )}
     </div>

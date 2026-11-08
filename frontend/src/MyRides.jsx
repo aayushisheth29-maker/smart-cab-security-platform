@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import {
   ShieldCheck, ArrowLeft, Car, Star, Loader2,
   Calendar, CheckCircle2, XCircle, Clock, Siren, RefreshCw, LogIn,
-  MapPin, Navigation, X, ArrowRight, Sparkles, Check
+  MapPin, Navigation, X, ArrowRight, Sparkles, Check, Moon
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, Polyline } from 'react-leaflet';
 import L from 'leaflet';
@@ -13,6 +13,7 @@ import LostFoundModal from './LostFoundModal';
 import RideInsuranceModal from './RideInsuranceModal';
 import TaxInvoiceModal from './TaxInvoiceModal';
 import LiveBeaconModal from './LiveBeaconModal';
+import NightShieldModal from './NightShieldModal';
 
 const pickupMarkerIcon = new L.DivIcon({
   className: 'custom-map-icon',
@@ -256,6 +257,7 @@ export default function MyRides() {
   const [insuranceModalRide, setInsuranceModalRide] = useState(null);
   const [invoiceModalRide, setInvoiceModalRide] = useState(null);
   const [beaconModalRide, setBeaconModalRide] = useState(null);
+  const [showNightShieldModal, setShowNightShieldModal] = useState(false);
   const [selectedRouteRide, setSelectedRouteRide] = useState(null);
 
   useEffect(() => {
@@ -430,12 +432,21 @@ export default function MyRides() {
               {user ? `Hi ${user.name}, here is your full ride and route history with live GPS telemetry.` : 'Explore your past routes, trip coordinates, and driver details.'}
             </p>
           </div>
-          <Link
-            to="/"
-            className="w-max px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-xl transition shadow-sm flex items-center gap-1.5"
-          >
-            <Car className="w-3.5 h-3.5" /> Book New Ride
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowNightShieldModal(true)}
+              className="w-max px-4 py-2 bg-gradient-to-r from-purple-900 to-indigo-950 hover:from-purple-950 hover:to-black text-purple-200 text-xs font-black rounded-xl transition shadow-sm flex items-center gap-1.5 border border-purple-500/30"
+              title="Night Shield Sentinel Mode & Women Driver Partner Catalog"
+            >
+              <Moon className="w-3.5 h-3.5 text-purple-300" /> Night Shield™
+            </button>
+            <Link
+              to="/"
+              className="w-max px-4 py-2 bg-slate-900 hover:bg-black text-white text-xs font-black rounded-xl transition shadow-sm flex items-center gap-1.5"
+            >
+              <Car className="w-3.5 h-3.5" /> Book New Ride
+            </Link>
+          </div>
         </div>
 
         {/* Tabs */}
@@ -463,6 +474,7 @@ export default function MyRides() {
             <span>{shareMessage}</span>
             <button onClick={() => setShareMessage('')} className="font-bold hover:underline">Dismiss</button>
           </div>
+        )}
         )}
 
         {loading ? (
@@ -560,6 +572,14 @@ export default function MyRides() {
           carPlate={beaconModalRide.driver?.plate || beaconModalRide.carPlate || 'GJ 01 AB 1234'}
           pickup={beaconModalRide.pickupLocation || beaconModalRide.pickup}
           dropoff={beaconModalRide.dropoffLocation || beaconModalRide.dropoff}
+        />
+      )}
+
+      {/* 🌙 Night Shield™ & Women Sentinel Modal */}
+      {showNightShieldModal && (
+        <NightShieldModal
+          isOpen={showNightShieldModal}
+          onClose={() => setShowNightShieldModal(false)}
         />
       )}
 
