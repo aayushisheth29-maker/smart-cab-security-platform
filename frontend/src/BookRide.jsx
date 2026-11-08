@@ -7,7 +7,7 @@ import {
   CreditCard, Users, Plane, Box, AlertCircle, PhoneCall, Siren, Plus,
   Lock, Settings, History, LogOut, Search, Compass, Video, Download, RefreshCw , Mic,
   FileWarning, ArrowUpDown, Sparkles, Luggage, Share2, Zap, Eye, EyeOff, Volume2, ShieldAlert, FileText, Activity,
-  Tag, HeartPulse, Hospital, Sliders, VolumeX, Briefcase, Info, Trash2, PlusCircle, CornerDownRight, Moon
+  Tag, HeartPulse, Hospital, Sliders, VolumeX, Briefcase, Info, Trash2, PlusCircle, CornerDownRight, Moon, DollarSign, TrendingUp
 } from 'lucide-react';
 
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
@@ -29,6 +29,7 @@ import EmergencyMedicalModal from './EmergencyMedicalModal';
 import CorporateBillingModal from './CorporateBillingModal';
 import VehicleCategoriesModal, { CATEGORIES_DATA } from './VehicleCategoriesModal';
 import NightShieldModal from './NightShieldModal';
+import FareBiddingModal from './FareBiddingModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -345,6 +346,7 @@ const BookRide = () => {
   const [showCorporateModal, setShowCorporateModal] = useState(false);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showNightShieldModal, setShowNightShieldModal] = useState(false);
+  const [showBiddingModal, setShowBiddingModal] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'daily' | 'premium'
   const [ridePreferences, setRidePreferences] = useState({
     acPreference: 'Standard (23°C)',
@@ -4166,6 +4168,13 @@ const BookRide = () => {
                 <span className="text-[10px] bg-gradient-to-r from-purple-200 to-indigo-100 text-purple-900 border border-purple-300 px-1.5 py-0.2 rounded font-black">🌸 Women Sentinel</span>
               </button>
               <button
+                onClick={() => setShowBiddingModal(true)}
+                className="whitespace-nowrap pb-2 border-b-2 border-transparent text-emerald-900 hover:text-emerald-950 font-extrabold transition-colors flex items-center gap-1.5"
+              >
+                <DollarSign className="w-4 h-4 text-emerald-600" /> Name Your Fare™
+                <span className="text-[10px] bg-emerald-100 text-emerald-900 border border-emerald-300 px-1.5 py-0.2 rounded font-black">💸 InDrive Bidding</span>
+              </button>
+              <button
                 onClick={() => setShowCorporateModal(true)} 
                 className="whitespace-nowrap pb-2 border-b-2 border-transparent text-slate-800 hover:text-slate-950 font-bold transition-colors flex items-center gap-1.5"
               >
@@ -6248,6 +6257,26 @@ const BookRide = () => {
           onSelectDriver={(driver) => {
             setRidePreferences(prev => ({ ...prev, womenDriverPreference: true }));
             alert(`🌸 Sentinel Matched: 5★ Driver Partner ${driver.name} (${driver.vehicle_model} - ${driver.plate}) has been assigned with Priority Route Monitoring.`);
+          }}
+        />
+      )}
+
+      {/* 💸 InDrive-Style "Name Your Fare" Bidding Modal */}
+      {showBiddingModal && (
+        <FareBiddingModal
+          isOpen={showBiddingModal}
+          onClose={() => setShowBiddingModal(false)}
+          pickup={pickup || 'AIT College, Ognaj, Ahmedabad'}
+          dropoff={dropoff || 'Iskcon Crossroads, SG Highway, Ahmedabad'}
+          pickupCoords={pickupCoords}
+          dropoffCoords={dropoffCoords}
+          distanceKm={pickupCoords && dropoffCoords ? haversineKm(pickupCoords, dropoffCoords) : 10}
+          recommendedFare={estimatedFare || 180}
+          selectedCar={selectedCar}
+          onRideMatched={(matchedData) => {
+            if (matchedData?.tripId) {
+              window.location.href = `/track/${matchedData.tripId}`;
+            }
           }}
         />
       )}

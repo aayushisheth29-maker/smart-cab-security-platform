@@ -7500,3 +7500,315 @@ def record_sentinel_check_in(payload: SentinelCheckInPayload):
         "actionTaken": action_taken,
         "recordedAt": checkin_record["recordedAt"],
     }
+
+
+# ---------------------------------------------------------------------------
+# 💸 InDrive-Style "Name Your Fare" / Ride Bidding System
+# ---------------------------------------------------------------------------
+
+BIDDING_SESSIONS: Dict[str, Dict[str, Any]] = {}
+
+BIDDING_DRIVERS_POOL = [
+    {
+        "id": "DRV-BID-1",
+        "name": "Rahul Sharma",
+        "rating": 4.88,
+        "tripsCount": 2420,
+        "carModel": "White Maruti WagonR AC",
+        "plate": "GJ 01 AB 1234",
+        "phone": "+91 98250 11223",
+        "category": "SmartMini",
+        "badge": "Top Rated Partner",
+        "photo": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=256",
+    },
+    {
+        "id": "DRV-BID-2",
+        "name": "Vikram Patel",
+        "rating": 4.94,
+        "tripsCount": 3150,
+        "carModel": "Silver Honda City Hybrid Prime",
+        "plate": "GJ 01 CD 5678",
+        "phone": "+91 98250 22334",
+        "category": "SmartSedan",
+        "badge": "Prime Fleet Lead",
+        "photo": "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=256",
+    },
+    {
+        "id": "DRV-BID-3",
+        "name": "Anita Mehta",
+        "rating": 5.0,
+        "tripsCount": 1840,
+        "carModel": "White Hyundai Verna Prime",
+        "plate": "GJ 01 EF 9012",
+        "phone": "+91 98250 33445",
+        "category": "SmartSedan",
+        "badge": "Women Sentinel 5★",
+        "photo": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=256",
+    },
+    {
+        "id": "DRV-BID-4",
+        "name": "Mukesh Rathod",
+        "rating": 4.91,
+        "tripsCount": 4200,
+        "carModel": "Bajaj RE Green CNG Auto",
+        "plate": "GJ 01 AR 4421",
+        "phone": "+91 98250 44556",
+        "category": "SmartAuto",
+        "badge": "Express Auto Partner",
+        "photo": "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=256",
+    },
+    {
+        "id": "DRV-BID-5",
+        "name": "Arjun Vaghela",
+        "rating": 4.85,
+        "tripsCount": 1150,
+        "carModel": "Ather 450X EV Bike",
+        "plate": "GJ 01 BK 7789",
+        "phone": "+91 98250 55667",
+        "category": "SmartBike",
+        "badge": "Eco Bike Express",
+        "photo": "https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&q=80&w=256",
+    },
+    {
+        "id": "DRV-BID-6",
+        "name": "Suresh Kumar",
+        "rating": 4.96,
+        "tripsCount": 2890,
+        "carModel": "Toyota Innova Crysta Guard",
+        "plate": "GJ 01 GH 3456",
+        "phone": "+91 98250 66778",
+        "category": "SmartSUV",
+        "badge": "Luxury SUV Guard",
+        "photo": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&q=80&w=256",
+    },
+]
+
+class BiddingSessionCreate(BaseModel):
+    pickupLocation: str
+    dropoffLocation: str
+    pickupCoords: Optional[List[float]] = None
+    dropoffCoords: Optional[List[float]] = None
+    distanceKm: Optional[float] = 10.0
+    recommendedFare: Optional[float] = 180.0
+    riderOfferFare: float
+    selectedCar: Optional[str] = "SmartMini"
+    passengerNotes: Optional[str] = None
+    riderName: Optional[str] = "Rider"
+    riderPhone: Optional[str] = "+91 98250 12345"
+
+class BiddingBoostRequest(BaseModel):
+    boostAmount: float = 20.0
+
+class BiddingAcceptRequest(BaseModel):
+    driverId: str
+    offerId: str
+
+def _generate_driver_bids(session: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Generates realistic driver counter-offers and acceptances based on rider offer."""
+    rider_offer = session["riderOfferFare"]
+    rec_fare = session.get("recommendedFare", 180.0)
+    category = session.get("selectedCar", "SmartMini")
+
+    offers = []
+    # Pick matching and diverse drivers from pool
+    selected_drivers = [d for d in BIDDING_DRIVERS_POOL if d["category"] == category]
+    others = [d for d in BIDDING_DRIVERS_POOL if d["category"] != category]
+    pool = selected_drivers + others[:2]
+    if not pool:
+        pool = BIDDING_DRIVERS_POOL[:3]
+
+    messages = [
+        "Ready in 2 mins, AC on full blast",
+        "Right around the corner, smooth ride guaranteed",
+        "5★ Women Sentinel driver, priority route monitoring",
+        "Direct route, fast pickup with luggage space",
+        "Clean cab, sanitized seats and verified driver",
+    ]
+
+    for idx, drv in enumerate(pool[:4]):
+        eta = (idx + 2)
+        # First driver might accept exact offer if within reasonable threshold
+        if idx == 0 and rider_offer >= (rec_fare * 0.85):
+            proposed = round(rider_offer)
+            bid_type = "ACCEPTED_OFFER"
+            msg = f"Accepted your offer of ₹{proposed}! Ready to pickup in {eta} mins."
+        elif idx == 1:
+            proposed = round(rider_offer + 10)
+            bid_type = "COUNTER_OFFER"
+            msg = messages[idx % len(messages)]
+        elif idx == 2:
+            proposed = round(max(rec_fare, rider_offer + 20))
+            bid_type = "COUNTER_OFFER"
+            msg = messages[idx % len(messages)]
+        else:
+            proposed = round(rider_offer + 15)
+            bid_type = "COUNTER_OFFER"
+            msg = messages[idx % len(messages)]
+
+        offers.append({
+            "offerId": f"OFFER-{drv['id']}-{int(datetime.now().timestamp())}",
+            "driverId": drv["id"],
+            "driverName": drv["name"],
+            "rating": drv["rating"],
+            "tripsCount": drv["tripsCount"],
+            "carModel": drv["carModel"],
+            "plate": drv["plate"],
+            "phone": drv["phone"],
+            "badge": drv["badge"],
+            "photo": drv["photo"],
+            "category": drv["category"],
+            "etaMinutes": eta,
+            "proposedFare": proposed,
+            "bidType": bid_type,
+            "message": msg,
+            "submittedAt": _now_iso(),
+        })
+
+    return offers
+
+@app.post("/api/bidding/create")
+def create_bidding_session(payload: BiddingSessionCreate):
+    """Starts an InDrive-style 'Name Your Fare' bidding session."""
+    session_id = f"BID-{secrets.token_hex(4).upper()}"
+    rec_fare = payload.recommendedFare or max(80.0, payload.distanceKm * 14.0 + 40.0)
+
+    session = {
+        "sessionId": session_id,
+        "pickupLocation": payload.pickupLocation,
+        "dropoffLocation": payload.dropoffLocation,
+        "pickupCoords": payload.pickupCoords,
+        "dropoffCoords": payload.dropoffCoords,
+        "distanceKm": payload.distanceKm,
+        "recommendedFare": rec_fare,
+        "riderOfferFare": payload.riderOfferFare,
+        "selectedCar": payload.selectedCar,
+        "passengerNotes": payload.passengerNotes,
+        "riderName": payload.riderName,
+        "riderPhone": payload.riderPhone,
+        "status": "BIDDING_ACTIVE",
+        "createdAt": _now_iso(),
+        "driverOffers": [],
+    }
+
+    session["driverOffers"] = _generate_driver_bids(session)
+    BIDDING_SESSIONS[session_id] = session
+
+    return {
+        "success": True,
+        "sessionId": session_id,
+        "status": session["status"],
+        "recommendedFare": rec_fare,
+        "riderOfferFare": payload.riderOfferFare,
+        "driverOffers": session["driverOffers"],
+        "offersCount": len(session["driverOffers"]),
+        "createdAt": session["createdAt"],
+    }
+
+@app.get("/api/bidding/{session_id}/offers")
+def get_bidding_offers(session_id: str):
+    """Returns real-time driver bids and counter-offers for a bidding session."""
+    session = BIDDING_SESSIONS.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Bidding session not found")
+
+    return {
+        "success": True,
+        "sessionId": session_id,
+        "status": session["status"],
+        "riderOfferFare": session["riderOfferFare"],
+        "recommendedFare": session["recommendedFare"],
+        "offers": session.get("driverOffers", []),
+        "offersCount": len(session.get("driverOffers", [])),
+    }
+
+@app.post("/api/bidding/{session_id}/boost")
+def boost_bidding_offer(session_id: str, payload: BiddingBoostRequest):
+    """Raises the rider's offer fare and triggers fresh driver bids."""
+    session = BIDDING_SESSIONS.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Bidding session not found")
+
+    if session["status"] != "BIDDING_ACTIVE":
+        raise HTTPException(status_code=400, detail="Cannot boost inactive bidding session")
+
+    session["riderOfferFare"] += payload.boostAmount
+    fresh_offers = _generate_driver_bids(session)
+    session["driverOffers"] = fresh_offers
+
+    return {
+        "success": True,
+        "sessionId": session_id,
+        "newRiderOffer": session["riderOfferFare"],
+        "boostAmount": payload.boostAmount,
+        "offers": fresh_offers,
+        "offersCount": len(fresh_offers),
+    }
+
+@app.post("/api/bidding/{session_id}/accept")
+def accept_bidding_offer(session_id: str, payload: BiddingAcceptRequest):
+    """Accepts a driver's counter-offer / bid and creates a confirmed ride."""
+    session = BIDDING_SESSIONS.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Bidding session not found")
+
+    selected_offer = next((o for o in session.get("driverOffers", []) if o["offerId"] == payload.offerId or o["driverId"] == payload.driverId), None)
+    if not selected_offer:
+        raise HTTPException(status_code=404, detail="Driver offer not found")
+
+    agreed_fare = selected_offer["proposedFare"]
+    session["status"] = "MATCHED"
+    session["acceptedOffer"] = selected_offer
+
+    # Create active trip in TRIPS
+    trip_id = f"TRIP-BID-{secrets.token_hex(3).upper()}"
+    new_trip = {
+        "id": trip_id,
+        "bookingId": trip_id,
+        "riderName": session.get("riderName", "Rider"),
+        "riderPhone": session.get("riderPhone", "+91 98250 12345"),
+        "pickupLocation": session["pickupLocation"],
+        "dropoffLocation": session["dropoffLocation"],
+        "pickupCoords": session.get("pickupCoords"),
+        "dropoffCoords": session.get("dropoffCoords"),
+        "distanceKm": session.get("distanceKm", 10.0),
+        "fare": agreed_fare,
+        "status": "DISPATCHED",
+        "selectedCar": selected_offer.get("category", session.get("selectedCar", "SmartMini")),
+        "driver": {
+            "id": selected_offer["driverId"],
+            "name": selected_offer["driverName"],
+            "rating": selected_offer["rating"],
+            "plate": selected_offer["plate"],
+            "carModel": selected_offer["carModel"],
+            "phone": selected_offer["phone"],
+        },
+        "etaMinutes": selected_offer.get("etaMinutes", 3),
+        "biddingSessionId": session_id,
+        "createdAt": _now_iso(),
+    }
+    TRIPS.append(new_trip)
+
+    return {
+        "success": True,
+        "sessionId": session_id,
+        "status": "MATCHED",
+        "tripId": trip_id,
+        "agreedFare": agreed_fare,
+        "assignedDriver": new_trip["driver"],
+        "etaMinutes": new_trip["etaMinutes"],
+        "trackUrl": f"/track/{trip_id}",
+    }
+
+@app.post("/api/bidding/{session_id}/cancel")
+def cancel_bidding_session(session_id: str):
+    """Cancels the bidding session."""
+    session = BIDDING_SESSIONS.get(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Bidding session not found")
+
+    session["status"] = "CANCELLED"
+    return {
+        "success": True,
+        "sessionId": session_id,
+        "status": "CANCELLED",
+    }
