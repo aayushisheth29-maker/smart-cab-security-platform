@@ -30,6 +30,8 @@ import CorporateBillingModal from './CorporateBillingModal';
 import VehicleCategoriesModal, { CATEGORIES_DATA } from './VehicleCategoriesModal';
 import NightShieldModal from './NightShieldModal';
 import FareBiddingModal from './FareBiddingModal';
+import ParcelDeliveryModal from './ParcelDeliveryModal';
+import DriverFatigueModal from './DriverFatigueModal';
 import { LanguageSwitcher, useLanguage } from './i18n';
 
 // 📱 Pick a MediaRecorder mimeType the browser can ACTUALLY record in.
@@ -347,6 +349,8 @@ const BookRide = () => {
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showNightShieldModal, setShowNightShieldModal] = useState(false);
   const [showBiddingModal, setShowBiddingModal] = useState(false);
+  const [showParcelModal, setShowParcelModal] = useState(false);
+  const [showFatigueModal, setShowFatigueModal] = useState(false);
   const [categoryFilter, setCategoryFilter] = useState('all'); // 'all' | 'daily' | 'premium'
   const [ridePreferences, setRidePreferences] = useState({
     acPreference: 'Standard (23°C)',
@@ -6278,6 +6282,27 @@ const BookRide = () => {
               window.location.href = `/track/${matchedData.tripId}`;
             }
           }}
+        />
+      )}
+
+      {/* 📦 SmartBike Express Parcel Delivery Modal */}
+      {showParcelModal && (
+        <ParcelDeliveryModal
+          isOpen={showParcelModal}
+          onClose={() => setShowParcelModal(false)}
+          initialPickup={pickup || 'AIT College, Ognaj, Ahmedabad'}
+          initialDropoff={dropoff || 'Iskcon Crossroads, SG Highway, Ahmedabad'}
+          distanceKm={pickupCoords && dropoffCoords ? haversineKm(pickupCoords, dropoffCoords) : 8.5}
+        />
+      )}
+
+      {/* 👁️ Driver Shift Fatigue & Drowsiness AI Modal */}
+      {showFatigueModal && (
+        <DriverFatigueModal
+          isOpen={showFatigueModal}
+          onClose={() => setShowFatigueModal(false)}
+          driverId="DRV-101"
+          driverName="Rahul Sharma"
         />
       )}
     </div>

@@ -7815,3 +7815,277 @@ def cancel_bidding_session(session_id: str):
         "sessionId": session_id,
         "status": "CANCELLED",
     }
+
+
+# ---------------------------------------------------------------------------
+# 👁️ Feature 3: In-Cabin Driver Shift Fatigue & Drowsiness AI Alert
+# ---------------------------------------------------------------------------
+
+DRIVER_FATIGUE_STORE: Dict[str, Dict[str, Any]] = {}
+
+class DriverFatigueTelemetry(BaseModel):
+    driverId: str
+    driverName: Optional[str] = "Rahul Sharma"
+    continuousDrivingMinutes: int = 120
+    perclosPercentage: float = 20.0  # Percentage of eye closure time
+    yawnCountLast10Min: int = 0
+    headNodCount: int = 0
+    clientTimestamp: Optional[str] = None
+
+class DriverTakeBreakRequest(BaseModel):
+    driverId: str
+    breakMinutes: int = 15
+
+@app.post("/api/driver/fatigue/telemetry")
+def process_driver_fatigue_telemetry(payload: DriverFatigueTelemetry):
+    """Processes in-cabin camera & shift metrics to detect driver drowsiness and fatigue."""
+    continuous_mins = payload.continuousDrivingMinutes
+    perclos = payload.perclosPercentage
+    yawns = payload.yawnCountLast10Min
+    nods = payload.headNodCount
+
+    # Evaluate fatigue levels based on PERCLOS and continuous shift
+    if continuous_mins >= 240 or perclos >= 80.0 or nods >= 2:
+        level = "CRITICAL_FATIGUE"
+        mandatory_break = True
+        audio_alert = "CRITICAL_WAKE_UP_CHIME"
+        action = "Mandatory 15-Min Tea Break Required — Cab Assignment Paused"
+    elif continuous_mins >= 180 or perclos >= 60.0 or yawns >= 3 or nods >= 1:
+        level = "MILD_DROWSINESS"
+        mandatory_break = False
+        audio_alert = "ATTENTION_CHIME"
+        action = "Mild fatigue detected — In-cabin chime active & rest recommended"
+    else:
+        level = "NORMAL"
+        mandatory_break = False
+        audio_alert = "NONE"
+        action = "Driver alert & fit for duty"
+
+    record = {
+        "driverId": payload.driverId,
+        "driverName": payload.driverName,
+        "continuousDrivingMinutes": continuous_mins,
+        "perclosPercentage": perclos,
+        "yawnCountLast10Min": yawns,
+        "headNodCount": nods,
+        "fatigueLevel": level,
+        "breakMandatory": mandatory_break,
+        "audioAlert": audio_alert,
+        "recommendedAction": action,
+        "updatedAt": _now_iso(),
+        "isResting": False,
+    }
+    DRIVER_FATIGUE_STORE[payload.driverId] = record
+
+    if mandatory_break:
+        log.warning("🚨 CRITICAL DRIVER FATIGUE: %s (%s) continuous=%dm, perclos=%.1f%%",
+                    payload.driverName, payload.driverId, continuous_mins, perclos)
+
+    return {
+        "success": True,
+        **record,
+    }
+
+@app.post("/api/driver/fatigue/take-break")
+def record_driver_take_break(payload: DriverTakeBreakRequest):
+    """Logs driver rest break (15 mins), resetting the continuous driving counter."""
+    record = DRIVER_FATIGUE_STORE.get(payload.driverId, {
+        "driverId": payload.driverId,
+        "driverName": "Driver Partner",
+    })
+    record["isResting"] = True
+    record["continuousDrivingMinutes"] = 0
+    record["perclosPercentage"] = 15.0
+    record["yawnCountLast10Min"] = 0
+    record["headNodCount"] = 0
+    record["fatigueLevel"] = "RESTING"
+    record["breakMandatory"] = False
+    record["breakMinutes"] = payload.breakMinutes
+    record["lastBreakAt"] = _now_iso()
+    record["recommendedAction"] = f"Resting for {payload.breakMinutes} mins. Ready for duty after tea break."
+    DRIVER_FATIGUE_STORE[payload.driverId] = record
+
+    return {
+        "success": True,
+        "driverId": payload.driverId,
+        "status": "REST_ACTIVE",
+        "breakMinutes": payload.breakMinutes,
+        "message": f"Rest break logged for {payload.driverId}. Continuous shift timer reset.",
+    }
+
+@app.get("/api/driver/fatigue/status/{driver_id}")
+def get_driver_fatigue_status(driver_id: str):
+    """Fetches real-time fatigue telemetry and safety metrics for a driver."""
+    record = DRIVER_FATIGUE_STORE.get(driver_id)
+    if not record:
+        record = {
+            "driverId": driver_id,
+            "driverName": "Rahul Sharma",
+            "continuousDrivingMinutes": 95,
+            "perclosPercentage": 20.0,
+            "yawnCountLast10Min": 0,
+            "headNodCount": 0,
+            "fatigueLevel": "NORMAL",
+            "breakMandatory": False,
+            "audioAlert": "NONE",
+            "recommendedAction": "Driver alert & fit for duty",
+            "updatedAt": _now_iso(),
+            "isResting": False,
+        }
+        DRIVER_FATIGUE_STORE[driver_id] = record
+
+    return {
+        "success": True,
+        **record,
+    }
+
+
+# ---------------------------------------------------------------------------
+# 📦 Feature 4: Rapido-Style SmartBike Express Parcel Delivery Engine
+# ---------------------------------------------------------------------------
+
+PARCEL_ORDERS: List[Dict[str, Any]] = []
+
+class ParcelDeliveryCreate(BaseModel):
+    senderName: str
+    senderPhone: str
+    pickupAddress: str
+    pickupCoords: Optional[List[float]] = None
+    receiverName: str
+    receiverPhone: str
+    deliveryAddress: str
+    dropoffCoords: Optional[List[float]] = None
+    packageType: Optional[str] = "DOCUMENTS"  # DOCUMENTS, ELECTRONICS, FOOD_TIFFIN, CLOTHING_GIFTS, MEDICINES, GENERAL
+    weightKg: Optional[float] = 1.0
+    distanceKm: Optional[float] = 8.0
+    deliveryNotes: Optional[str] = None
+
+class ParcelOtpVerifyRequest(BaseModel):
+    enteredOtp: str
+
+class ParcelProofUploadRequest(BaseModel):
+    stage: str  # "PICKUP" or "DELIVERY"
+    photoUrl: str
+    notes: Optional[str] = None
+
+@app.post("/api/parcel/create")
+def create_parcel_delivery(payload: ParcelDeliveryCreate):
+    """Creates an express on-demand bike parcel delivery order."""
+    parcel_id = f"PKG-{secrets.token_hex(3).upper()}"
+    delivery_otp = f"{random.randint(1000, 9999)}"
+
+    # Base ₹25 + ₹8/km for SmartBike Express + ₹5/kg over 2kg
+    dist = payload.distanceKm or 8.0
+    weight = payload.weightKg or 1.0
+    extra_weight_charge = max(0.0, (weight - 2.0) * 5.0)
+    calculated_fare = round(25.0 + (dist * 8.0) + extra_weight_charge)
+
+    rider = {
+        "id": "RIDER-BIKE-1",
+        "name": "Arjun Vaghela",
+        "phone": "+91 98250 55667",
+        "rating": 4.92,
+        "vehicle": "Ather 450X EV Express Bike",
+        "plate": "GJ 01 BK 7789",
+        "etaMinutes": 3,
+    }
+
+    order = {
+        "parcelId": parcel_id,
+        "senderName": payload.senderName,
+        "senderPhone": payload.senderPhone,
+        "pickupAddress": payload.pickupAddress,
+        "pickupCoords": payload.pickupCoords,
+        "receiverName": payload.receiverName,
+        "receiverPhone": payload.receiverPhone,
+        "deliveryAddress": payload.deliveryAddress,
+        "dropoffCoords": payload.dropoffCoords,
+        "packageType": payload.packageType,
+        "weightKg": weight,
+        "distanceKm": dist,
+        "deliveryFare": calculated_fare,
+        "deliveryOtp": delivery_otp,
+        "deliveryNotes": payload.deliveryNotes,
+        "status": "REQUESTED",
+        "assignedRider": rider,
+        "pickupPhotoProof": None,
+        "deliveryPhotoProof": None,
+        "createdAt": _now_iso(),
+        "deliveredAt": None,
+    }
+    PARCEL_ORDERS.append(order)
+
+    return {
+        "success": True,
+        "parcelId": parcel_id,
+        "status": order["status"],
+        "deliveryFare": calculated_fare,
+        "deliveryOtp": delivery_otp,
+        "assignedRider": rider,
+        "createdAt": order["createdAt"],
+    }
+
+@app.post("/api/parcel/{parcel_id}/proof-upload")
+def upload_parcel_proof(parcel_id: str, payload: ParcelProofUploadRequest):
+    """Attaches pickup or delivery photo proof to the parcel order."""
+    order = next((p for p in PARCEL_ORDERS if p["parcelId"] == parcel_id), None)
+    if not order:
+        raise HTTPException(status_code=404, detail="Parcel order not found")
+
+    if payload.stage.upper() == "PICKUP":
+        order["pickupPhotoProof"] = payload.photoUrl
+        order["status"] = "PICKED_UP"
+    else:
+        order["deliveryPhotoProof"] = payload.photoUrl
+        order["status"] = "DELIVERED"
+        order["deliveredAt"] = _now_iso()
+
+    return {
+        "success": True,
+        "parcelId": parcel_id,
+        "stage": payload.stage,
+        "status": order["status"],
+        "photoUrl": payload.photoUrl,
+    }
+
+@app.post("/api/parcel/{parcel_id}/verify-otp")
+def verify_parcel_delivery_otp(parcel_id: str, payload: ParcelOtpVerifyRequest):
+    """Verifies receiver's 4-digit OTP to complete package release."""
+    order = next((p for p in PARCEL_ORDERS if p["parcelId"] == parcel_id), None)
+    if not order:
+        raise HTTPException(status_code=404, detail="Parcel order not found")
+
+    if order["deliveryOtp"] != payload.enteredOtp.strip():
+        raise HTTPException(status_code=400, detail="Invalid 4-digit Delivery OTP. Package cannot be released.")
+
+    order["status"] = "DELIVERED"
+    order["deliveredAt"] = _now_iso()
+
+    return {
+        "success": True,
+        "parcelId": parcel_id,
+        "status": "DELIVERED",
+        "message": f"Package {parcel_id} successfully verified and handed over to {order['receiverName']}.",
+        "deliveredAt": order["deliveredAt"],
+    }
+
+@app.get("/api/parcel/{parcel_id}")
+def get_parcel_details(parcel_id: str):
+    """Returns full parcel delivery order and tracking details."""
+    order = next((p for p in PARCEL_ORDERS if p["parcelId"] == parcel_id), None)
+    if not order:
+        raise HTTPException(status_code=404, detail="Parcel order not found")
+
+    return {
+        "success": True,
+        **order,
+    }
+
+@app.get("/api/parcel/orders/history")
+def get_parcel_history():
+    """Lists recent parcel deliveries."""
+    return {
+        "success": True,
+        "count": len(PARCEL_ORDERS),
+        "parcels": list(reversed(PARCEL_ORDERS[-20:])),
+    }

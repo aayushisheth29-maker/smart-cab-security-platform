@@ -42,6 +42,7 @@ import { LanguageSwitcher, useLanguage } from './i18n';
 import DriverKycModal from './DriverKycModal';
 import DriverHeatmapModal from './DriverHeatmapModal';
 import DriverWeeklyAnalyticsModal from './DriverWeeklyAnalyticsModal';
+import DriverFatigueModal from './DriverFatigueModal';
 
 // Custom icons for driver map
 const driverIcon = L.divIcon({
@@ -86,6 +87,7 @@ export default function DriverDashboard() {
   const [showKycModal, setShowKycModal] = useState(false);
   const [showHeatmapModal, setShowHeatmapModal] = useState(false);
   const [showWeeklyModal, setShowWeeklyModal] = useState(false);
+  const [showFatigueModal, setShowFatigueModal] = useState(false);
   
   const [reportReason, setReportReason] = useState('Suspicious / Contraband Concern');
   const [reportNotes, setReportNotes] = useState('');
@@ -476,6 +478,16 @@ export default function DriverDashboard() {
             >
               <TrendingUp className="h-3.5 w-3.5 text-indigo-400" />
               <span className="hidden sm:inline">Weekly ROI</span>
+            </button>
+
+            {/* DRIVER FATIGUE & DROWSINESS AI */}
+            <button
+              type="button"
+              onClick={() => setShowFatigueModal(true)}
+              className="px-3 py-1.5 rounded-xl font-bold text-xs bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition flex items-center gap-1.5 shadow"
+              title="In-Cabin Driver Shift Fatigue & Drowsiness AI Alert"
+            >
+              <span>👁️ Fatigue AI</span>
             </button>
 
             {/* KYC STATUS */}
@@ -1315,6 +1327,16 @@ export default function DriverDashboard() {
         <DriverWeeklyAnalyticsModal
           isOpen={showWeeklyModal}
           onClose={() => setShowWeeklyModal(false)}
+          driverName={driverName}
+        />
+      )}
+
+      {/* 👁️ IN-CABIN DRIVER SHIFT FATIGUE & DROWSINESS AI MODAL */}
+      {showFatigueModal && (
+        <DriverFatigueModal
+          isOpen={showFatigueModal}
+          onClose={() => setShowFatigueModal(false)}
+          driverId="DRV-101"
           driverName={driverName}
         />
       )}
