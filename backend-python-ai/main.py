@@ -816,21 +816,24 @@ def _restore_core_data() -> None:
         USERS.clear()
         USERS.extend(loaded_users)
         log.info("💾 Restored %d user(s) from disk", len(USERS))
-        _next_id["user"] = max([int(u.get("id", 0)) for u in USERS] or [0]) + 1
+        numeric_user_ids = [int(u.get("id")) for u in USERS if isinstance(u.get("id"), int) or (isinstance(u.get("id"), str) and str(u.get("id")).isdigit())]
+        _next_id["user"] = max(numeric_user_ids or [0]) + 1
 
     loaded_trips = _load_list_from_disk(TRIPS_FILE)
     if loaded_trips:
         TRIPS.clear()
         TRIPS.extend(loaded_trips)
         log.info("💾 Restored %d trip(s) from disk", len(TRIPS))
-        _next_id["trip"] = max([int(t.get("id", 0)) for t in TRIPS] or [0]) + 1
+        numeric_trip_ids = [int(t.get("id")) for t in TRIPS if isinstance(t.get("id"), int) or (isinstance(t.get("id"), str) and str(t.get("id")).isdigit())]
+        _next_id["trip"] = max(numeric_trip_ids or [0]) + 1
 
     loaded_emergencies = _load_list_from_disk(EMERGENCIES_FILE)
     if loaded_emergencies:
         EMERGENCIES.clear()
         EMERGENCIES.extend(loaded_emergencies)
         log.info("💾 Restored %d emergency alert(s) from disk", len(EMERGENCIES))
-        _next_id["emergency"] = max([int(e.get("id", 0)) for e in EMERGENCIES] or [0]) + 1
+        numeric_em_ids = [int(e.get("id")) for e in EMERGENCIES if isinstance(e.get("id"), int) or (isinstance(e.get("id"), str) and str(e.get("id")).isdigit())]
+        _next_id["emergency"] = max(numeric_em_ids or [0]) + 1
 
     loaded_apps = _load_list_from_disk(DRIVER_APPLICATIONS_FILE)
     if loaded_apps:
