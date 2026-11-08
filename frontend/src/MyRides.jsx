@@ -475,7 +475,6 @@ export default function MyRides() {
             <button onClick={() => setShareMessage('')} className="font-bold hover:underline">Dismiss</button>
           </div>
         )}
-        )}
 
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 text-slate-400">
