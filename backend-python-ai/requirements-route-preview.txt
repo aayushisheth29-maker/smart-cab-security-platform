@@ -1,0 +1,8 @@
+# Separate, optional preview service. Not installed by the production backend.
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+numpy>=2.0,<3
+scikit-learn>=1.6,<2
+joblib>=1.4,<2
+pytest>=8,<10
+httpx>=0.27,<1
